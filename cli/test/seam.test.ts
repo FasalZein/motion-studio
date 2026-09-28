@@ -304,11 +304,13 @@ for (const runtime of ['bun','node']) test(`${runtime}: shots named master and f
     const ledger = await json(join(dir,'ledger.json'));
     for (const asset of ledger.assets) {asset.localPath = path(asset.localPath); asset.shots = asset.shots.map(id);}
     await writeFile(join(dir,'ledger.json'),JSON.stringify(ledger));
-    // The fixture's Remotion composition is fixed at 320x180; size it from the layout prop so it renders in 9:16 too.
+    // The fixture's Remotion composition is fixed at 320x180; size it from the layout prop so it renders in 9:16 too,
+    // and let its painted background fill the canvas, because render refuses transparent pixels (D51).
     const entry = join(dir,'shots','master','src','index.tsx');
     const source = await readFile(entry,'utf8');
     expect(source).toContain('height={180} />');
-    await writeFile(entry,source.replace('height={180} />','height={180} calculateMetadata={({props}: any) => ({width: props.layout.canvas.width, height: props.layout.canvas.height})} />'));
+    expect(source).toContain('width: 320, height: 180,');
+    await writeFile(entry,source.replace('width: 320, height: 180,',"width: '100%', height: '100%',").replace('height={180} />','height={180} calculateMetadata={({props}: any) => ({width: props.layout.canvas.width, height: props.layout.canvas.height})} />'));
     const board = await json(join(dir,'storyboard.json'));
     for (const shot of board.shots) {shot.id = id(shot.id); if (shot.engine === 'hyperframes') shot.entrypoint = path(shot.entrypoint);}
     board.meta.formats.extra = ['9:16'];

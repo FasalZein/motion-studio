@@ -127,3 +127,30 @@ test(`${runtime}: render and stitch reframe every chosen format into renders/<fo
   // The HyperFrames staging copy is removed after each render.
   expect((await readdir(join(dir,'shots'))).sort()).toEqual(['hyperframes','remotion']);
 }), 600000);
+
+// #14 review: an engine builder checks only its own shots. Here the HyperFrames builder has not started (no
+// entrypoint), and the Remotion builder's stills and safezone checks still pass for the Remotion shot.
+test(`${runtime}: a builder's stills and safezone checks cover only its own shots`, async () => withFilm(async dir => {
+  await rm(join(dir,'shots','hyperframes'),{recursive:true});
+  const missing = 'error: shot hyperframes: HyperFrames entrypoint shots/hyperframes/index.html not found';
+  const stills = run('stills',dir,'remotion','--frames','2','--format','16:9');
+  expect(stills.stderr).toBe('');
+  expect(stills.status).toBe(0);
+  const zone = run('safezone',dir,'16:9','--shots','remotion');
+  expect(zone.stderr).toBe('');
+  expect(zone.status).toBe(0);
+  // Remotion in 16:9: the title at frames 2 and 5, and the mark at frames 0 and 5; nothing of the HyperFrames shot.
+  expect(zone.stdout).toContain('safezone 16:9: 4 of 4 checks inside');
+  expect(zone.stdout).not.toContain('hyperframes/');
+  // A run over named shots is not the film's delivery check, so it writes no safezone.json.
+  expect(await readdir(join(dir,'renders')).catch(() => [])).toEqual([]);
+  // The film-wide checks, run after every builder finishes, still need every shot.
+  for (const args of [['stills',dir,'--format','16:9'],['safezone',dir,'16:9']]) {
+    const film = run(...args);
+    expect(film.stderr).toContain(missing);
+    expect(film.status).toBe(1);
+  }
+  const unknown = run('safezone',dir,'16:9','--shots','nope');
+  expect(unknown.stderr).toBe('error: unknown shot nope\n');
+  expect(unknown.status).toBe(1);
+}), 600000);

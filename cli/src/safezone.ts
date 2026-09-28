@@ -2,7 +2,7 @@ import {mkdir, mkdtemp, readFile, rename, rm, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os';
 import {join, resolve, relative, isAbsolute} from 'node:path';
 
-import {layoutOf, type Format, type Project, type Rect, type Shot} from './project.js';
+import {CliError, layoutOf, type Format, type Project, type Rect, type Shot} from './project.js';
 import {framePngs, remotionBundle, renderHyperframesFrames, renderRemotionFrames} from './engines.js';
 import type {Tools} from './seam.js';
 
@@ -87,20 +87,41 @@ async function declared(project:Project, shot:Shot, format:Format):Promise<Check
   return checks;
 }
 
+/** Parses `safezone` arguments after the film folder: an optional format and `--shots <id,...>`. */
+export function safezoneArgs(args:string[]):{format:string|undefined; shots:string[]|undefined} {
+  let format:string|undefined, shots:string[]|undefined;
+  for (let i=0;i<args.length;i++) {
+    if (args[i] === '--shots') {
+      const value = args[++i];
+      if (!value) throw new CliError('--shots takes comma-separated shot ids, for example s01,s02');
+      shots = value.split(',');
+    } else if (format === undefined) format = args[i];
+    else throw new CliError(`unexpected argument ${args[i]}`);
+  }
+  return {format,shots};
+}
+
 /**
  * Checks held protected content against each format's safe rectangle. Only held frames are checked, so
- * entrance and exit travel and unprotected full-bleed art never fail. Writes renders/<format>/safezone.json
- * and returns the number of failed checks.
+ * entrance and exit travel and unprotected full-bleed art never fail. Returns the number of failed checks.
+ * A run over every shot writes renders/<format>/safezone.json, the G5 delivery check. A run over named shots
+ * (`only`, an engine builder's own check) prints its checks and leaves that report alone, because it covers part
+ * of the film.
  */
-export async function safezone(project:Project, formats:Format[], renders:(f:Format) => string, tools:Tools):Promise<number> {
+export async function safezone(project:Project, formats:Format[], renders:(f:Format) => string, tools:Tools, only?:string[]):Promise<number> {
+  const {shots} = project.storyboard;
+  for (const id of only ?? []) if (!shots.some(s => s.id === id)) throw new CliError(`unknown shot ${id}`);
+  const selected = only ? shots.filter(s => only.includes(s.id)) : shots;
   let failures = 0;
   for (const format of formats) {
     const output = renders(format);
-    await mkdir(output,{recursive:true});
-    await rm(join(output,'safezone.json'),{force:true});
+    if (!only) {
+      await mkdir(output,{recursive:true});
+      await rm(join(output,'safezone.json'),{force:true});
+    }
     const layout = layoutOf(project.storyboard,format);
     const checks:Check[] = [];
-    for (const shot of project.storyboard.shots) checks.push(...await declared(project,shot,format), ...await measure(project,shot,format,tools));
+    for (const shot of selected) checks.push(...await declared(project,shot,format), ...await measure(project,shot,format,tools));
     for (const c of checks) {
       if (c.bounds && within(c.bounds,layout.safe)) c.status = 'inside';
       const where = `safezone ${format} ${c.shot}/${c.id} frame ${c.frame}`;
@@ -108,9 +129,11 @@ export async function safezone(project:Project, formats:Format[], renders:(f:For
       failures++;
       console.error(`error: ${where}: ${c.status === 'outside' ? `held ${c.source} bounds ${rectText(c.bounds!)} outside safe rectangle ${rectText(layout.safe)}` : c.status === 'not-visible' ? `no painted pixels for data-protected="${c.id}"` : `no declared bounds for ${format} in ${c.shot}`}`);
     }
-    const report = join(output,'.safezone.json.tmp');
-    await writeFile(report,JSON.stringify({format, canvas:layout.canvas, safe:layout.safe, overlay:layout.overlay, checks},null,2)+'\n');
-    await rename(report,join(output,'safezone.json'));
+    if (!only) {
+      const report = join(output,'.safezone.json.tmp');
+      await writeFile(report,JSON.stringify({format, canvas:layout.canvas, safe:layout.safe, overlay:layout.overlay, checks},null,2)+'\n');
+      await rename(report,join(output,'safezone.json'));
+    }
     console.log(`safezone ${format}: ${checks.length - checks.filter(c => c.status !== 'inside').length} of ${checks.length} checks inside`);
   }
   return failures;
