@@ -1,0 +1,27 @@
+{
+  "$comment": "Inputs each gate adds; a gate hashes its own inputs plus every earlier gate's. Sources: file (a film-relative path or glob, * within a path segment, ** across segments), storyboard (a JSON pointer into storyboard.json, hashed as canonical JSON), storyboardPath (a JSON pointer to a film-relative file path stored in storyboard.json), frozen (the frozen stills of that gate's current approval). freeze copies the matched files into stills/approved/<gate>-<hash8>/ on approval. Add or change inputs here; the CLI code does not list them.",
+  "G1": [
+    {"name": "brief", "sources": [{"file": "BRIEF.md"}]},
+    {"name": "look tests", "freeze": true, "sources": [{"file": "stills/G1/**"}]},
+    {"name": "style bible", "sources": [{"storyboard": "/look"}, {"storyboardPath": "/look/styleBible"}]}
+  ],
+  "G2": [
+    {"name": "beat grid", "sources": [{"storyboard": "/audio"}, {"storyboard": "/voice"}, {"file": "beats.json"}]},
+    {"name": "board", "sources": [{"storyboard": "/meta"}, {"storyboard": "/shots"}]},
+    {"name": "stills", "freeze": true, "sources": [{"file": "stills/G2/**"}]}
+  ],
+  "G3": [
+    {"name": "frozen stills", "sources": [{"frozen": "G2"}]},
+    {"name": "animatic", "sources": [{"file": "animatic.mp4"}]}
+  ],
+  "G4": [
+    {"name": "shot sources", "sources": [{"file": "shots/**"}]},
+    {"name": "ledger", "sources": [{"file": "ledger.json"}]},
+    {"name": "full pass", "sources": [{"file": "output/master.mkv"}, {"file": "renders/*/master.*"}]}
+  ],
+  "G5": [
+    {"name": "layouts", "sources": [{"file": "renders/*/layout.json"}]},
+    {"name": "mixed drafts", "sources": [{"file": "output/mix.wav"}, {"file": "output/final.mkv"}, {"file": "renders/*/draft.*"}]},
+    {"name": "delivery checks", "sources": [{"file": "output/sync.json"}, {"file": "output/handoff-*.json"}, {"file": "renders/*/poster.*"}, {"file": "renders/*/contact-sheet.*"}, {"file": "renders/*/safe-zone*.json"}]}
+  ]
+}

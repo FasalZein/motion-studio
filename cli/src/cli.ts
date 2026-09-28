@@ -7,9 +7,10 @@ import {createRequire} from 'node:module';
 import {bundle} from '@remotion/bundler';
 import {renderFrames, selectComposition} from '@remotion/renderer';
 
-import {CliError, initProject, parseProject, type Project, type Shot} from './project.js';
+import {CliError, gateIds, initProject, parseProject, type Project, type Shot} from './project.js';
 import {checkProject, remotionEntry, validateProject} from './validate.js';
 import {statusLines} from './status.js';
+import {decisions, gateViews, recordGate} from './gates.js';
 import {handoff} from './handoff.js';
 import {mix} from './mix.js';
 import {clearSeamOutputs} from './seam.js';
@@ -88,10 +89,10 @@ async function renderShot(shot:Shot, project:Project, output:string) {
     await verify(output,frameCount,fps,width,height);
   } finally {await rm(temp,{recursive:true,force:true});}
 }
-const usage = 'usage: motion-studio init <slug> | validate <film-dir> | status <film-dir> | render <film-dir> | stitch <film-dir> | still <film-dir> <shot-id> [local-frame] | handoff <film-dir> [<shot-a> <shot-b>] | mix <film-dir>';
+const usage = 'usage: motion-studio init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... | render <film-dir> | stitch <film-dir> | still <film-dir> <shot-id> [local-frame] | handoff <film-dir> [<shot-a> <shot-b>] | mix <film-dir>';
 async function main() {
   const [action,target] = process.argv.slice(2);
-  if (!['init','validate','status','render','stitch','still','handoff','mix'].includes(action) || !target) throw new CliError(usage);
+  if (!['init','validate','status','gate','render','stitch','still','handoff','mix'].includes(action) || !target) throw new CliError(usage);
   if (action === 'init') {
     console.log(`created ${await initProject(process.cwd(),target)}`);
     return;
@@ -108,8 +109,26 @@ async function main() {
     const parsed = await parseProject(target);
     if (!parsed.ok) {report(parsed.errors,[]); process.exitCode = 1; return;}
     const {errors} = await checkProject(parsed.project);
-    for (const line of statusLines(parsed.project.storyboard.gates)) console.log(line);
+    for (const line of statusLines(await gateViews(parsed.project))) console.log(line);
     if (errors.length) console.log(`validation: ${errors.length} error${errors.length === 1 ? '' : 's'}; run motion-studio validate ${target}`);
+    return;
+  }
+  if (action === 'gate') {
+    // A gate records state on an unfinished film, so only the schema must pass; validate and render check the rest.
+    const [id,decision,...rest] = process.argv.slice(4);
+    const notes:string[] = [];
+    for (let i=0;i<rest.length;i+=2) {
+      if (rest[i] !== '--note' || !rest[i+1]) throw new CliError(usage);
+      notes.push(rest[i+1]);
+    }
+    const gate = gateIds.find(g => g === id);
+    const choice = decisions.find(d => d === decision);
+    if (!gate || !choice) throw new CliError(usage);
+    const parsed = await parseProject(target);
+    if (!parsed.ok) {report(parsed.errors,[]); process.exitCode = 1; return;}
+    for (const line of await recordGate(parsed.project,gate,choice,notes)) console.log(line);
+    const updated = await parseProject(target);
+    if (updated.ok) for (const line of statusLines(await gateViews(updated.project))) console.log(line);
     return;
   }
   const project = await loadProject(target);

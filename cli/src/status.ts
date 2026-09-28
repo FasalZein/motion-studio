@@ -1,7 +1,6 @@
 import type {Gate, GateId, GateState} from './project.js';
+import {noteRounds, type GateView} from './gates.js';
 
-/** Note rounds allowed per gate before the user must accept, rescope or stop. */
-const noteRounds = 3;
 // Work that produces each gate, from the flow table in docs/SPEC.md.
 const gateWork:Record<GateId,string> = {
   G1:'brief, hero assets and look test',
@@ -11,19 +10,21 @@ const gateWork:Record<GateId,string> = {
   G5:'polish, mix, draft renders per format, critique loop B and license check',
 };
 
-export function nextStep(gates:Gate[]):string {
-  const gate = gates.find((g):g is Gate & {state:Exclude<GateState,'approved'>} => g.state !== 'approved');
-  if (!gate) return 'final render, then user acceptance of the files';
-  switch (gate.state) {
+export function nextStep(views:GateView[]):string {
+  const view = views.find((v):v is GateView & {state:Exclude<GateState,'approved'>} => v.state !== 'approved');
+  if (!view) return 'final render, then user acceptance of the files';
+  const gate:Gate = view.gate;
+  switch (view.state) {
     case 'pending': return `${gateWork[gate.id]}, then present ${gate.id}`;
     case 'stale': return `${gate.id} is stale: rerun ${gateWork[gate.id]}, then present ${gate.id} again`;
     case 'changes': return gate.rounds >= noteRounds
       ? `${gate.id} used ${gate.rounds} of ${noteRounds} note rounds: ask the user to accept, rescope or stop`
       : `apply the ${gate.id} notes (round ${gate.rounds} of ${noteRounds}), then present ${gate.id} again`;
-    default: {const unreachable:never = gate.state; return unreachable;}
+    default: {const unreachable:never = view.state; return unreachable;}
   }
 }
 
-export function statusLines(gates:Gate[]):string[] {
-  return [...gates.map(g => `${g.id} ${g.state}${g.rounds ? ` (rounds ${g.rounds}/${noteRounds})` : ''}`), `next: ${nextStep(gates)}`];
+/** One line per gate with its effective state, note rounds and stale reason, then the next step. */
+export function statusLines(views:GateView[]):string[] {
+  return [...views.map(({gate:g,state,reason}) => `${g.id} ${state}${g.rounds ? ` (rounds ${g.rounds}/${noteRounds})` : ''}${reason ? ` (${reason})` : ''}`), `next: ${nextStep(views)}`];
 }

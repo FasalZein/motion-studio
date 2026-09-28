@@ -2,11 +2,12 @@ import {readFile, stat} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {isAbsolute, join, relative, resolve} from 'node:path';
 import {gateIds, parseProject, type Project, type Shot} from './project.js';
+import {gateViews} from './gates.js';
 
 export type Report = {errors:string[]; warnings:string[]};
 /**
  * One project check. Each returns its own findings; `validateProject` concatenates them.
- * Later checks plug in here: vocabulary-term warnings (#12) and stale gate hashes (#5).
+ * Later checks plug in here, for example vocabulary-term warnings (#12).
  */
 type Check = (project:Project) => Promise<Report>|Report;
 
@@ -130,7 +131,16 @@ const checkLedgerFiles:Check = async ({root,ledger}) => {
   return errorsOnly(errors);
 };
 
-const checks:Check[] = [checkMeta, checkGates, checkTimeline, checkHandoffs, checkSoundCues, checkEntrypoints, checkAssetIds, checkLedgerFiles];
+// An approval whose inputs changed is a normal state while work resumes, so it warns and does not block renders.
+// Gates already recorded as stale are not repeated; status lists them.
+const checkGateHashes:Check = async project => {
+  if (project.storyboard.gates.map(g => g.id).join() !== gateIds.join()) return errorsOnly([]);
+  const views = await gateViews(project);
+  return {errors:[], warnings:views.filter(v => v.state === 'stale' && v.gate.state !== 'stale')
+    .map(v => `gate ${v.gate.id} ${v.gate.state} is stale: ${v.reason}; present ${v.gate.id} again`)};
+};
+
+const checks:Check[] = [checkMeta, checkGates, checkGateHashes, checkTimeline, checkHandoffs, checkSoundCues, checkEntrypoints, checkAssetIds, checkLedgerFiles];
 
 /** Cross-reference checks on a project that already passed the schema. */
 export async function checkProject(project:Project):Promise<Report> {
