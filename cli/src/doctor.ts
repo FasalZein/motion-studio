@@ -1,25 +1,19 @@
 import {createRequire} from 'node:module';
-import {dirname, resolve} from 'node:path';
+import {heygenStatus, hyperframesBin as hfBin} from './heygen.js';
 import {IMAGE_PROVIDER_ENV, run, type AssetProvider, type RunResult} from './providers.js';
 
 const require = createRequire(import.meta.url);
-const hfBin = resolve(dirname(require.resolve('hyperframes/package.json')),'bin/hyperframes.mjs');
 const packageVersion = (name:string) => (require(`${name}/package.json`) as {version:string}).version;
 
 /** Each probe is a local, read-only command; one that takes longer counts as failed. */
 const PROBE_TIMEOUT_MS = 20_000;
 const NODE_MAJOR = 22;
-const HEYGEN_MIN = [0,3,0];
 
 /** One doctor line. Required tools stop the pipeline when missing; optional ones only narrow the asset sources. */
 type Check = {name:string; required:boolean; ok:boolean; detail:string};
 const probe = (bin:string, args:string[], env?:NodeJS.ProcessEnv) => run(bin,args,{timeoutMs:PROBE_TIMEOUT_MS, env});
 const failure = (r:RunResult) => r.kind === 'failed' ? r.reason : `exited ${r.code}`;
 const version = (text:string) => text.match(/(\d+)\.(\d+)\.(\d+)/)?.slice(1).map(Number);
-function atLeast(actual:number[], min:number[]):boolean {
-  for (let i=0;i<min.length;i++) if (actual[i] !== min[i]) return actual[i] > min[i];
-  return true;
-}
 
 async function nodeCheck():Promise<Check> {
   const r = await probe('node',['--version']);
@@ -58,22 +52,10 @@ function remotionCheck():Check {
   // Remotion fetches its own Chrome headless shell on the first render; doctor reports that and fetches nothing.
   return {name:'remotion', required:true, ok:true, detail:`@remotion/renderer ${packageVersion('@remotion/renderer')} (downloads its Chrome headless shell on the first render)`};
 }
-/** heygen CLI version and sign-in. Only the credential type and expiry are printed, never account data or keys. */
+/** heygen CLI version and sign-in; the check prints only the credential type, its expiry and heygen's error code. */
 async function heygenCheck():Promise<Check> {
-  const name = 'heygen';
-  const v = await probe('heygen',['--version']);
-  if (v.kind === 'failed' || v.code !== 0) return {name, required:false, ok:false, detail:`${failure(v)}; HeyGen catalog assets are unavailable`};
-  const found = version(v.stdout);
-  if (!found || !atLeast(found,HEYGEN_MIN)) return {name, required:false, ok:false, detail:`version ${found?.join('.') ?? 'unknown'} is older than ${HEYGEN_MIN.join('.')}`};
-  const auth = await probe('heygen',['auth','status']);
-  if (auth.kind === 'failed' || auth.code !== 0) return {name, required:false, ok:false, detail:`v${found.join('.')}, not signed in ("heygen auth status" ${failure(auth)}); run heygen auth login`};
-  let credential = '';
-  try {
-    const c = (JSON.parse(auth.stdout) as {credential?:{type?:unknown; expires_in_seconds?:unknown}}).credential;
-    const days = typeof c?.expires_in_seconds === 'number' ? `, expires in ${Math.floor(c.expires_in_seconds/86_400)} days` : '';
-    if (typeof c?.type === 'string' && /^[a-z_]+$/.test(c.type)) credential = ` (${c.type}${days})`;
-  } catch {}
-  return {name, required:false, ok:true, detail:`v${found.join('.')}, signed in${credential}`};
+  const {ready,detail} = await heygenStatus();
+  return {name:'heygen', required:false, ok:ready, detail};
 }
 async function imageCheck(provider:AssetProvider|undefined):Promise<Check> {
   const name = 'image provider';
