@@ -5,7 +5,7 @@ import {CliError, licenseStatuses, schemaErrors, sourceKinds, type Ledger, type 
 import type {AssetProvider} from './providers.js';
 import {ledgerFileState, realInside, type LedgerFileState} from './validate.js';
 
-export const assetsUsage = 'usage: motion-studio assets <film-dir> list | assets <film-dir> add <id> --file <path> --type <type> --source-kind <kind> --source <url-or-generator> --license <known|unknown|restricted> [--license-name <name>] --evidence <text> [--provider-asset-id <id>] [--shot <shot-id>]... | assets <film-dir> resolve <id> --provider <name> --type <type> --intent <text> [--shot <shot-id>]... [--paid-ok]';
+export const assetsUsage = 'usage: motion-studio assets <film-dir> list | assets <film-dir> add <id> --file <path> --type <type> --source-kind <kind> --source <url-or-generator> --license <known|unknown|restricted> [--license-name <name>] --evidence <text> [--provider-asset-id <id>] [--shot <shot-id>]... | assets <film-dir> resolve <id> --provider <name> --type <type> --intent <text> [--voice-id <id>] [--shot <shot-id>]... [--paid-ok]';
 
 const sha256 = async (path:string) => createHash('sha256').update(await readFile(path)).digest('hex');
 /** The film-relative path with `/` separators, or null when `full` is not inside the film folder. */
@@ -127,23 +127,26 @@ async function resolveAsset(project:Project, [idArg,...rest]:string[], providers
   const id = requireNewId(project,idArg);
   // --paid-ok is the user's consent to paid generation; the agent passes it only after the user agrees to the cost.
   const paidOk = rest.includes('--paid-ok');
-  const flags = parseFlags(rest.filter(a => a !== '--paid-ok'),['provider','type','intent']);
+  const flags = parseFlags(rest.filter(a => a !== '--paid-ok'),['provider','type','intent','voice-id']);
   const name = required(flags,'provider');
   const provider = providers.get(name);
   // A missing provider is reported, never replaced by another source (spec story 36).
   if (!provider) throw new CliError(`assets: provider ${name} is not configured (configured: ${[...providers.keys()].join(', ') || 'none'}); run motion-studio doctor`);
   const type = required(flags,'type');
   const intent = required(flags,'intent');
+  const voiceId = flags.values.get('voice-id') ?? null;
+  if (voiceId !== null && type !== 'voice') throw new CliError(`assets: --voice-id applies to --type voice only, not ${type}`);
   // Spec story 36: paid generation never starts without consent. This check runs before the provider is called.
   if (provider.paid(type) && !paidOk) throw new CliError(`assets: provider ${name} may start paid generation for type ${type}; ask the user to agree to the cost, then add --paid-ok`);
   // The provider writes into a hidden folder of the film, so the frozen file is a rename away and gates never hash it.
   const staging = await mkdtemp(join(project.root,'.motion-assets-'));
   try {
-    const provided = await provider.resolve({type,intent,outDir:staging});
+    const provided = await provider.resolve({type,intent,outDir:staging,voiceId});
     if (basename(provided.file) !== provided.file || provided.file.startsWith('.')) throw new CliError(`${name} provider: "file" must be a file name inside the output folder, got ${provided.file}`);
     const asset = await record(project,{
       id, type, sourceKind:provider.sourceKind, sourceUrlOrGenerator:provided.sourceUrlOrGenerator,
       providerAssetId:provided.providerAssetId, license:provided.license, shots:flags.shots,
+      ...(provided.speech === undefined ? {} : {speech:provided.speech}),
     },{path:join(staging,provided.file), label:`${name} provider`, shown:provided.file, missing:'was not written'},'move');
     return [`added ${describe(asset,'ok')}`];
   } finally {await rm(staging,{recursive:true,force:true});}
@@ -155,6 +158,7 @@ function describe(a:LedgerAsset, state:string):string {
   const license = `${a.license.status}${a.license.name ? ` ${a.license.name}` : ''} (evidence: ${a.license.evidence})`;
   return [`${a.id}: ${a.type}, ${a.sourceKind} ${a.sourceUrlOrGenerator}`,
     ...(a.providerAssetId === null ? [] : [`provider id ${a.providerAssetId}`]),
+    ...(a.speech === undefined ? [] : [`voice ${a.speech.voiceId}`]),
     `license ${license}`, `path ${a.localPath}`, `sha256 ${a.sha256}`,
     `shots ${a.shots.length ? a.shots.join(' ') : 'none'}`, `file ${state}`].join(', ');
 }

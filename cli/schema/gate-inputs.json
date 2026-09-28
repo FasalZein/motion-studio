@@ -6,7 +6,7 @@
     {"name": "style bible", "sources": [{"storyboard": "/look"}, {"storyboardPath": "/look/styleBible"}]}
   ],
   "G2": [
-    {"name": "beat grid", "sources": [{"storyboard": "/audio", "fields": ["bpm", "beatFrames", "downbeatFrames", "dropFrames"]}, {"storyboard": "/voice"}, {"file": "beats.json"}]},
+    {"name": "beat grid", "sources": [{"storyboard": "/audio", "fields": ["bpm", "beatFrames", "downbeatFrames", "dropFrames"]}, {"storyboard": "/voice"}, {"storyboardPath": "/voice/script"}, {"storyboardPath": "/voice/wordTimings"}, {"file": "beats.json"}]},
     {"name": "beat map", "sources": [{"storyboard": "/meta", "fields": ["fps", "durationFrames"]}, {"storyboard": "/shots", "fields": ["id", "startFrame", "endFrame"]}]},
     {"name": "stills", "freeze": true, "sources": [{"file": "stills/G2/**"}]}
   ],

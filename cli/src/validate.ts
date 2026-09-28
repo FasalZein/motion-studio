@@ -4,6 +4,7 @@ import {isAbsolute, join, relative, resolve} from 'node:path';
 import {chosenFormats, gateIds, parseProject, type Format, type Project, type Shot} from './project.js';
 import {gateViews} from './gates.js';
 import {checkScanContext} from './scan.js';
+import {checkVoice} from './voice.js';
 
 export type Report = {errors:string[]; warnings:string[]};
 /**
@@ -176,7 +177,7 @@ const checkGateHashes:Check = async project => {
     .map(v => `gate ${v.gate.id} is stale${v.reason ? ` (${v.reason})` : ''}; present ${v.gate.id} again`));
 };
 
-const structuralChecks:Check[] = [checkMeta, checkGates, checkTimeline, checkHandoffs, checkSoundCues, checkEntrypoints, checkAssetIds, checkLedgerFiles, checkScanContext];
+const structuralChecks:Check[] = [checkMeta, checkGates, checkTimeline, checkHandoffs, checkSoundCues, checkEntrypoints, checkAssetIds, checkLedgerFiles, checkScanContext, checkVoice];
 
 /**
  * Which checks run. `validate` runs all of them. Render commands pass `{gates:false}` (D44): re-rendering after an

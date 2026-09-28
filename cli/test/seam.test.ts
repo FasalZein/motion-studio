@@ -227,15 +227,17 @@ test('mix and handoff reject invalid requests', async () => {
       expect(result.stderr).toContain(message);
     };
     await write({a:[],b:[]},null);
-    expectFailure(mix(),'nothing to mix: audio.track is null and no shot has sound cues');
+    expectFailure(mix(),'nothing to mix: audio.track and voice are null and no shot has sound cues');
     await write({a:[{asset:'early',eventFrame:50,peakOffsetFrames:0}],b:[]});
     expectFailure(mix(),'shot a: sound cue early eventFrame 50 is outside the shot [0, 50)');
     await write(defaultCues);
-    // Narration is not mixed until #19: a film with a voice is refused, and earlier mix outputs do not survive.
+    // A voice without narration audio (tts null) is refused, and earlier mix outputs do not survive.
     expect(mix().status).toBe(0);
     const board = await json(join(dir,'storyboard.json'));
-    await writeFile(join(dir,'storyboard.json'),JSON.stringify({...board,voice:{script:'audio/script.md',tts:'track',wordTimings:'audio/words.json'}}));
-    expectFailure(mix(),'narration mixing arrives with #19');
+    await writeFile(join(dir,'audio','script.md'),'Why now?');
+    await writeFile(join(dir,'audio','words.json'),JSON.stringify([{text:'Why',start:0.5,end:0.8},{text:'now?',start:0.9,end:1.2}]));
+    await writeFile(join(dir,'storyboard.json'),JSON.stringify({...board,voice:{script:'audio/script.md',tts:null,wordTimings:'audio/words.json'}}));
+    expectFailure(mix(),'voice.tts is null');
     for (const name of ['final.mkv','mix.wav','sync.json']) expect(await exists(join(output,name))).toBe(false);
     await write(defaultCues);
     expectFailure(run('node','handoff',dir,'b','a'),'shot a does not directly follow shot b');
@@ -358,10 +360,13 @@ for (const runtime of ['bun','node']) test(`${runtime}: shots named master and f
 
     // A refused mix leaves no earlier mix outputs in any format, so no later gate binds a stale delivery file.
     for (const folder of Object.keys(size)) for (const name of ['final.mkv','mix.wav','sync.json']) expect(await exists(join(dir,'renders',folder,name))).toBe(true);
-    await writeFile(join(dir,'storyboard.json'),JSON.stringify({...board,voice:{script:'audio/script.md',tts:'music-bed',wordTimings:'audio/words.json'}}));
+    await mkdir(join(dir,'audio'),{recursive:true});
+    await writeFile(join(dir,'audio','script.md'),'Hello.');
+    await writeFile(join(dir,'audio','words.json'),JSON.stringify([{text:'Hello.',start:0.05,end:0.2}]));
+    await writeFile(join(dir,'storyboard.json'),JSON.stringify({...board,voice:{script:'audio/script.md',tts:null,wordTimings:'audio/words.json'}}));
     const refused = run(runtime,'mix',dir);
     expect(refused.status).toBe(1);
-    expect(refused.stderr).toContain('narration mixing arrives with #19');
+    expect(refused.stderr).toContain('voice.tts is null');
     for (const folder of Object.keys(size)) for (const name of ['final.mkv','mix.wav','sync.json']) expect(await exists(join(dir,'renders',folder,name))).toBe(false);
   } finally {await rm(dir,{recursive:true,force:true});}
 }, 600000);

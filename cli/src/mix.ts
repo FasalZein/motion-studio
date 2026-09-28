@@ -3,6 +3,7 @@ import {join, resolve} from 'node:path';
 import {CliError, type Project} from './project.js';
 import {clearMixOutputs, requireMaster, round3, type Tools} from './seam.js';
 import type {Outputs} from './outputs.js';
+import {requireWords, wordFrame, type Word} from './voice.js';
 
 const RATE = 48_000;
 const CHANNELS = 2;
@@ -11,6 +12,12 @@ export const TARGET_LUFS = -14;
 export const LUFS_TOLERANCE = 0.5;
 // The sync report searches the final mix this many frames on each side of a cue's target for its peak.
 const SYNC_WINDOW_FRAMES = 3;
+// Ducking: under narration the bed (audio.track) drops by DUCK_DB. Words closer than PHRASE_GAP_SECONDS share one
+// ducked span, so the bed does not pump between words; the level ramps linearly over DUCK_RAMP_SECONDS before each
+// span and after it. The spans come from the word timings, not from the voice's loudness, so they are exact.
+export const DUCK_DB = -12;
+const PHRASE_GAP_SECONDS = 0.5;
+const DUCK_RAMP_SECONDS = 0.1;
 
 /** Decodes any audio file to 48 kHz stereo float samples, interleaved. */
 async function decode(tools:Tools, file:string, out:string, seconds?:number):Promise<Float32Array> {
@@ -38,21 +45,45 @@ async function integratedLufs(tools:Tools, raw:string):Promise<number> {
  */
 export async function prepareMix(project:Project, outs:Outputs[]) {
   for (const out of outs) await clearMixOutputs(out.dir);
-  // Narration is not mixed yet. A mix that silently drops it would report success for an incomplete film.
-  if (project.storyboard.voice !== null) throw new CliError('mix does not support narration yet (voice is set); narration mixing arrives with #19. Mix narration manually for now (motion-studio skill, agents/render.md)');
+  // A mix without the narration would report success for an incomplete film.
+  if (project.storyboard.voice?.tts === null) throw new CliError('voice.tts is null: the film has a narration script but no narration audio; record it in the ledger and set voice.tts');
+}
+
+/** Sample-frame spans [from, to) of the film where narration is spoken: the words merged into phrases. */
+function duckSpans(words:Word[], startSample:number):{from:number; to:number}[] {
+  const spans:{from:number; to:number}[] = [];
+  for (const w of words) {
+    const from = startSample+Math.round(w.start*RATE), to = startSample+Math.round(w.end*RATE);
+    const last = spans.at(-1);
+    if (last && from-last.to < PHRASE_GAP_SECONDS*RATE) last.to = Math.max(last.to,to);
+    else spans.push({from,to});
+  }
+  return spans;
+}
+/** Multiplies the bed by the duck gain: DUCK_DB inside each span, a linear ramp on each side, 1 elsewhere. */
+function duck(bed:Float32Array, spans:{from:number; to:number}[]) {
+  const low = 10**(DUCK_DB/20), ramp = Math.round(DUCK_RAMP_SECONDS*RATE), length = bed.length/CHANNELS;
+  const gain = new Float32Array(length).fill(1);
+  for (const {from,to} of spans) for (let i=Math.max(0,from-ramp);i<Math.min(length,to+ramp);i++) {
+    const outside = i < from ? (from-i)/ramp : i >= to ? (i-to+1)/ramp : 0;
+    gain[i] = Math.min(gain[i],low+(1-low)*Math.min(1,outside));
+  }
+  for (let i=0;i<bed.length;i++) bed[i] *= gain[Math.floor(i/CHANNELS)];
 }
 
 /**
- * Mixes audio.track and every shot sound cue at 48 kHz stereo, normalizes to -14 LUFS,
+ * Mixes audio.track (ducked under the narration), the narration from voice.startFrame and every shot sound cue
+ * at 48 kHz stereo, normalizes to -14 LUFS,
  * and writes mix.wav, sync.json and final.mkv (master video plus the mix) for one format.
  * Call prepareMix for all selected formats first.
  */
 export async function mix(project:Project, out:Outputs, tools:Tools):Promise<string> {
-  const {root,ledger,storyboard:{shots,audio,meta:{fps}}} = project;
+  const {root,ledger,storyboard:{shots,audio,voice,meta:{fps}}} = project;
   const output = out.dir;
   const frames = shots.at(-1)!.endFrame;
   const cues = shots.flatMap(shot => shot.soundCues);
-  if (audio.track === null && !cues.length) throw new CliError('nothing to mix: audio.track is null and no shot has sound cues');
+  if (audio.track === null && !cues.length && voice === null) throw new CliError('nothing to mix: audio.track and voice are null and no shot has sound cues');
+  const words = await requireWords(project);
   // validate has already checked that every asset id is in the ledger and every file matches its hash.
   const file = (id:string) => resolve(root,ledger.assets.find(a => a.id === id)!.localPath);
   const master = await requireMaster(project,out,tools);
@@ -63,6 +94,15 @@ export async function mix(project:Project, out:Outputs, tools:Tools):Promise<str
   try {
     const bus = new Float32Array(length*CHANNELS);
     if (audio.track !== null) bus.set((await decode(tools,file(audio.track),join(temp,'track.f32'),frames/fps)).subarray(0,bus.length));
+    // prepareMix refused a voice without audio, so voice.tts is set here.
+    const narration = voice === null ? null : {asset:voice.tts!, startFrame:voice.startFrame ?? 0, spans:duckSpans(words,(voice.startFrame ?? 0)*perFrame)};
+    if (narration !== null) {
+      // The bed ducks under the spoken phrases; then the voice is added from its start frame, cut at the film end.
+      duck(bus,narration.spans);
+      const speech = await decode(tools,file(narration.asset),join(temp,'voice.f32'));
+      const offset = narration.startFrame*perFrame*CHANNELS;
+      for (let i=0;i<speech.length && offset+i<bus.length;i++) bus[offset+i] += speech[i];
+    }
     const placed = [];
     for (const [n,cue] of cues.entries()) {
       const samples = await decode(tools,file(cue.asset),join(temp,`sfx-${n}.f32`));
@@ -108,7 +148,14 @@ export async function mix(project:Project, out:Outputs, tools:Tools):Promise<str
       const beat = audio.beatFrames.reduce<number|null>((best,b) => best === null || Math.abs(b-shot.startFrame) < Math.abs(best-shot.startFrame) ? b : best,null);
       return {shot:shot.id,frame:shot.startFrame,beatFrame:beat,offsetFrames:beat === null ? null : shot.startFrame-beat,...(shot.offBeatCut === undefined ? {} : {offBeatCut:shot.offBeatCut})};
     });
-    await writeFile(join(temp,'sync.json'),JSON.stringify({fps,sampleRate:RATE,channels:CHANNELS,targetLufs:TARGET_LUFS,integratedLufs:measured,gainDb:round3(gainDb),syncWindowFrames:SYNC_WINDOW_FRAMES,sfx,cuts},null,2)+'\n');
+    // Spoken reveals against their words; validate has already required each reveal on its word's nearest frame.
+    const reveals = voice === null ? [] : shots.flatMap(shot => (shot.reveals ?? []).map(r => {
+      const wordAt = wordFrame(voice,words[r.word],fps);
+      return {shot:shot.id,word:r.word,text:r.text,wordStartSeconds:words[r.word].start,wordFrame:wordAt,frame:r.frame,offsetFrames:r.frame-wordAt};
+    }));
+    const narrationReport = narration === null ? null : {asset:narration.asset,startFrame:narration.startFrame,duckDb:DUCK_DB,
+      duckSpans:narration.spans.map(({from,to}) => ({startSeconds:round3(from/RATE),endSeconds:round3(to/RATE)}))};
+    await writeFile(join(temp,'sync.json'),JSON.stringify({fps,sampleRate:RATE,channels:CHANNELS,targetLufs:TARGET_LUFS,integratedLufs:measured,gainDb:round3(gainDb),syncWindowFrames:SYNC_WINDOW_FRAMES,voice:narrationReport,sfx,cuts,reveals},null,2)+'\n');
     for (const name of ['mix.wav','final.mkv','sync.json']) await rename(join(temp,name),join(output,name));
     return `mix ${out.format} verified ${frames} frames at ${measured} LUFS`;
   } finally {await rm(temp,{recursive:true,force:true});}

@@ -13,10 +13,15 @@ export type GateState = 'pending'|'approved'|'changes'|'stale';
 export type Shot = {
   id:string; startFrame:number; endFrame:number; engine:Engine; entrypoint:string; description:string; camera:string;
   entry:'cut'|'handoff'; exit:'cut'|'handoff'; transition?:string; offBeatCut?:string; assets:string[];
+  reveals?:Reveal[]; // spoken reveals, checked against the word timings
   soundCues:{asset:string; eventFrame:number; peakOffsetFrames:number; gainDb?:number}[];
   stillFrames:number[]; protected:{id:string; bounds:string; heldFrames:number[]}[]; // bounds: 'measured' or a declared-geometry file
   holds?:FrameSpan[]; effects?:(FrameSpan & {term:string})[]; // declared context for scan
 };
+/** A visual event timed to one narration word: its index in the word-timing file, its text and the film frame. */
+export type Reveal = {word:number; text:string; frame:number};
+/** Optional narration. startFrame is the film frame where the audio starts (default 0). */
+export type Voice = {script:string; tts:string|null; wordTimings:string; startFrame?:number};
 /** A run of shot-local frames: the first frame and the number of frames, so the run can never end before it starts. */
 export type FrameSpan = {start:number; frames:number};
 export type Rect = {x:number; y:number; width:number; height:number};
@@ -28,7 +33,7 @@ export type Storyboard = {
   meta:{title:string; logline:string; genre:string|null; formats:{primary:Format; extra:Format[]}; fps:Fps; durationFrames:number; layouts:Partial<Record<Format,Layout>>};
   look:{id:string|null; styleBible:string|null; axes:Record<string,string>; tasteSnapshot:string|null};
   audio:{track:string|null; grid:'detected'|'corrected'|'imported'|null; bpm:number|null; beatFrames:number[]; downbeatFrames:number[]; dropFrames:number[]; confidence:'high'|'low'|null};
-  voice:{script:string; tts:string|null; wordTimings:string}|null;
+  voice:Voice|null;
   shots:Shot[]; gates:Gate[]; critique:Critique[];
 };
 export type Critique = {
@@ -43,6 +48,7 @@ export type LedgerAsset = {
   id:string; type:string; sourceKind:SourceKind; sourceUrlOrGenerator:string; providerAssetId:string|null;
   license:{status:typeof licenseStatuses[number]; name:string|null; evidence:string};
   localPath:string; sha256:string; shots:string[];
+  speech?:{voiceId:string; text:string}; // generated narration: the provider voice id and the spoken text
 };
 export type Ledger = {version:'0'; assets:LedgerAsset[]};
 export type Project = {root:string; storyboard:Storyboard; ledger:Ledger};

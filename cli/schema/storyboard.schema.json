@@ -61,9 +61,10 @@
           "type": "object",
           "required": ["script", "tts", "wordTimings"],
           "properties": {
-            "script": {"$ref": "#/definitions/path"},
-            "tts": {"$ref": "#/definitions/assetIdOrNull"},
-            "wordTimings": {"$ref": "#/definitions/path"}
+            "script": {"$ref": "#/definitions/path", "description": "Film-relative file with the narration script text."},
+            "tts": {"$ref": "#/definitions/assetIdOrNull", "description": "Ledger id of the narration audio; null until the audio exists. mix needs it."},
+            "wordTimings": {"$ref": "#/definitions/path", "description": "Film-relative JSON file: an array of {\"text\", \"start\", \"end\"} words (an optional \"id\" is allowed), times in seconds from the start of the narration audio. This is the words file of HyperFrames TTS and transcribe."},
+            "startFrame": {"$ref": "#/definitions/frame", "description": "Optional film frame where the narration audio starts. Default 0."}
           }
         }
       ]
@@ -112,6 +113,19 @@
         "transition": {"type": "string", "minLength": 1, "description": "Optional motion-vocabulary term (or custom:<description>) for the named move at this shot's entry (D42)."},
         "offBeatCut": {"type": "string", "minLength": 1, "description": "Optional reason why the cut at this shot's startFrame is intentionally off the beat grid, for example a word-timed reveal (D41)."},
         "assets": {"type": "array", "items": {"$ref": "#/definitions/id"}},
+        "reveals": {
+          "type": "array",
+          "description": "Optional spoken reveals: visual events timed to a narration word. validate requires frame to be the nearest frame of the word's start (voice.startFrame + round(start * fps)) and inside the shot.",
+          "items": {
+            "type": "object",
+            "required": ["word", "text", "frame"],
+            "properties": {
+              "word": {"type": "integer", "minimum": 0, "description": "Zero-based index of the word in the voice.wordTimings file."},
+              "text": {"type": "string", "minLength": 1, "description": "The word's text exactly as in the word-timing file, so a changed script is caught."},
+              "frame": {"$ref": "#/definitions/frame", "description": "Film frame of the reveal."}
+            }
+          }
+        },
         "soundCues": {
           "type": "array",
           "items": {

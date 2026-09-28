@@ -22,6 +22,7 @@ import {animatic} from './animatic.js';
 import {clearSheetOutputs, sheet} from './sheet.js';
 import {outputsOf, type Outputs} from './outputs.js';
 import {scanFile, scanFilm} from './scan.js';
+import {beatMap} from './voice.js';
 
 const configuredTimeout = process.env.MOTION_STUDIO_CHILD_TIMEOUT_MS;
 const timeoutMs = configuredTimeout === undefined ? 120_000 : Number(configuredTimeout);
@@ -91,7 +92,7 @@ async function renderShot(shot:Shot, project:Project, format:Format, output:stri
     await verify(output,frameCount,fps,width,height);
   } finally {await rm(temp,{recursive:true,force:true});}
 }
-const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>] | animatic <film-dir> | sheet <film-dir> [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | assets <film-dir> <list|add|resolve> ... | scan <film-dir> [format] | scan <video-file> [--report <file.json>]';
+const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>] | animatic <film-dir> | sheet <film-dir> [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | beatmap <film-dir> | assets <film-dir> <list|add|resolve> ... | scan <film-dir> [format] | scan <video-file> [--report <file.json>]';
 /** The formats a command works on: one named chosen format, or every chosen format when none is named. */
 function selectFormats(project:Project, named:string|undefined):Format[] {
   const formats = chosenFormats(project.storyboard.meta);
@@ -148,7 +149,7 @@ async function main() {
     if (missingRequired) throw new CliError(`doctor: ${missingRequired} required tool${missingRequired === 1 ? '' : 's'} missing`);
     return;
   }
-  if (!['init','validate','status','gate','render','stitch','still','stills','animatic','sheet','handoff','mix','safezone','beats','assets','scan'].includes(action) || !target) throw new CliError(usage);
+  if (!['init','validate','status','gate','render','stitch','still','stills','animatic','sheet','handoff','mix','safezone','beats','beatmap','assets','scan'].includes(action) || !target) throw new CliError(usage);
   if (action === 'init') {
     console.log(`created ${await initProject(process.cwd(),target)}`);
     return;
@@ -194,6 +195,14 @@ async function main() {
     const parsed = await parseProject(target);
     if (!parsed.ok) {report(parsed.errors,[]); process.exitCode = 1; return;}
     for (const line of await beats(parsed.project,process.argv.slice(4),{command,verify})) console.log(line);
+    return;
+  }
+  if (action === 'beatmap') {
+    // The beat map is drawn before any shot is built, so it needs only a schema-valid project and readable word timings.
+    if (process.argv.length > 4) throw new CliError(usage);
+    const parsed = await parseProject(target);
+    if (!parsed.ok) {report(parsed.errors,[]); process.exitCode = 1; return;}
+    for (const line of await beatMap(parsed.project)) console.log(line);
     return;
   }
   // scan also reads a lone video file for standalone critique, with no project context.
