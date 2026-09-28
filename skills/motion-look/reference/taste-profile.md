@@ -1,12 +1,12 @@
 # Taste profile
 
-Global file: `~/.motion-studio/taste.json`. Create it with the empty shape below if absent. Preserve existing entries and `version: 1`. Use ISO dates in `date` (for example `2026-09-28`); keep a short note identifying the film and the decision. Each liked or rejected entry has `kind: look|move|pacing`. Each free-text gate note belongs in `notes` with exact named vocabulary term ids in `terms`.
+Global file: `~/.motion-studio/taste.json`. Create it with the empty shape below if absent. Preserve existing entries and `version: 1`. Use ISO dates in `date` (for example `2026-09-28`); the `note` names the film slug and gate, then quotes the director's decision text from `storyboard.json` `gates[].decision`, including any stated reason (for example `raycast-launch: G1 passed: "thin serif competes with the UI"`). A note without the director's words cannot steer a later recommendation. Each liked or rejected entry has `kind: look|move|pacing`. Each free-text gate note belongs in `notes` with exact named vocabulary term ids in `terms`.
 
 ```json
 {
   "version": 1,
-  "liked": [{ "kind": "look", "value": "keynote-minimal", "note": "film slug: G1 chosen", "date": "2026-09-28" }],
-  "rejected": [{ "kind": "look", "value": "swiss-grid", "note": "film slug: G1 shown and passed", "date": "2026-09-28" }],
+  "liked": [{ "kind": "look", "value": "keynote-minimal", "note": "film slug: G1 chosen: \"the flood makes the action obvious\"", "date": "2026-09-28" }],
+  "rejected": [{ "kind": "look", "value": "swiss-grid", "note": "film slug: G1 passed: \"the grid feels cold for this product\"", "date": "2026-09-28" }],
   "notes": [{ "text": "Make the type reveal more direct", "terms": ["mask-line-reveal"], "date": "2026-09-28" }]
 }
 ```

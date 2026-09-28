@@ -5,17 +5,9 @@ description: Name a motion or film move from a visual description; translate a d
 
 # Motion Vocabulary
 
-## Initial response
-
-If invoked without a move or note, ask: "What motion do you want to name or change?"
-
-## Quick start
-
-For "the image gets closer to the product," answer: **Push-in** (`push-in`): the virtual camera advances toward the subject. Add the relevant engine recipe only if the user needs an implementation or a storyboard note.
-
 ## Instructions
 
-1. Identify the visible action and its purpose. Load only the relevant category below. Done when the proposed term describes what changes on screen or in sound.
+1. If invoked without a move or note, ask: "What motion do you want to name or change?" Identify the visible action and its purpose. Load only the relevant category below. Done when the proposed term describes what changes on screen or in sound.
 2. Give the closest **name** and `kebab-id`, then a one-line definition. For ambiguous notes, contrast up to two alternatives, such as a push-in versus a zoom-through. Done when the user can choose the intended move.
 3. When implementation is requested, give the category's `HF` and `Remotion` recipes and identify the beat or frame where the move lands. A rule id names an installed HyperFrames recipe; an approach is guidance, not an id. Done when each engine has a concrete path.
 4. For a storyboard, use the exact `kebab-id` in `shots[].camera` and `shots[].transition`. `transition` names the move at the shot's entry, for example `straight-cut` or `shared-element`. Use `locked-off` for a camera that does not move. `entry` and `exit` are not vocabulary fields: they stay `cut` or `handoff`. For critique issues, use the term id. Use `custom:<description>` for a move without a term. Done when every named move resolves to a term here or starts with `custom:`.
