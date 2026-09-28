@@ -85,6 +85,11 @@ const checkHandoffs:Check = ({storyboard:{shots}}) => {
   return errorsOnly(errors);
 };
 
+// Sound cue frames are film frames; a cue belongs to the shot whose range contains its event.
+const checkSoundCues:Check = ({storyboard:{shots}}) => errorsOnly(shots.flatMap(shot => shot.soundCues
+  .filter(cue => cue.eventFrame < shot.startFrame || cue.eventFrame >= shot.endFrame)
+  .map(cue => `shot ${shot.id}: sound cue ${cue.asset} eventFrame ${cue.eventFrame} is outside the shot [${shot.startFrame}, ${shot.endFrame}) (event frames are film frames)`)));
+
 const checkEntrypoints:Check = async ({root,storyboard}) => {
   const errors:string[] = [];
   for (const shot of storyboard.shots) {
@@ -125,7 +130,7 @@ const checkLedgerFiles:Check = async ({root,ledger}) => {
   return errorsOnly(errors);
 };
 
-const checks:Check[] = [checkMeta, checkGates, checkTimeline, checkHandoffs, checkEntrypoints, checkAssetIds, checkLedgerFiles];
+const checks:Check[] = [checkMeta, checkGates, checkTimeline, checkHandoffs, checkSoundCues, checkEntrypoints, checkAssetIds, checkLedgerFiles];
 
 /** Cross-reference checks on a project that already passed the schema. */
 export async function checkProject(project:Project):Promise<Report> {

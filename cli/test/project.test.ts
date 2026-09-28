@@ -40,7 +40,7 @@ const invalid:{kind:string; change:(dir:string)=>Promise<void>; message:string}[
   {kind:'HyperFrames entrypoint outside its shot folder', change:d => edit(d,'storyboard.json',s => {s.shots[1].entrypoint = 'shots/hyperframes/../../BRIEF.md';}), message:'shot hyperframes: HyperFrames entrypoint shots/hyperframes/../../BRIEF.md must be inside shots/hyperframes/'},
   {kind:'missing Remotion entry file', change:d => rm(join(d,'shots/remotion/src/index.tsx')), message:'shot remotion: Remotion project entry not found (expected shots/remotion/src/index.ts or src/index.tsx registering composition "Shot")'},
   {kind:'asset id not in ledger', change:d => edit(d,'storyboard.json',s => {s.shots[0].assets.push('logo-01');}), message:'shot remotion uses asset logo-01, which is not in ledger.json'},
-  {kind:'sound cue asset not in ledger', change:d => edit(d,'storyboard.json',s => {s.shots[1].soundCues.push({asset:'sfx-01',eventFrame:0,peakOffsetFrames:0});}), message:'shot hyperframes sound cue uses asset sfx-01, which is not in ledger.json'},
+  {kind:'sound cue asset not in ledger', change:d => edit(d,'storyboard.json',s => {s.shots[1].soundCues.push({asset:'sfx-01',eventFrame:6,peakOffsetFrames:0});}), message:'shot hyperframes sound cue uses asset sfx-01, which is not in ledger.json'},
   {kind:'ledger path missing', change:d => edit(d,'ledger.json',l => {l.assets[0].localPath = 'assets/missing.ttf';}), message:'ledger asset font-plex: file assets/missing.ttf not found'},
   {kind:'ledger hash mismatch', change:d => edit(d,'ledger.json',l => {l.assets[0].sha256 = '0'.repeat(64);}), message:`ledger asset font-plex: sha256 of shots/remotion/public/IBMPlexSans.ttf is 3b031aa4216174205bd8471f88a49b91f093169e9e87bd5262242bc5967fe2e3, ledger records ${'0'.repeat(64)}`},
   {kind:'known license without a name', change:d => edit(d,'ledger.json',l => {l.assets[0].license.name = null;}), message:'ledger.json /assets/0/license: a known license needs a non-empty name'},
@@ -59,6 +59,7 @@ const invalid:{kind:string; change:(dir:string)=>Promise<void>; message:string}[
   {kind:'empty half-open range', change:d => edit(d,'storyboard.json',s => {s.shots[0].endFrame = 0; s.shots[1].startFrame = 0; s.audio.beatFrames = [];}), message:'shot remotion: endFrame 0 must be greater than startFrame 0'},
   {kind:'shots do not cover the duration', change:d => edit(d,'storyboard.json',s => {s.meta.durationFrames = 13;}), message:'shots cover [0, 12) but meta.durationFrames is 13'},
   {kind:'off-grid cut', change:d => edit(d,'storyboard.json',s => {s.shots[0].endFrame = 4; s.shots[1].startFrame = 4;}), message:'off-grid: the cut into shot hyperframes at frame 4 is not a beat frame (nearest beat: frame 3); move it to a beat or declare "offBeatCut" with a reason'},
+  {kind:'sound cue outside its shot', change:d => edit(d,'storyboard.json',s => {s.shots[0].soundCues.push({asset:'font-plex',eventFrame:6,peakOffsetFrames:0});}), message:'shot remotion: sound cue font-plex eventFrame 6 is outside the shot [0, 6) (event frames are film frames)'},
   {kind:'still frame outside the shot', change:d => edit(d,'storyboard.json',s => {s.shots[0].stillFrames = [6];}), message:'shot remotion: still frame 6 is outside the shot (still frames are shot-local, 0 to 5)'},
   {kind:'canvas does not match the primary format', change:d => edit(d,'storyboard.json',s => {s.meta.formats.primary = '9:16';}), message:'meta.canvas 320x180 does not match primary format 9:16'},
   {kind:'missing gate', change:d => edit(d,'storyboard.json',s => {s.gates.pop();}), message:'gates must be G1, G2, G3, G4, G5 in order; found G1, G2, G3, G4'},
@@ -176,12 +177,13 @@ test('status reports gate states and the next step', async () => {
       expect(result.stdout).toBe(expected);
     }
     // An unfinished film with cross-reference errors still gets its status. Expected errors: gap [6, 7), still frame 5
-    // outside the shortened shot, coverage [0, 12) vs 900 frames, and the cut at frame 7 off the beat grid.
+    // outside the shortened shot, coverage [0, 12) vs 900 frames, the cut at frame 7 off the beat grid, and the
+    // sound cue at frame 6, now outside its shot.
     await edit(dir,'storyboard.json',s => {for (const g of s.gates) g.state = 'pending'; s.shots[1].startFrame = 7; s.meta.durationFrames = 900;});
     const unfinished = run('node',['status',dir]);
     expect(unfinished.stderr).toBe('');
     expect(unfinished.status).toBe(0);
-    expect(unfinished.stdout).toBe(`G1 pending\nG2 pending\nG3 pending\nG4 pending\nG5 pending\nnext: brief, hero assets and look test, then present G1\nvalidation: 4 errors; run motion-studio validate ${dir}\n`);
+    expect(unfinished.stdout).toBe(`G1 pending\nG2 pending\nG3 pending\nG4 pending\nG5 pending\nnext: brief, hero assets and look test, then present G1\nvalidation: 5 errors; run motion-studio validate ${dir}\n`);
     // A schema failure stops status with one line per problem and no stack trace.
     await edit(dir,'storyboard.json',s => {s.meta.fps = 29.97;});
     const broken = run('bun',['status',dir]);

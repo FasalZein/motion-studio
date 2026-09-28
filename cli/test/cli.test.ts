@@ -178,16 +178,18 @@ test('hung engine subprocess kills descendant and removes staging and shot temp'
   const dir = await mkdtemp(join(tmpdir(),'motion-studio-hang-'));
   try {
     await cp(fixture,dir,{recursive:true,filter: src => !src.endsWith('/output')});
-    const shotBefore = new Set((await (await import('node:fs/promises')).readdir(tmpdir())).filter(x=>x.startsWith('motion-shot-')));
+    // A private temp dir: other motion-studio runs on this machine cannot add entries to it.
+    const privateTmp = join(dir,'tmp');
+    await mkdir(privateTmp);
     const bin = join(dir,'bin');
     await (await import('node:fs/promises')).mkdir(bin);
     const childPid = join(dir,'descendant.pid');
     const fakeNode=join(bin,'node');
-    await writeFile(fakeNode,`#!/bin/sh\ncase "$1" in\n  *hyperframes.mjs) sleep 60 & echo $! > "$HANG_PID"; wait;;\n  *) exec "$REAL_NODE" "$@";;\nesac\n`);
+    await writeFile(fakeNode,`#!/bin/sh\ncase "$1" in\n  *hyperframes.mjs) echo "$@" > "$HANG_ARGS"; sleep 60 & echo $! > "$HANG_PID"; wait;;\n  *) exec "$REAL_NODE" "$@";;\nesac\n`);
     await (await import('node:fs/promises')).chmod(fakeNode,0o755);
     const originalNode=spawnSync('which',['node'],{encoding:'utf8'}).stdout.trim();
     const started=Date.now();
-    const result=spawnSync('bun',[cli,'render',dir],{encoding:'utf8',timeout:20000,env:{...process.env,PATH:`${bin}:${process.env.PATH}`,HANG_PID:childPid,REAL_NODE:originalNode,MOTION_STUDIO_CHILD_TIMEOUT_MS:'3000'}});
+    const result=spawnSync('bun',[cli,'render',dir],{encoding:'utf8',timeout:20000,env:{...process.env,PATH:`${bin}:${process.env.PATH}`,HANG_PID:childPid,REAL_NODE:originalNode,MOTION_STUDIO_CHILD_TIMEOUT_MS:'3000',TMPDIR:privateTmp,HANG_ARGS:join(dir,'hang-args.txt')}});
     expect(result.status).not.toBe(0);
     expect(result.signal).toBeNull();
     expect(result.stderr).toContain('timed out after 3000 ms');
@@ -196,8 +198,10 @@ test('hung engine subprocess kills descendant and removes staging and shot temp'
     expect(Number.isSafeInteger(pid)).toBe(true);
     const state=spawnSync('ps',['-p',String(pid),'-o','stat='],{encoding:'utf8'}).stdout.trim();
     expect(state === '' || state.startsWith('Z')).toBe(true);
-    const shotAfter=(await (await import('node:fs/promises')).readdir(tmpdir())).filter(x=>x.startsWith('motion-shot-'));
-    expect(shotAfter.filter(x=>!shotBefore.has(x))).toEqual([]);
+    const tmpAfter=await (await import('node:fs/promises')).readdir(privateTmp);
+    // The hung HyperFrames call wrote its frames into a motion-shot-* dir inside the private temp dir.
+    expect(await readFile(join(dir,'hang-args.txt'),'utf8')).toContain(`--output ${join(privateTmp,'motion-shot-')}`);
+    expect(tmpAfter.filter(x=>x.startsWith('motion-shot-'))).toEqual([]);
     expect((await (await import('node:fs/promises')).readdir(dir)).some(x=>x.startsWith('.motion-render-'))).toBe(false);
     const stitch=run('bun','stitch',dir);
     expect(stitch.status).not.toBe(0);

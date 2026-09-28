@@ -10,6 +10,9 @@ import {renderFrames, selectComposition} from '@remotion/renderer';
 import {CliError, initProject, parseProject, type Project, type Shot} from './project.js';
 import {checkProject, remotionEntry, validateProject} from './validate.js';
 import {statusLines} from './status.js';
+import {handoff} from './handoff.js';
+import {mix} from './mix.js';
+import {clearSeamOutputs} from './seam.js';
 
 const require = createRequire(import.meta.url);
 const hfBin = resolve(dirname(require.resolve('hyperframes/package.json')), 'bin/hyperframes.mjs');
@@ -85,10 +88,10 @@ async function renderShot(shot:Shot, project:Project, output:string) {
     await verify(output,frameCount,fps,width,height);
   } finally {await rm(temp,{recursive:true,force:true});}
 }
-const usage = 'usage: motion-studio init <slug> | validate <film-dir> | status <film-dir> | render <film-dir> | stitch <film-dir> | still <film-dir> <shot-id> [local-frame]';
+const usage = 'usage: motion-studio init <slug> | validate <film-dir> | status <film-dir> | render <film-dir> | stitch <film-dir> | still <film-dir> <shot-id> [local-frame] | handoff <film-dir> [<shot-a> <shot-b>] | mix <film-dir>';
 async function main() {
   const [action,target] = process.argv.slice(2);
-  if (!['init','validate','status','render','stitch','still'].includes(action) || !target) throw new CliError(usage);
+  if (!['init','validate','status','render','stitch','still','handoff','mix'].includes(action) || !target) throw new CliError(usage);
   if (action === 'init') {
     console.log(`created ${await initProject(process.cwd(),target)}`);
     return;
@@ -113,6 +116,10 @@ async function main() {
   const {root:base, storyboard:{shots, meta:{fps, canvas:{width,height}}}} = project;
   if (!shots.length) throw new CliError('project has no shots');
   const output = join(base,'output');
+  if (action === 'handoff') return handoff(project,output,process.argv.slice(4),{command,verify});
+  if (action === 'mix') return console.log(await mix(project,output,{command,verify}));
+  // Handoff and mix evidence describes one master; a new render or stitch makes it stale.
+  if (action === 'render' || action === 'stitch') await clearSeamOutputs(output);
   if (action === 'render' || action === 'still') {
     const selected = action === 'still' ? shots.filter(s => s.id === process.argv[4]) : shots;
     if (!selected.length) throw new CliError('unknown shot');

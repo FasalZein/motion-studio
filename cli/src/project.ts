@@ -13,7 +13,7 @@ export type GateState = 'pending'|'approved'|'changes'|'stale';
 export type Shot = {
   id:string; startFrame:number; endFrame:number; engine:Engine; entrypoint:string; description:string; camera:string;
   entry:'cut'|'handoff'; exit:'cut'|'handoff'; transition?:string; offBeatCut?:string; assets:string[];
-  soundCues:{asset:string; eventFrame:number; peakOffsetFrames:number}[];
+  soundCues:{asset:string; eventFrame:number; peakOffsetFrames:number; gainDb?:number}[];
   stillFrames:number[]; protected:{id:string; bounds:string; heldFrames:number[]}[];
 };
 export type Gate = {id:GateId; state:GateState; inputHashes:Record<string,string>; decision:string|null; notes:string[]; rounds:number};

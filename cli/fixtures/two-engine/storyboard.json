@@ -2,11 +2,11 @@
   "version": "0",
   "meta": {"title": "Two-engine seam", "logline": "One Remotion shot cuts on the beat to one HyperFrames shot.", "genre": null, "formats": {"primary": "16:9", "extra": []}, "fps": 30, "durationFrames": 12, "canvas": {"width": 320, "height": 180}},
   "look": {"id": null, "styleBible": null, "axes": {}, "tasteSnapshot": null},
-  "audio": {"track": null, "grid": "imported", "bpm": null, "beatFrames": [3, 6], "downbeatFrames": [], "dropFrames": [], "confidence": "high"},
+  "audio": {"track": "music-bed", "grid": "imported", "bpm": null, "beatFrames": [3, 6], "downbeatFrames": [], "dropFrames": [], "confidence": "high"},
   "voice": null,
   "shots": [
     {"id": "remotion", "startFrame": 0, "endFrame": 6, "engine": "remotion", "entrypoint": "Shot", "description": "Frame counter over the shared color patch", "camera": "custom:locked", "entry": "cut", "exit": "cut", "assets": ["font-plex"], "soundCues": [], "stillFrames": [0, 5], "protected": []},
-    {"id": "hyperframes", "startFrame": 6, "endFrame": 12, "engine": "hyperframes", "entrypoint": "shots/hyperframes/index.html", "description": "HYPERFRAMES label over the shared color patch", "camera": "custom:locked", "entry": "cut", "exit": "cut", "assets": ["font-plex"], "soundCues": [], "stillFrames": [0, 5], "protected": []}
+    {"id": "hyperframes", "startFrame": 6, "endFrame": 12, "engine": "hyperframes", "entrypoint": "shots/hyperframes/index.html", "description": "HYPERFRAMES label over the shared color patch", "camera": "custom:locked", "entry": "cut", "exit": "cut", "assets": ["font-plex"], "soundCues": [{"asset": "sfx-hit", "eventFrame": 6, "peakOffsetFrames": 0}], "stillFrames": [0, 5], "protected": []}
   ],
   "gates": [
     {"id": "G1", "state": "pending", "inputHashes": {}, "decision": null, "notes": [], "rounds": 0},

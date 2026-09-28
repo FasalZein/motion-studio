@@ -103,7 +103,12 @@
           "items": {
             "type": "object",
             "required": ["asset", "eventFrame", "peakOffsetFrames"],
-            "properties": {"asset": {"$ref": "#/definitions/id"}, "eventFrame": {"$ref": "#/definitions/frame"}, "peakOffsetFrames": {"type": "integer"}}
+            "properties": {
+              "asset": {"$ref": "#/definitions/id"},
+              "eventFrame": {"$ref": "#/definitions/frame", "description": "Film frame of the visual event; it must lie inside the owning shot."},
+              "peakOffsetFrames": {"type": "integer", "description": "Planned distance in frames from the event to the SFX peak; negative places the peak before the event. mix places the measured peak at eventFrame + peakOffsetFrames."},
+              "gainDb": {"type": "number", "minimum": -60, "maximum": 24, "description": "Optional level change in dB applied to this SFX before the mix is normalized. Default 0."}
+            }
           }
         },
         "stillFrames": {"$ref": "#/definitions/frames"},
