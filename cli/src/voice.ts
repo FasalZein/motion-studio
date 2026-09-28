@@ -13,6 +13,9 @@ function insideFilm(root:string, path:string):string|null {
   return isAbsolute(path) || rel === '' || rel.startsWith('..') || isAbsolute(rel) ? null : full;
 }
 const isObject = (v:unknown):v is Record<string,unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+// Float slack for comparing a word end (decimal seconds) with the film end.
+const END_TOLERANCE_SECONDS = 1e-6;
+const round6 = (v:number) => Math.round(v*1e6)/1e6;
 const time = (v:unknown):v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 
 /**
@@ -67,7 +70,10 @@ export async function checkVoice({root,storyboard:{voice,shots,meta}}:Project):P
   const {words} = read;
   for (const [i,word] of words.entries()) {
     const frame = wordFrame(voice,word,meta.fps);
-    if (frame >= meta.durationFrames) errors.push(`voice word ${i} "${word.text}" starts at film frame ${frame}, at or after the film end (${meta.durationFrames} frames)`);
+    if (frame >= meta.durationFrames) {errors.push(`voice word ${i} "${word.text}" starts at film frame ${frame}, at or after the film end (${meta.durationFrames} frames)`); continue;}
+    // mix cuts the narration at the film end, so a word that runs past it would be clipped mid-word.
+    const end = (voice.startFrame ?? 0)/meta.fps + word.end;
+    if (end > meta.durationFrames/meta.fps + END_TOLERANCE_SECONDS) errors.push(`voice word ${i} "${word.text}" ends at ${round6(end)} s of film time, after the film end (${round6(meta.durationFrames/meta.fps)} s); lengthen the film or move voice.startFrame earlier`);
   }
   for (const shot of withReveals) for (const reveal of shot.reveals!) {
     const at = `shot ${shot.id}: reveal of word ${reveal.word} "${reveal.text}"`;

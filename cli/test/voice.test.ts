@@ -34,6 +34,8 @@ const tone = (samples:Float32Array, hz:number, from:number, to:number) => {
   return 2*Math.hypot(re,im)/(b-a);
 };
 const db = (ratio:number) => 20*Math.log10(ratio);
+const loudnorm = (file:string) => JSON.parse(/\{[^{}]*"input_i"[^{}]*\}/.exec(spawnSync('ffmpeg',['-hide_banner','-nostats','-i',file,'-map','0:a:0','-af','loudnorm=print_format=json','-f','null','-'],{encoding:'utf8',timeout:30000}).stderr)![0]);
+const CEILING_DBTP = -1;
 const lufs = (file:string) => Number(JSON.parse(/\{[^{}]*"input_i"[^{}]*\}/.exec(spawnSync('ffmpeg',['-hide_banner','-nostats','-i',file,'-map','0:a:0','-af','loudnorm=print_format=json','-f','null','-'],{encoding:'utf8',timeout:30000}).stderr)![0]).input_i);
 
 const FPS = 25;
@@ -49,7 +51,8 @@ const wordFrames = [18,28,56,68];
 // Spoken phrases in film seconds: "Why now?" 0.7-1.4 (gap 0.1 s), then "It costs" 2.23-3.0 (gap 0.83 s from the first).
 const phrases = [[0.7,1.4],[2.23,3.0]];
 
-async function narratedFilm() {
+/** `clicks` adds a short 0.9 transient 50 ms into each word, over the sine, like consonant bursts in real speech. */
+async function narratedFilm(clicks = false) {
   const dir = await mkdtemp(join(tmpdir(),'motion-studio-voice-'));
   for (const sub of ['renders/16x9','audio','shots/a','shots/b','shots/c']) await mkdir(join(dir,sub),{recursive:true});
   for (const id of ['a','b','c']) await writeFile(join(dir,'shots',id,'index.html'),'<!doctype html>');
@@ -60,7 +63,8 @@ async function narratedFilm() {
   ffmpeg('-f','lavfi','-i','aevalsrc=0.1*sin(2*PI*997*t)|0.1*sin(2*PI*997*t):s=48000:d=5','-c:a','pcm_s16le',join(dir,'audio','bed.wav'));
   // Commas inside a filter option are escaped for the filter-graph parser.
   const spoken = words.map(w => `between(t\\,${w.start}\\,${w.end})`).join('+');
-  const voice = `0.3*sin(2*PI*440*t)*(${spoken})`;
+  const burst = words.map(w => `exp(-abs(t-${w.start+0.05})*4000)`).join('+');
+  const voice = clicks ? `0.1*sin(2*PI*440*t)*(${spoken})+0.9*(${burst})` : `0.3*sin(2*PI*440*t)*(${spoken})`;
   ffmpeg('-f','lavfi','-i',`aevalsrc=${voice}|${voice}:s=48000:d=3`,'-c:a','pcm_s16le',join(dir,'audio','voice.wav'));
   await writeFile(join(dir,'audio','script.txt'),'Why now? It costs less.');
   await writeFile(join(dir,'audio','words.json'),JSON.stringify(words));
@@ -138,6 +142,7 @@ test('validate rejects reveals off their word frame, on a changed word, outside 
   const dir = await narratedFilm();
   try {
     expect(run('node','beats',dir,'--corrected',join(dir,'audio','grid.json')).status).toBe(0);
+    const before0 = await board(dir);
     const fails = async (change:(s:any)=>void, message:string) => {
       const before = await board(dir);
       await edit(dir,change);
@@ -156,6 +161,12 @@ test('validate rejects reveals off their word frame, on a changed word, outside 
     await fails(s => {s.voice = null;},'shot a has reveals but voice is null');
     await fails(s => {s.shots[1].startFrame = 41; s.shots[0].endFrame = 41;},'off-grid: the cut into shot b at frame 41 is not a beat frame (nearest beat: frame 40)');
     await fails(s => {s.voice.startFrame = 97;},'voice word 0 "Why" starts at film frame 105, at or after the film end (100 frames)');
+    // "costs" ends 2.6 s into the narration: with the audio starting at frame 36 (1.44 s) it ends at 4.04 s, past the 4 s film.
+    // At frame 35 (1.4 s) it ends exactly at 4.0 s, which fits.
+    await fails(s => {s.voice.startFrame = 36; s.shots[0].reveals = []; s.shots[1].reveals = [];},'voice word 3 "costs" ends at 4.04 s of film time, after the film end (4 s)');
+    await edit(dir,s => {s.voice.startFrame = 35; s.shots[0].reveals = []; s.shots[1].reveals = [];});
+    expect(run('node','validate',dir).stderr).toBe('');
+    await writeFile(join(dir,'storyboard.json'),JSON.stringify(before0));
     await fails(s => {s.voice.script = 'audio/missing.txt';},'voice.script audio/missing.txt not found');
     // A malformed word-timing file fails validate, beatmap and mix.
     await writeFile(join(dir,'audio','words.json'),JSON.stringify([{text:'Why',start:0.6,end:0.3}]));
@@ -183,5 +194,32 @@ test('a voice-led film without a bed mixes the narration alone, and a voice with
     expect(refused.stderr).toContain('error: voice.tts is null');
     expect(refused.status).toBe(1);
     for (const name of ['final.mkv','mix.wav','sync.json']) expect(await exists(join(dir,'renders','16x9',name))).toBe(false);
+  } finally {await rm(dir,{recursive:true,force:true});}
+});
+
+test('a narration with transients is limited to -1 dBTP and still mixes at -14 LUFS', async () => {
+  const dir = await narratedFilm(true);
+  try {
+    // Precondition, measured on the source file: its true peak sits more than 13 dB above its loudness, so at
+    // -14 LUFS the peaks would pass the -1 dBTP ceiling without a limiter.
+    const source = loudnorm(join(dir,'audio','voice.wav'));
+    const peakAtTarget = Number(source.input_tp)-Number(source.input_i)+(-14);
+    expect(peakAtTarget).toBeGreaterThan(CEILING_DBTP+3);
+    await edit(dir,s => {s.audio.track = null;});
+    for (const runtime of ['node','bun']) {
+      const mixed = run(runtime,'mix',dir);
+      expect(mixed.stderr).toBe('');
+      expect(mixed.status).toBe(0);
+      const final = join(dir,'renders','16x9','final.mkv');
+      const heard = loudnorm(final);
+      expect(Number(heard.input_tp)).toBeLessThanOrEqual(CEILING_DBTP);
+      expect(Math.abs(Number(heard.input_i)+14)).toBeLessThanOrEqual(0.5);
+      const sync = await json(join(dir,'renders','16x9','sync.json'));
+      // The limiter took the peaks down by at least their excess over the ceiling at -14 LUFS (from the source measure).
+      expect(sync.limiter.maxGainReductionDb).toBeGreaterThanOrEqual(peakAtTarget-CEILING_DBTP-1);
+      expect(mixed.stdout).toContain(`limiter reduced peaks by up to ${sync.limiter.maxGainReductionDb} dB`);
+      // The narration sine is still there between the bursts.
+      expect(tone(decode(final),440,0.8,0.98)).toBeGreaterThan(0.05);
+    }
   } finally {await rm(dir,{recursive:true,force:true});}
 });

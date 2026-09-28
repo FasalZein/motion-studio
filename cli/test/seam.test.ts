@@ -37,6 +37,9 @@ const peakAt = (samples:Float32Array, from:number, to:number) => {
 };
 // Measured with ffmpeg's loudnorm analysis, a different filter from the CLI's ebur128 measurement.
 const lufs = (file:string) => Number(JSON.parse(/\{[^{}]*"input_i"[^{}]*\}/.exec(spawnSync('ffmpeg',['-hide_banner','-nostats','-i',file,'-map','0:a:0','-af','loudnorm=print_format=json','-f','null','-'],{encoding:'utf8',timeout:30000}).stderr)![0]).input_i);
+// True peak (dBTP) of the first audio stream, from ffmpeg's loudnorm analysis (a different filter from the CLI's ebur128).
+const truePeak = (file:string) => Number(JSON.parse(/\{[^{}]*"input_tp"[^{}]*\}/.exec(spawnSync('ffmpeg',['-hide_banner','-nostats','-i',file,'-map','0:a:0','-af','loudnorm=print_format=json','-f','null','-'],{encoding:'utf8',timeout:30000}).stderr)![0]).input_tp);
+const CEILING_DBTP = -1;
 const streams = (file:string) => JSON.parse(spawnSync('ffprobe',['-v','error','-count_frames','-show_entries','stream=codec_type,sample_rate,channels,nb_read_frames','-of','json',file],{encoding:'utf8'}).stdout).streams;
 const frame = (file:string, n:number) => spawnSync('ffmpeg',['-v','error','-i',file,'-map','0:v:0','-vf',`select=eq(n\\,${n})`,'-fps_mode','passthrough','-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'],{encoding:null,timeout:15000}).stdout;
 const ffv1 = ['-c:v','ffv1','-level','3','-pix_fmt','yuv444p','-colorspace','bt709','-color_trc','bt709','-color_primaries','bt709'];
@@ -172,7 +175,7 @@ async function syntheticFilm(runtime:string) {
   return {dir,output,write,defaultCues,mix:() => run(runtime,'mix',dir)};
 }
 
-for (const runtime of ['bun','node']) test(`${runtime}: mix places planned peak offsets, normalizes to -14 LUFS, reports off-beat cuts, and a per-SFX gain prevents clipping`, async () => {
+for (const runtime of ['bun','node']) test(`${runtime}: mix places planned peak offsets, normalizes to -14 LUFS, reports off-beat cuts, a loud SFX is held at the -1 dBTP ceiling, and a per-SFX gain avoids limiting`, async () => {
   const {dir,output,write,defaultCues,mix} = await syntheticFilm(runtime);
   try {
     const result = mix();
@@ -197,21 +200,43 @@ for (const runtime of ['bun','node']) test(`${runtime}: mix places planned peak 
     expect(Math.abs(peakAt(samples,92160-2400,92160+2400)-92160)).toBeLessThanOrEqual(2);
     expect(Math.abs(lufs(join(output,'mix.wav'))+14)).toBeLessThanOrEqual(0.5);
 
-    // A loud SFX (peak 0.9) over the quiet track clips after normalization: the mix fails and removes the earlier outputs.
+    // Quiet cues stay under the -1 dBTP ceiling: the limiter does nothing and says nothing.
+    expect(sync.limiter).toEqual({ceilingDbtp:CEILING_DBTP,maxGainReductionDb:0});
+    expect(result.stdout).not.toContain('limiter');
+    expect(truePeak(final)).toBeLessThanOrEqual(CEILING_DBTP);
+
+    // A loud SFX (peak 0.9) over the quiet track: at the normalization gain (above +10 dB) its peak is far above the
+    // ceiling. The limiter holds it at -1 dBTP instead of refusing the mix, and the loudness stays at -14 LUFS.
     ffmpeg('-f','lavfi','-i','aevalsrc=0.9*exp(-abs(t-0.2)*20000):s=48000:d=0.3','-c:a','pcm_s16le',join(dir,'audio','cut.wav'));
     await write(defaultCues);
-    const clipped = mix();
-    expect(clipped.status).toBe(1);
-    expect(clipped.stderr).toContain('mix would clip');
-    for (const name of ['final.mkv','mix.wav','sync.json']) expect(await exists(join(output,name))).toBe(false);
+    const loud = mix();
+    expect(loud.stderr).toBe('');
+    expect(loud.status).toBe(0);
+    const loudSync = await json(join(output,'sync.json'));
+    // The pulse's largest sample as the stereo mix hears it (ffmpeg's standard mono-to-stereo conversion puts the
+    // mono 0.9 at -3 dB in each channel) minus the track's 0.05, times the gain, is a lower bound for the peak before
+    // limiting; the limiter must take it down to the ceiling.
+    const stereo = spawnSync('ffmpeg',['-v','error','-i',join(dir,'audio','cut.wav'),'-ac','2','-f','f32le','-c:a','pcm_f32le','-'],{encoding:null,timeout:30000}).stdout;
+    const sfxPeak = new Float32Array(new Uint8Array(stereo).buffer).reduce((m,v) => Math.max(m,Math.abs(v)),0);
+    expect(Math.abs(sfxPeak-0.9/Math.SQRT2)).toBeLessThan(0.01);
+    const needed = 20*Math.log10(sfxPeak-0.05)+loudSync.gainDb-CEILING_DBTP;
+    expect(needed).toBeGreaterThan(5);
+    expect(loudSync.limiter.maxGainReductionDb).toBeGreaterThanOrEqual(needed);
+    expect(loud.stdout).toContain(`limiter reduced peaks by up to ${loudSync.limiter.maxGainReductionDb} dB`);
+    expect(truePeak(join(output,'final.mkv'))).toBeLessThanOrEqual(CEILING_DBTP);
+    expect(loudSync.truePeakDbtp).toBeLessThanOrEqual(CEILING_DBTP);
+    expect(Math.abs(lufs(join(output,'final.mkv'))+14)).toBeLessThanOrEqual(0.5);
+    // The limited peak still sits on its target frame.
+    expect(loudSync.sfx[1]).toMatchObject({peakFrame:48,offsetFrames:-2});
 
-    // The same SFX 20 dB down (peak 0.09) mixes without clipping.
+    // The same SFX 20 dB down (peak 0.09) mixes without limiting.
     await write({a:defaultCues.a,b:[{...defaultCues.b[0],gainDb:-20}]});
     const lowered = mix();
     expect(lowered.stderr).toBe('');
     expect(lowered.status).toBe(0);
     const loweredSync = await json(join(output,'sync.json'));
     expect(loweredSync.sfx[1]).toMatchObject({gainDb:-20,peakFrame:48,offsetFrames:-2});
+    expect(loweredSync.limiter.maxGainReductionDb).toBe(0);
     const loweredSamples = audio(join(output,'final.mkv'));
     expect(Math.abs(peakAt(loweredSamples,92160-2400,92160+2400)-92160)).toBeLessThanOrEqual(2);
     expect(loweredSamples.reduce((m,v) => Math.max(m,Math.abs(v)),0)).toBeLessThan(1);

@@ -9,7 +9,7 @@ With the CLI installed, run these four commands in order on `films/<slug>`. Each
 1. `motion-studio render films/<slug>`: renders every shot clip and writes the success marker.
 2. `motion-studio stitch films/<slug>`: joins the clips into the master picture on one frame clock.
 3. `motion-studio handoff films/<slug>`: checks each seam declared `exit: handoff` (skip when the film has none; name a pair to check one seam).
-4. `motion-studio mix films/<slug>`: mixes track, narration (`voice`) and SFX to -14 LUFS and muxes it onto each master. It ducks the track 12 dB under the spoken phrases. It refuses a `voice` whose `tts` is `null`.
+4. `motion-studio mix films/<slug>`: mixes track, narration (`voice`) and SFX to -14 LUFS, limits true peaks to -1 dBTP and muxes it onto each master. It ducks the track 12 dB under the spoken phrases. It refuses a `voice` whose `tts` is `null`.
 
 Paths in `renders/<format>/` (`16x9`, `9x16`, `1x1`):
 

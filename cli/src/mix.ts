@@ -4,12 +4,24 @@ import {CliError, type Project} from './project.js';
 import {clearMixOutputs, requireMaster, round3, type Tools} from './seam.js';
 import type {Outputs} from './outputs.js';
 import {requireWords, wordFrame, type Word} from './voice.js';
+import {limitTruePeaks} from './limiter.js';
 
 const RATE = 48_000;
 const CHANNELS = 2;
 export const TARGET_LUFS = -14;
 // Maximum allowed distance between the measured result and the target.
 export const LUFS_TOLERANCE = 0.5;
+// D53: after normalization a true-peak limiter holds every peak at or below this ceiling, so speech and SFX
+// transients never clip or refuse the mix. It aims LIMITER_MARGIN_DB below the ceiling, because its own true-peak
+// estimate and ffmpeg's meter differ slightly; the delivered file is measured against the ceiling itself.
+export const TRUE_PEAK_CEILING_DBTP = -1;
+const LIMITER_MARGIN_DB = 0.3;
+const LIMITER_ATTACK_SECONDS = 0.002;
+const LIMITER_RELEASE_SECONDS = 0.05;
+// Limiting lowers the loudness a little; the gain is corrected and the limiter rerun until the loudness is within
+// LOUDNESS_STEP of the target, at most LIMITER_PASSES times.
+const LOUDNESS_STEP = 0.1;
+const LIMITER_PASSES = 6;
 // The sync report searches the final mix this many frames on each side of a cue's target for its peak.
 const SYNC_WINDOW_FRAMES = 3;
 // Ducking: under narration the bed (audio.track) drops by DUCK_DB. Words closer than PHRASE_GAP_SECONDS share one
@@ -31,12 +43,15 @@ function peak(samples:Float32Array, from = 0, to = samples.length/CHANNELS):{at:
   for (let i=Math.max(0,from)*CHANNELS;i<Math.min(to,samples.length/CHANNELS)*CHANNELS;i++) if (Math.abs(samples[i]) > level) {level = Math.abs(samples[i]); at = Math.floor(i/CHANNELS);}
   return {at,level};
 }
-async function integratedLufs(tools:Tools, raw:string):Promise<number> {
-  const log = await tools.command('ffmpeg',['-hide_banner','-nostats','-f','f32le','-ar',String(RATE),'-ac',String(CHANNELS),'-i',raw,'-af','ebur128','-f','null','-']);
-  const value = Number(/Integrated loudness:\s*I:\s*(-?[\d.]+) LUFS/.exec(log)?.[1]);
+/** Integrated loudness (LUFS) and true peak (dBTP) of raw 48 kHz stereo float samples, measured by ffmpeg ebur128. */
+async function loudness(tools:Tools, raw:string):Promise<{lufs:number; truePeak:number}> {
+  const log = await tools.command('ffmpeg',['-hide_banner','-nostats','-f','f32le','-ar',String(RATE),'-ac',String(CHANNELS),'-i',raw,'-af','ebur128=peak=true','-f','null','-']);
+  const lufs = Number(/Integrated loudness:\s*I:\s*(-?[\d.]+) LUFS/.exec(log)?.[1]);
   // ebur128 reports -70 LUFS for silence and for audio shorter than one 400 ms block.
-  if (!Number.isFinite(value) || value <= -70) throw new CliError('mix has no measurable loudness (silent or shorter than 400 ms)');
-  return value;
+  if (!Number.isFinite(lufs) || lufs <= -70) throw new CliError('mix has no measurable loudness (silent or shorter than 400 ms)');
+  const peak = /True peak:\s*Peak:\s*(-?[\d.]+|-inf) dBFS/.exec(log)?.[1];
+  if (peak === undefined) throw new CliError('ffmpeg ebur128 reported no true peak');
+  return {lufs, truePeak:peak === '-inf' ? -Infinity : Number(peak)};
 }
 
 /**
@@ -118,13 +133,25 @@ export async function mix(project:Project, out:Outputs, tools:Tools):Promise<str
     }
     const premix = join(temp,'premix.f32');
     await writeFile(premix,new Uint8Array(bus.buffer));
-    const gainDb = TARGET_LUFS - await integratedLufs(tools,premix);
-    const gain = 10**(gainDb/20);
-    let loudest = 0;
-    for (let i=0;i<bus.length;i++) {bus[i] *= gain; loudest = Math.max(loudest,Math.abs(bus[i]));}
-    if (loudest >= 1) throw new CliError(`mix would clip at ${TARGET_LUFS} LUFS: peak ${round3(20*Math.log10(loudest))} dBFS; lower a sound cue with gainDb`);
+    // One gain to -14 LUFS, then the true-peak limiter (D53). Limiting can lower the loudness and the limiter's
+    // estimate can read below ffmpeg's meter, so both are measured after each pass and corrected.
+    let gainDb = TARGET_LUFS - (await loudness(tools,premix)).lufs;
+    let aimDb = TRUE_PEAK_CEILING_DBTP - LIMITER_MARGIN_DB;
     const normalized = join(temp,'normalized.f32');
-    await writeFile(normalized,new Uint8Array(bus.buffer));
+    let limited:{mixed:Float32Array; reductionDb:number; lufs:number; truePeak:number}|null = null;
+    for (let pass=0;pass<LIMITER_PASSES;pass++) {
+      const mixed = bus.map(v => v*10**(gainDb/20));
+      const reductionDb = limitTruePeaks(mixed,CHANNELS,10**(aimDb/20),Math.round(LIMITER_ATTACK_SECONDS*RATE),Math.round(LIMITER_RELEASE_SECONDS*RATE));
+      await writeFile(normalized,new Uint8Array(mixed.buffer));
+      const measured = await loudness(tools,normalized);
+      limited = {mixed,reductionDb,...measured};
+      const loud = Math.abs(measured.lufs-TARGET_LUFS) <= LOUDNESS_STEP, peakOk = measured.truePeak <= TRUE_PEAK_CEILING_DBTP;
+      if (loud && peakOk) break;
+      if (!peakOk) aimDb -= measured.truePeak-TRUE_PEAK_CEILING_DBTP+LOUDNESS_STEP;
+      if (!loud) gainDb += TARGET_LUFS-measured.lufs;
+    }
+    if (limited === null || limited.truePeak > TRUE_PEAK_CEILING_DBTP || Math.abs(limited.lufs-TARGET_LUFS) > LUFS_TOLERANCE) throw new CliError(`mix could not reach ${TARGET_LUFS} LUFS with true peaks at or below ${TRUE_PEAK_CEILING_DBTP} dBTP (last pass: ${limited?.lufs} LUFS, ${limited?.truePeak} dBTP); the sum is mostly peaks: lower the loudest sound cue with gainDb or re-level the narration file`);
+    const limiter = {ceilingDbtp:TRUE_PEAK_CEILING_DBTP, maxGainReductionDb:round3(limited.reductionDb)};
     const wav = join(temp,'mix.wav');
     await tools.command('ffmpeg',['-hide_banner','-loglevel','error','-y','-f','f32le','-ar',String(RATE),'-ac',String(CHANNELS),'-i',normalized,'-c:a','pcm_s24le',wav]);
     const final = join(temp,'final.mkv');
@@ -136,8 +163,9 @@ export async function mix(project:Project, out:Outputs, tools:Tools):Promise<str
     // Measure the delivered audio, not the bus: decode final.mkv again for loudness and peaks.
     const delivered = join(temp,'delivered.f32');
     const heard = await decode(tools,final,delivered);
-    const measured = await integratedLufs(tools,delivered);
+    const {lufs:measured,truePeak} = await loudness(tools,delivered);
     if (Math.abs(measured-TARGET_LUFS) > LUFS_TOLERANCE) throw new CliError(`mix loudness ${measured} LUFS outside ${TARGET_LUFS} +/- ${LUFS_TOLERANCE}`);
+    if (truePeak > TRUE_PEAK_CEILING_DBTP) throw new CliError(`delivered true peak ${truePeak} dBTP is above the ${TRUE_PEAK_CEILING_DBTP} dBTP ceiling`);
     const window = SYNC_WINDOW_FRAMES*perFrame;
     const sfx = placed.map(({cue,sourcePeakSeconds,target}) => {
       const peakFrame = round3(peak(heard,target-window,target+window+1).at/perFrame);
@@ -155,8 +183,8 @@ export async function mix(project:Project, out:Outputs, tools:Tools):Promise<str
     }));
     const narrationReport = narration === null ? null : {asset:narration.asset,startFrame:narration.startFrame,duckDb:DUCK_DB,
       duckSpans:narration.spans.map(({from,to}) => ({startSeconds:round3(from/RATE),endSeconds:round3(to/RATE)}))};
-    await writeFile(join(temp,'sync.json'),JSON.stringify({fps,sampleRate:RATE,channels:CHANNELS,targetLufs:TARGET_LUFS,integratedLufs:measured,gainDb:round3(gainDb),syncWindowFrames:SYNC_WINDOW_FRAMES,voice:narrationReport,sfx,cuts,reveals},null,2)+'\n');
+    await writeFile(join(temp,'sync.json'),JSON.stringify({fps,sampleRate:RATE,channels:CHANNELS,targetLufs:TARGET_LUFS,integratedLufs:measured,truePeakDbtp:truePeak,gainDb:round3(gainDb),limiter,syncWindowFrames:SYNC_WINDOW_FRAMES,voice:narrationReport,sfx,cuts,reveals},null,2)+'\n');
     for (const name of ['mix.wav','final.mkv','sync.json']) await rename(join(temp,name),join(output,name));
-    return `mix ${out.format} verified ${frames} frames at ${measured} LUFS`;
+    return `mix ${out.format} verified ${frames} frames at ${measured} LUFS, true peak ${truePeak} dBTP${limiter.maxGainReductionDb > 0 ? `; limiter reduced peaks by up to ${limiter.maxGainReductionDb} dB` : ''}`;
   } finally {await rm(temp,{recursive:true,force:true});}
 }
