@@ -4,21 +4,23 @@ Build one packet **per reviewed render and format**. Record the file path, forma
 
 ## Required in-studio inputs
 
-| Input | Source and check | v0 replacement |
+The third column names the v0 route. "Manual" means the dispatcher copies the item into the packet by hand; no CLI command assembles the packet yet. A ticket number names the CLI command that will replace the step.
+
+| Input | Source and check | v0 route |
 |---|---|---|
-| Logline, genre and shot descriptions | `BRIEF.md` and `storyboard.json`; note any mismatch. Load the `motion-studio` genre playbook for claims and timing. | Manual handoff (CLI replaces: #3) |
-| Chosen look or style bible | The approved look, its variation axes and `style-bible.md` if supplied. | Manual handoff (CLI replaces: #3) |
-| Shared and look-specific pattern → replacement pairs | Load `motion-look`; pass the actual list, not a remembered list. | Manual handoff (CLI replaces: #3) |
-| Frozen approved still beside its matching rendered frame | Use `stills/approved/<gate>-<hash8>/`, shot id, approved local frame and exact global frame; place both images in the review packet with labels. Verify the frame matches the render revision. | Extract and pair below (CLI replaces: #7); handoff (CLI replaces: #3) |
-| Contact sheet | Sample 1 fps across the **entire** rendered clip. Keep numbered pages and timestamps; do not substitute an old sheet. | Tile below (CLI replaces: #7) |
-| Transition strips | Full-rate frames around **every** declared cut or handoff, including the preceding and following frame. Record each cut frame and shot pair. Include suspected fast-motion spans if the video reader cannot scrub. | Tile below (CLI replaces: #7) |
-| Glitch findings | In v0 inspect strips and decoded frame count for blank, pop, stutter, hitch, flash, color jump and ghost. Mark declared cuts and holds before interpreting flags. Verified blank frames, frame-count errors and unintended single-frame pops block review; ambiguous flags are advisory. | Manual scan (CLI replaces: #8) |
-| Beat grid and sync report | `beats.json`, storyboard beat and cut/event frames, measured integrated LUFS and measured SFX peaks. Note low-confidence or corrected grids. | Measure below (CLI replaces: #3) |
-| Draft clip | Give the actual video path if the harness can read video. Otherwise state that continuous motion and audio listening are not directly verified; strips cannot prove continuous easing. | Manual handoff (CLI replaces: #3) |
+| Logline, genre and shot descriptions | `BRIEF.md` and `storyboard.json`; note any mismatch. Load the `motion-studio` genre playbook for claims and timing. | Manual |
+| Chosen look or style bible | The approved look, its variation axes and `style-bible.md` if supplied. | Manual |
+| Shared and look-specific pattern → replacement pairs | Load `motion-look`; pass the actual list, not a remembered list. | Manual |
+| Frozen approved still beside its matching rendered frame | Use `stills/approved/<gate>-<hash8>/`, shot id, approved local frame and exact global frame; place both images in the review packet with labels. Verify the frame matches the render revision. | Extract and pair below (#7). For a handoff seam, `motion-studio handoff` writes the seam frame pair and report |
+| Contact sheet | Sample 1 fps across the **entire** rendered clip. Keep numbered pages and timestamps; do not substitute an old sheet. | Tile below (`sheet`, #7) |
+| Transition strips | Full-rate frames around **every** declared cut or handoff, including the preceding and following frame. Record each cut frame and shot pair. Include suspected fast-motion spans if the video reader cannot scrub. | Tile below (`sheet`, #7) |
+| Glitch findings | In v0 inspect strips and decoded frame count for blank, pop, stutter, hitch, flash, color jump and ghost. Mark declared cuts and holds before interpreting flags. Verified blank frames, frame-count errors and unintended single-frame pops block review; ambiguous flags are advisory. | Manual scan (`scan`, #8) |
+| Beat grid and sync report | Beat grid from `storyboard.json` `audio` (`beats.json` in the v0 manual flow), storyboard beat and cut/event frames, measured integrated LUFS and measured SFX peaks. Note low-confidence or corrected grids. | `motion-studio mix` writes `sync.json`; otherwise measure below |
+| Draft clip | Give the actual video path if the harness can read video. Otherwise state that continuous motion and audio listening are not directly verified; strips cannot prove continuous easing. | Manual |
 
 In standalone mode, the video is the only required input. Generate sheets and strips where possible. Record each missing brief, board, look, beat grid and ledger; pass unverified checks to the reviewer. Never fill absent evidence with a guess.
 
-## Image commands (CLI replaces: #7)
+## Image commands (CLI: `sheet`, #7)
 
 Use `ffprobe` to verify fps and frame count before extracting. The examples assume a constant-frame-rate video whose first decoded frame is global frame 0. If timestamps or variable frame rate differ, reconcile them with the project timeline before comparing stills or reporting offsets. Use a unique output directory for each render and format. Set `VIDEO` to the actual render and `OUT` to that directory.
 
@@ -43,9 +45,9 @@ ffmpeg -hide_banner -nostdin -i "$VIDEO" \
 
 Contact tiles run left to right, then top to bottom. Page 1 starts at second 0; page 2 starts at second 25. Use the source timestamps to confirm this map, especially if the video does not start at zero. A full-width transition tile runs left to right from `CUT-5` through `CUT+5`; its center is `CUT`. Write this index map beside each sheet and strip. The tile is a navigation image, not the only source for technical judgment. Inspect native-size source frames for a suspected defect. For a transition within five frames of either end, set the tile width to the number of selected frames, or extract those frames individually. Check the count of contact pages, each cut strip and every still pair against the actual frame indices. Do not use approximate `-ss` seeking to certify an exact still.
 
-## Sync report (CLI replaces: #3)
+## Sync report
 
-v0 reports evidence, not a finished mix. Measure the **actual reviewed mix**. Parse `input_i` from loudnorm's JSON for integrated LUFS; `output_i` from a normalization run is not a measurement of the final file. Read the actual `beats.json` and storyboard frames rather than guessing tempo. Example:
+When the film was mixed with `motion-studio mix`, use its `sync.json` (integrated LUFS, per-cue peak offsets, cut-to-beat offsets and `offBeatCut` reasons) and check that it belongs to the reviewed render. Otherwise v0 reports evidence, not a finished mix. Measure the **actual reviewed mix**. Parse `input_i` from loudnorm's JSON for integrated LUFS; `output_i` from a normalization run is not a measurement of the final file. Read the actual beat grid (`storyboard.json` `audio`, or `beats.json` in the v0 manual flow) and storyboard frames rather than guessing tempo. Example:
 
 ```sh
 ffmpeg -hide_banner -nostdin -i "$VIDEO" -map 0:a:0 \

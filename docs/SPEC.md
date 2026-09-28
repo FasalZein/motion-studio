@@ -157,7 +157,7 @@ Phases run in this order. Each gate lists what it shows, what a note re-runs, an
 | 8 | license check (D37), then approve the final render cost | **G5: delivery check (poster, contact sheet, safe-zone report, unresolved-license list); "use defaults" allowed** | render only | none |
 | 9 | final render, then user acceptance of the files | acceptance | render only | none |
 
-- **Revision binding.** The CLI hashes each gate's input artifacts: brief, look, beat grid, stills, shot sources, ledger and layout. Approvals and critique results store those hashes. A changed hash marks that gate and every later gate stale. Approved stills are frozen copies, not live paths.
+- **Revision binding.** The CLI hashes each gate's input artifacts: brief, look, beat grid, stills, shot sources, ledger and layout. Approvals and critique results store those hashes. A changed hash marks that gate and every later gate stale. Approved stills and other rendered media shown at a gate are frozen copies, not live paths (D43).
 - **Critique loop.** `scan` runs first, then the reviewer. The budget is 3 loops per revision. When the budget runs out, the orchestrator shows the user the scorecard with the change per loop and three options: accept at the current scores, give notes, or rescope. Loop A scores the full pass. Loop B scores the polished, mixed, per-format drafts.
 - **Taste profile writes:** at G1 (chosen look liked, shown-and-passed looks rejected), at every gate note (the note text tagged with the vocabulary terms it names), and at acceptance (look, signature moves, pacing profile). **Reads:** in the brief phase, for the recommended answers.
 
@@ -184,7 +184,7 @@ Phases run in this order. Each gate lists what it shows, what a note re-runs, an
 
 ### Multi-format layout
 - Each format has canvas width and height, a safe rectangle and an optional platform-overlay preset. The same layout inputs reach Remotion (as props) and HyperFrames (as project data).
-- Protected elements (text, logos, key UI) export their bounds at the still and check times. DOM measurement is used where it exists; author-declared geometry is used for canvas and SVG. `safezone` fails protected content that is held outside the safe rectangle. Entrance and exit travel and declared full-bleed art are allowed.
+- Protected elements (text, logos, key UI) export their bounds at the still and check times. Bounds come from painted pixels (a render with the element hidden, compared to a normal render; D45); author-declared geometry is used for canvas and SVG. `safezone` fails protected content that is held outside the safe rectangle. Entrance and exit travel and declared full-bleed art are allowed.
 
 ### CLI command surface (behavior)
 - `init`: create the project folder layout and an empty project file.

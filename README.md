@@ -2,7 +2,13 @@
 
 Agent skills for directed motion-graphics films. You act as the director. The agent interviews you, shows you a look test, a beat map with real stills, and an animatic, and then builds the film. It can use Remotion and HyperFrames shots in the same video, and it scores the result for taste before you see it.
 
-> **Status: v0 preview.** The four skills work today. They call `hyperframes`, `remotion` and `ffmpeg` directly. The `motion-studio` CLI is still in development: it will automate the checks that v0 does by hand, such as frame-exact stitching, handoff checks, the audio mix and safe zones. Progress is tracked in [issue #1](https://github.com/FasalZein/motion-studio/issues/1). Until the CLI lands, v0 marks any check it cannot run as unverified.
+> **Status: v0 preview.** The four skills work today. They call `hyperframes`, `remotion` and `ffmpeg` directly, and mark any check they cannot run as unverified. Progress is tracked in [issue #1](https://github.com/FasalZein/motion-studio/issues/1).
+>
+> The `motion-studio` CLI in `cli/` is partly built. When it is installed, the skills use it for `init`, `validate`, `status`, `handoff` and `mix`. The documented CLI route from render to mix, and fixes to its frame clock and output paths, are tracked in issue #22.
+>
+> - **Works today:** `init`, `validate`, `status`, `render`, `stitch`, `still`, `handoff` and `mix`. See [cli/README.md](cli/README.md).
+> - **In progress:** gate records with revision hashes (#5), the beat grid (#6), and per-format layouts with safe zones (#9).
+> - **Still manual:** gate hashing and stale marks, the beat grid, contact sheets and the animatic, the technical scan, safe-zone checks, and asset search and HeyGen import. `validate` does not check vocabulary ids yet (#12).
 
 ## What you get
 
@@ -40,6 +46,7 @@ Give notes like a director ("this part is too slow", "make the zoom hit on the d
 | Remotion | React engine | installed per shot project by the build step |
 | HeyGen CLI | free catalog music, SFX, images, voice | `curl -fsSL https://static.heygen.ai/cli/install.sh \| bash`, then `heygen auth login --oauth` |
 | Bun (optional) | CLI development | https://bun.sh |
+| `motion-studio` CLI (optional) | frame-exact render, stitch, handoff and mix checks | not on npm yet: `cd cli && npm install && npm run build && npm pack`, then `npm install -g ./motion-studio-*.tgz` |
 
 Check your setup:
 
@@ -103,7 +110,7 @@ Your taste profile is stored in `~/.motion-studio/taste.json`, and each film kee
 
 ```text
 skills/     the four skills (installable with `npx skills add`)
-cli/        the motion-studio CLI (in development)
+cli/        the motion-studio CLI (partly built; see the status above)
 docs/       SPEC.md (source of truth), DECISIONS.md, v0-contract.md
 ```
 

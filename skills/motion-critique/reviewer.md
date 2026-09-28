@@ -1,17 +1,17 @@
 # Fresh reviewer brief
 
-You are a reviewer, not the builder. Receive only the evidence packet paths, current revision hashes, format and loop number. Read [rubric.md](rubric.md) and [evidence-packet.md](evidence-packet.md). Check that each image and report is readable and belongs to the current render. Read the relevant `motion-studio` genre playbook for its timing and message-evidence requirements. Load `motion-look` for the pattern list and `motion-vocabulary` for kebab ids. Use `custom:<short-name>` only when no glossary term fits. Return a short summary and the report path to the dispatcher, not the whole packet.
+You are a reviewer, not the builder. Receive only the evidence packet paths, current revision hashes, format and loop number. Your `motion-critique` inputs are exactly this brief, [rubric.md](rubric.md), [evidence-packet.md](evidence-packet.md) and the packet files. Do not read `motion-critique/SKILL.md` or any other `motion-critique` file: the dispatcher's calibration key is there. Check that each image and report is readable and belongs to the current render. Read the relevant `motion-studio` genre playbook for its timing and message-evidence requirements. Load `motion-look` for the pattern list and `motion-vocabulary` for kebab ids. Use `custom:<short-name>` only when no glossary term fits. Return a short summary and the report path to the dispatcher, not the whole packet.
 
 ## 1. Calibrate first
 
-v0 has **text calibration cases**, not image fixtures. Image fixtures arrive with ticket #17. These descriptions test rubric interpretation, not actual image or sound capability. Score both using the same rubric and list which dimensions the text cannot prove.
+v0 has **text calibration cases**, not image fixtures. Image fixtures arrive with ticket #17. These descriptions test rubric interpretation, not actual image or sound capability. Score both using the same rubric and list which dimensions the text cannot prove. The dispatcher holds the expected bands and compares them with your scores.
 
-- **Known bad:** A 12-second film shows four unrelated slides. Every slide centers the same type on a gradient; all entries fade, all exits dissolve. A long hold interrupts the stated sequence. Shot s03's text is clipped. The logline says a recorded temperature fell, but the displayed value has no cited source. A measured report gives two visual SFX offsets of +4 and -3 frames, two beat-targeted cut offsets of +3 and -4 frames, and -19 integrated LUFS against a -14 target. The reviewer can read the report but cannot hear audio. Expected: dimensions 1, 2 and 7 below 8; shot s03 dimensions 6 and 8 below 8. Audible quality remains unverified.
-- **Known good:** A 12-second non-product data explanation uses sourced temperature readings with retrieval date and truthful scale. Its visual changes make the logline clear; the named look guides varied layouts without repeating one transition. A readable clip shows smooth, controlled movement in all shots, with intentional reading holds. All frozen stills match their rendered frames; inspected full-rate strips and scan show no defects. The mix report gives every declared SFX hit and beat-targeted cut a zero-frame offset and integrated loudness at -14 LUFS. The reviewer can read the report and ledger, but cannot hear audio. Expected: dimensions 1, 2, 3, 4, 5, 6 and 8 at least 8, and measured part of 7 at least 8; audible sound quality unverified. No product UI is required.
+- **Known bad:** A 12-second film shows four unrelated slides. Every slide centers the same type on a gradient; all entries fade, all exits dissolve. A long hold interrupts the stated sequence. Shot s03's text is clipped. The logline says a recorded temperature fell, but the displayed value has no cited source. A measured report gives two visual SFX offsets of +4 and -3 frames, two beat-targeted cut offsets of +3 and -4 frames, and -19 integrated LUFS against a -14 target. The reviewer can read the report but cannot hear audio.
+- **Known good:** A 12-second non-product data explanation uses sourced temperature readings with retrieval date and truthful scale. Its visual changes make the logline clear; the named look guides varied layouts without repeating one transition. A readable clip shows smooth, controlled movement in all shots, with intentional reading holds. All frozen stills match their rendered frames; inspected full-rate strips and scan show no defects. The mix report gives every declared SFX hit and beat-targeted cut a zero-frame offset and integrated loudness at -14 LUFS. The reviewer can read the report and ledger, but cannot hear audio. No product UI is required.
 
-The calibration passes when **every named expected below-8 and at-least-8 condition** holds and unsupported audible judgment is marked unverified in both cases. If it fails, do not review the film. Explain the mismatch to the dispatcher; the run is void.
+For each case, give one score or **unverified** per dimension (film-level 1, 2 and 7; per-shot 3, 4, 5, 6 and 8, naming the shot where the case names one), with a one-line reason. Write these scores in the report's `Calibration` line before you inspect the film.
 
-**Done when:** Both cases have their expected bands and explicit unverified notes, or a void result ends this run.
+**Done when:** Both cases have a score or unverified marker for every dimension, with the reasons, in the report header.
 
 ## 2. Inspect and score the actual render
 
@@ -28,7 +28,7 @@ In-studio, write `critique/loop-<n>.md` under the film project. For standalone r
 Mode: in-studio | standalone; independence: independent | non-independent
 Render: <path>; format: <format>; fps: <fps>; revision hashes: <hashes or unavailable>
 Evidence: <readable paths>; missing/unreadable: <items and affected judgments>
-Calibration: bad <bands/result>; good <bands/result>; PASS
+Calibration: bad <dimension: score or unverified, per dimension>; good <dimension: score or unverified, per dimension>
 
 ## Film scores
 | Dimension | Score 1-10 or unverified | Evidence and reason |
