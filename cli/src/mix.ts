@@ -33,16 +33,23 @@ async function integratedLufs(tools:Tools, raw:string):Promise<number> {
 }
 
 /**
+ * Runs once before the formats are mixed. Earlier mix outputs describe an earlier request, so every run,
+ * even a refused or failed one, removes them from every selected format; no format keeps a stale delivery file.
+ */
+export async function prepareMix(project:Project, outs:Outputs[]) {
+  for (const out of outs) await clearMixOutputs(out.dir);
+  // Narration is not mixed yet. A mix that silently drops it would report success for an incomplete film.
+  if (project.storyboard.voice !== null) throw new CliError('mix does not support narration yet (voice is set); narration mixing arrives with #19. Mix narration manually for now (motion-studio skill, agents/render.md)');
+}
+
+/**
  * Mixes audio.track and every shot sound cue at 48 kHz stereo, normalizes to -14 LUFS,
  * and writes mix.wav, sync.json and final.mkv (master video plus the mix) for one format.
+ * Call prepareMix for all selected formats first.
  */
 export async function mix(project:Project, out:Outputs, tools:Tools):Promise<string> {
-  const {root,ledger,storyboard:{shots,audio,voice,meta:{fps}}} = project;
+  const {root,ledger,storyboard:{shots,audio,meta:{fps}}} = project;
   const output = out.dir;
-  // Earlier mix outputs describe an earlier request, so every run, even a refused one, removes them.
-  await clearMixOutputs(output);
-  // Narration is not mixed yet. A mix that silently drops it would report success for an incomplete film.
-  if (voice !== null) throw new CliError('mix does not support narration yet (voice is set); narration mixing arrives with #19. Mix narration manually for now (motion-studio skill, agents/render.md)');
   const frames = shots.at(-1)!.endFrame;
   const cues = shots.flatMap(shot => shot.soundCues);
   if (audio.track === null && !cues.length) throw new CliError('nothing to mix: audio.track is null and no shot has sound cues');

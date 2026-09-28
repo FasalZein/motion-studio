@@ -355,5 +355,13 @@ for (const runtime of ['bun','node']) test(`${runtime}: shots named master and f
 
     // A named format limits the run to that format.
     expect(run(runtime,'mix',dir,'9:16').stdout.trim()).toMatch(/^mix 9:16 verified 12 frames/);
+
+    // A refused mix leaves no earlier mix outputs in any format, so no later gate binds a stale delivery file.
+    for (const folder of Object.keys(size)) for (const name of ['final.mkv','mix.wav','sync.json']) expect(await exists(join(dir,'renders',folder,name))).toBe(true);
+    await writeFile(join(dir,'storyboard.json'),JSON.stringify({...board,voice:{script:'audio/script.md',tts:'music-bed',wordTimings:'audio/words.json'}}));
+    const refused = run(runtime,'mix',dir);
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain('narration mixing arrives with #19');
+    for (const folder of Object.keys(size)) for (const name of ['final.mkv','mix.wav','sync.json']) expect(await exists(join(dir,'renders',folder,name))).toBe(false);
   } finally {await rm(dir,{recursive:true,force:true});}
 }, 600000);

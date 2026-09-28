@@ -11,7 +11,7 @@ import {safezone} from './safezone.js';
 import {statusLines} from './status.js';
 import {decisions, gateViews, recordGate} from './gates.js';
 import {handoff} from './handoff.js';
-import {mix} from './mix.js';
+import {mix, prepareMix} from './mix.js';
 import {beats} from './beats.js';
 import {clearSeamOutputs} from './seam.js';
 import {outputsOf, type Outputs} from './outputs.js';
@@ -207,7 +207,9 @@ async function main() {
     return;
   }
   if (action === 'mix') {
-    for (const format of selectFormats(project,process.argv[4])) console.log(await mix(project,outputs(format),{command,verify}));
+    const outs = selectFormats(project,process.argv[4]).map(outputs);
+    await prepareMix(project,outs);
+    for (const out of outs) console.log(await mix(project,out,{command,verify}));
     return;
   }
   if (action === 'safezone') {
