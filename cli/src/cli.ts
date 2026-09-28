@@ -6,6 +6,8 @@ import {dirname, join, resolve} from 'node:path';
 import {createRequire} from 'node:module';
 import {bundle} from '@remotion/bundler';
 import {renderFrames, selectComposition} from '@remotion/renderer';
+import {handoff} from './handoff.js';
+import {mix} from './mix.js';
 
 type Shot = {id:string; engine:'remotion'|'hyperframes'; start:number; end:number; entry:string; composition?:string};
 type Project = {fps:24|25|30|60; width:number; height:number; beatsSeconds:number[]; wordsSeconds:number[]; shots:Shot[]};
@@ -89,10 +91,12 @@ async function renderShot(shot:Shot, project:Project, base:string, output:string
 }
 async function main() {
   const [action,filename] = process.argv.slice(2);
-  if (!['render','stitch','still'].includes(action) || !filename) throw Error('usage: motion-studio <render|stitch|still> <project.json> [shot-id]');
+  if (!['render','stitch','still','handoff','mix'].includes(action) || !filename) throw Error('usage: motion-studio <render|stitch|still|handoff|mix> <project.json> [shot-id]');
   const base = dirname(resolve(filename));
   const project = parseProject(JSON.parse(await readFile(filename,'utf8')));
   const output = join(base,'output');
+  if (action === 'handoff') return console.log(await handoff(project,output,process.argv[4],process.argv[5],{command,verify}));
+  if (action === 'mix') return console.log(await mix(project,(project as {mix?:unknown}).mix,base,output,{command,verify}));
   if (action === 'render' || action === 'still') {
     const shots = action === 'still' ? project.shots.filter(s => s.id === process.argv[4]) : project.shots;
     if (!shots.length) throw Error('unknown shot');
