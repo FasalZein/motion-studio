@@ -10,6 +10,11 @@ import type {Tools} from './seam.js';
 
 const require = createRequire(import.meta.url);
 const hfBin = resolve(dirname(require.resolve('hyperframes/package.json')), 'bin/hyperframes.mjs');
+/**
+ * The node_modules folder that holds the CLI's `@remotion/transitions`. A film lives outside the CLI, so its shots
+ * cannot find the package by walking up their own folders; the bundler searches this folder after theirs (D54).
+ */
+const transitionsModules = resolve(dirname(require.resolve('@remotion/transitions/package.json')),'..','..');
 
 /** Remotion input props: the format's layout inputs under `layout`. */
 export const remotionProps = (format:Format, {canvas,safe,overlay}:Layout) => ({layout:{format, canvas, safe, overlay}});
@@ -48,7 +53,8 @@ export async function remotionBundle(project:Project, shot:Shot, withHide:boolea
       await mkdir(wrapperDir,{recursive:true});
       await writeFile(wrapper,`import {getInputProps} from 'remotion';\nimport '${relative(wrapperDir,entry).replace(/\.tsx?$/,'')}';\nconst hide = (getInputProps() as {motionStudioHide?:string}).motionStudioHide;\nif (hide) {const style = document.createElement('style'); style.textContent = ${JSON.stringify(hideCss('__ID__'))}.replace('__ID__', hide); document.head.appendChild(style);}\n`);
     }
-    const serveUrl = await bundle({entryPoint:wrapper ?? entry, ignoreRegisterRootWarning:Boolean(wrapper), publicDir:join(project.root,'shots',shot.id,'public')});
+    const serveUrl = await bundle({entryPoint:wrapper ?? entry, ignoreRegisterRootWarning:Boolean(wrapper), publicDir:join(project.root,'shots',shot.id,'public'),
+      webpackOverride:config => ({...config, resolve:{...config.resolve, modules:[...(config.resolve?.modules ?? ['node_modules']), transitionsModules]}})});
     return {serveUrl, dispose:() => rm(serveUrl,{recursive:true,force:true})};
   } finally {if (wrapperDir) await rm(wrapperDir,{recursive:true,force:true});}
 }

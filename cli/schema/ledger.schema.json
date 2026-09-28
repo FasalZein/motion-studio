@@ -30,7 +30,13 @@
           },
           "localPath": {"type": "string", "minLength": 1},
           "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-          "shots": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"}}
+          "shots": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"}},
+          "speech": {
+            "type": "object",
+            "description": "Optional, for generated narration: the provider voice id and the exact text spoken.",
+            "required": ["voiceId", "text"],
+            "properties": {"voiceId": {"type": "string", "minLength": 1}, "text": {"type": "string", "minLength": 1}}
+          }
         }
       }
     }

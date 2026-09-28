@@ -384,17 +384,28 @@ test('HeyGen voice is paid generation and runs only with the consent flag', asyn
   for (const runtime of runtimes) await withFilm(async (dir,film) => {
     const {env,calls} = await heygenEnv(dir);
     const args = ['assets',film,'resolve','narration','--provider','heygen','--type','voice','--intent','Meet the new app.','--shot','intro'];
-    const refused = run(runtime,args,env);
+    const refused = run(runtime,[...args,'--voice-id','v-starfish-7'],env);
     expect(refused.status).toBe(1);
     expect(refused.stderr).toBe('error: assets: provider heygen may start paid generation for type voice; ask the user to agree to the cost, then add --paid-ok\n');
+    // Without a chosen voice, media-use would speak with HeyGen's first listed voice, which the ledger could not name.
+    const unnamed = run(runtime,[...args,'--paid-ok'],env);
+    expect(unnamed.status).toBe(1);
+    expect(unnamed.stderr).toBe('error: heygen provider: --type voice needs --voice-id <id>; list voices with heygen voice list --engine starfish\n');
+    // A voice id means nothing for a catalog search.
+    const catalog = run(runtime,['assets',film,'resolve','bed','--provider','heygen','--type','bgm','--intent','calm','--voice-id','v-starfish-7'],env);
+    expect(catalog.status).toBe(1);
+    expect(catalog.stderr).toBe('error: assets: --voice-id applies to --type voice only, not bgm\n');
     expect(await callLog(calls)).toEqual([]);
     expect(JSON.parse(await readFile(join(film,'ledger.json'),'utf8')).assets).toEqual([]);
-    const agreed = run(runtime,[...args,'--paid-ok'],env);
+    expect((await readdir(film)).filter(f => f.startsWith('.'))).toEqual([]);
+    const agreed = run(runtime,[...args,'--voice-id','v-starfish-7','--paid-ok'],env);
     expect(agreed.stderr).toBe('');
     expect(agreed.status).toBe(0);
-    expect((await callLog(calls))[0]).toMatch(/ --provider heygen\.tts --json$/);
+    expect(await callLog(calls)).toEqual([expect.stringMatching(/ --provider heygen\.tts --voice-id v-starfish-7 --json$/)]);
+    // The entry names the chosen voice and the exact text spoken.
     expect(JSON.parse(await readFile(join(film,'ledger.json'),'utf8')).assets).toEqual([
-      {id:'narration', type:'voice', sourceKind:'heygen', sourceUrlOrGenerator:'HeyGen heygen.tts via hyperframes media-use', providerAssetId:null, license:{status:'unknown', name:null, evidence:"HeyGen heygen.tts; the HeyGen reply states no license, so HeyGen's terms apply"}, localPath:'assets/narration.mp3', sha256:sha('CATALOG:voice:Meet the new app.'), shots:['intro']},
+      {id:'narration', type:'voice', sourceKind:'heygen', sourceUrlOrGenerator:'HeyGen heygen.tts voice v-starfish-7 via hyperframes media-use', providerAssetId:null, license:{status:'unknown', name:null, evidence:"HeyGen heygen.tts voice v-starfish-7; the HeyGen reply states no license, so HeyGen's terms apply"}, localPath:'assets/narration.mp3', sha256:sha('CATALOG:voice:Meet the new app.'), shots:['intro'], speech:{voiceId:'v-starfish-7', text:'Meet the new app.'}},
     ]);
+    expect(run(runtime,['assets',film,'list'],env).stdout).toContain('narration: voice, heygen HeyGen heygen.tts voice v-starfish-7 via hyperframes media-use, voice v-starfish-7, license unknown');
   });
 });
