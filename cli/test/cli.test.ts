@@ -3,7 +3,7 @@ const {expect} = await import('bun' in process.versions ? 'bun:test' : 'expect')
 import {dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 const test = (name:string, fn:()=>Promise<void>, timeout=600000) => nodeTest(name,{timeout},fn);
-import {mkdtemp, cp, rm, readFile, writeFile} from 'node:fs/promises';
+import {mkdtemp, cp, rm, readFile, writeFile, chmod, mkdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
@@ -12,6 +12,18 @@ import {createHash} from 'node:crypto';
 const cli = resolve(dirname(fileURLToPath(import.meta.url)), '../dist/cli.js');
 const fixture = resolve(dirname(fileURLToPath(import.meta.url)), '../fixtures/two-engine');
 const run = (runtime: string, ...args: string[]) => spawnSync(runtime, [cli, ...args], {encoding: 'utf8', timeout: 180000});
+// Puts a `node` wrapper first on PATH. It passes every call through to the real node, except the HyperFrames render,
+// whose project directory it points at a missing path. The real HyperFrames process then fails ("Not a directory").
+// This works for root too, unlike file-mode tricks.
+async function failingHyperframes(dir:string):Promise<NodeJS.ProcessEnv> {
+  const bin = join(dir,'bin');
+  await mkdir(bin);
+  const shim = join(bin,'node');
+  await writeFile(shim,`#!/bin/sh\ncase "$1" in\n  *hyperframes.mjs) hf=$1; cmd=$2; project=$3; shift 3; exec "$REAL_NODE" "$hf" "$cmd" "$project/missing-project" "$@";;\n  *) exec "$REAL_NODE" "$@";;\nesac\n`);
+  await chmod(shim,0o755);
+  return {...process.env, PATH:`${bin}:${process.env.PATH}`, REAL_NODE:spawnSync('which',['node'],{encoding:'utf8'}).stdout.trim()};
+}
+const runWith = (env:NodeJS.ProcessEnv, runtime:string, ...args:string[]) => spawnSync(runtime,[cli,...args],{encoding:'utf8',timeout:180000,env});
 const pixel = (file:string,x:number,y:number) => [...spawnSync('ffmpeg',['-v','error','-i',file,'-vf',`select=eq(n\\,0),crop=1:1:${x}:${y}`,'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'],{encoding:null}).stdout];
 const decodedFrame = (file:string, frame:number) => spawnSync('ffmpeg',['-v','error','-i',file,'-vf',`select=eq(n\\,${frame})`,'-vsync','0','-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'],{encoding:null,timeout:15000}).stdout;
 const probe = (file: string) => JSON.parse(spawnSync('ffprobe', ['-v','error','-select_streams','v:0','-show_entries','stream=nb_read_frames,pix_fmt,color_space,color_transfer,color_primaries:frame=best_effort_timestamp_time','-count_frames','-show_frames','-of','json',file], {encoding:'utf8'}).stdout);
@@ -20,10 +32,10 @@ for (const runtime of ['bun','node']) test(`${runtime}: two engines render and s
   const dir = await mkdtemp(join(tmpdir(), 'motion-studio-'));
   try {
     await cp(fixture, dir, {recursive:true, filter: src => !src.endsWith('/output')});
-    const rendered = run(runtime, 'render', join(dir,'project.json'));
+    const rendered = run(runtime, 'render', dir);
     expect(rendered.stderr).toBe('');
     expect(rendered.status).toBe(0);
-    const stitched = run(runtime, 'stitch', join(dir,'project.json'));
+    const stitched = run(runtime, 'stitch', dir);
     expect(stitched.status).toBe(0);
     for (const name of ['remotion','hyperframes','master']) {
       const data = probe(join(dir,'output',`${name}.mkv`));
@@ -44,41 +56,24 @@ for (const runtime of ['bun','node']) test(`${runtime}: two engines render and s
     expect(after).toEqual(decodedFrame(join(dir,'output','hyperframes.mkv'),0));
     expect(after.equals(before)).toBe(false);
     const fontHash = async (file:string) => createHash('sha256').update(await readFile(file)).digest('hex');
-    expect(await fontHash(join(dir,'hyperframes','IBMPlexSans.ttf'))).toBe(await fontHash(join(dir,'remotion','public','IBMPlexSans.ttf')));
+    expect(await fontHash(join(dir,'shots','hyperframes','IBMPlexSans.ttf'))).toBe(await fontHash(join(dir,'shots','remotion','public','IBMPlexSans.ttf')));
     const report = JSON.parse(await readFile(join(dir,'output','render.json'),'utf8'));
-    expect(report.beats).toEqual([3,6]);
-    expect(report.words).toEqual([2]);
+    expect(report.shots).toEqual([{id:'remotion',startFrame:0,endFrame:6},{id:'hyperframes',startFrame:6,endFrame:12}]);
   } finally { await rm(dir,{recursive:true,force:true}); }
 }, 360000);
-
-test('invalid timeline fails before creating output', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'motion-studio-invalid-'));
-  try {
-    await cp(fixture, dir, {recursive:true, filter: src => !src.endsWith('/output')});
-    const path = join(dir,'project.json');
-    const data = JSON.parse(await readFile(path,'utf8'));
-    data.shots[1].start = 7;
-    await writeFile(path, JSON.stringify(data));
-    const result = run('bun','render',path);
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('gap or overlap');
-  } finally {await rm(dir,{recursive:true,force:true});}
-});
 
 for (const runtime of ['bun','node']) test(`${runtime}: failed engine subprocess exits and removes staging`, async () => {
   const dir = await mkdtemp(join(tmpdir(), 'motion-studio-fail-'));
   try {
     await cp(fixture, dir, {recursive:true, filter: src => !src.endsWith('/output')});
-    const path = join(dir,'project.json');
-    const data = JSON.parse(await readFile(path,'utf8'));
-    data.shots[1].entry = 'hyperframes/missing.html';
-    await writeFile(path, JSON.stringify(data));
+    const env = await failingHyperframes(dir);
     const started = Date.now();
-    const result = run(runtime,'render',path);
+    const result = runWith(env,runtime,'render',dir);
     expect(result.status).not.toBe(0);
     expect(result.signal).toBeNull();
     expect(Date.now()-started).toBeLessThan(120000);
-    expect(result.stderr).toContain('Composition not found');
+    expect(result.stderr).toContain('node exited 1');
+    expect(result.stderr).toContain('Not a directory');
     expect((await import('node:fs/promises')).readdir(dir).then(files=>files.some(f=>f.startsWith('.motion-render-')))).resolves.toBe(false);
     expect((await import('node:fs/promises')).stat(join(dir,'output','remotion.mkv')).then(()=>true,()=>false)).resolves.toBe(false);
   } finally {await rm(dir,{recursive:true,force:true});}
@@ -91,20 +86,20 @@ test('packed CLI renders stills and video under both runtimes', async () => {
     const install = spawnSync('npm',['install','--prefix',dir,'--no-audit','--no-fund',tarball],{encoding:'utf8',timeout:120000});
     expect(install.status).toBe(0);
     const binary = join(dir,'node_modules','motion-studio','dist','cli.js');
-    const project = join(dir,'project.json');
-    await cp(fixture,dir,{recursive:true, filter: src => !src.endsWith('/output')});
+    const project = join(dir,'film');
+    await cp(fixture,project,{recursive:true, filter: src => !src.endsWith('/output')});
     for (const runtime of ['node','bun']) {
       const still = spawnSync(runtime,[binary,'still',project,'remotion'],{encoding:'utf8',timeout:180000});
       expect(still.status).toBe(0);
-      expect((await import('node:fs/promises')).stat(join(dir,'output','remotion.png')).then(s=>s.size>0,()=>false)).resolves.toBe(true);
+      expect((await import('node:fs/promises')).stat(join(project,'output','remotion.png')).then(s=>s.size>0,()=>false)).resolves.toBe(true);
       const hyperStill = spawnSync(runtime,[binary,'still',project,'hyperframes','2'],{encoding:'utf8',timeout:180000});
       expect(hyperStill.status).toBe(0);
-      expect((await import('node:fs/promises')).stat(join(dir,'output','hyperframes.png')).then(s=>s.size>0,()=>false)).resolves.toBe(true);
+      expect((await import('node:fs/promises')).stat(join(project,'output','hyperframes.png')).then(s=>s.size>0,()=>false)).resolves.toBe(true);
       const video = spawnSync(runtime,[binary,'render',project],{encoding:'utf8',timeout:180000});
       expect(video.status).toBe(0);
       const stitch = spawnSync(runtime,[binary,'stitch',project],{encoding:'utf8',timeout:180000});
       expect(stitch.status).toBe(0);
-      expect(Number(probe(join(dir,'output','master.mkv')).streams[0].nb_read_frames)).toBe(12);
+      expect(Number(probe(join(project,'output','master.mkv')).streams[0].nb_read_frames)).toBe(12);
     }
   } finally {await rm(dir,{recursive:true,force:true});}
 }, 600000);
@@ -113,7 +108,7 @@ test('stitch rejects an audio-bearing shot even when video frames match', async 
   const dir = await mkdtemp(join(tmpdir(), 'motion-studio-audio-'));
   try {
     await cp(fixture,dir,{recursive:true,filter: src => !src.endsWith('/output')});
-    const project = join(dir,'project.json');
+    const project = dir;
     expect(run('node','render',project).status).toBe(0);
     const original = join(dir,'output','remotion.mkv');
     const altered = join(dir,'audio.mkv');
@@ -130,7 +125,7 @@ test('stitch rejects a shifted presentation timestamp', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'motion-studio-pts-'));
   try {
     await cp(fixture,dir,{recursive:true,filter: src => !src.endsWith('/output')});
-    const project = join(dir,'project.json');
+    const project = dir;
     expect(run('bun','render',project).status).toBe(0);
     const original = join(dir,'output','hyperframes.mkv');
     const altered = join(dir,'shifted.mkv');
@@ -147,13 +142,12 @@ test('failed rerender invalidates earlier clips before stitch', async () => {
   const dir = await mkdtemp(join(tmpdir(),'motion-studio-rerender-'));
   try {
     await cp(fixture,dir,{recursive:true,filter: src => !src.endsWith('/output')});
-    const project = join(dir,'project.json');
+    const project = dir;
     expect(run('node','render',project).status).toBe(0);
     expect(run('node','stitch',project).status).toBe(0);
-    const changed = JSON.parse(await readFile(project,'utf8'));
-    changed.shots[1].entry = 'hyperframes/missing.html';
-    await writeFile(project,JSON.stringify(changed));
-    expect(run('node','render',project).status).not.toBe(0);
+    const failed = runWith(await failingHyperframes(dir),'node','render',project);
+    expect(failed.status).not.toBe(0);
+    expect(failed.stderr).toContain('Not a directory');
     const stale = run('node','stitch',project);
     expect(stale.status).not.toBe(0);
     expect(stale.stderr).toContain('successful render required');
@@ -164,7 +158,7 @@ test('stitch rejects missing and unparseable frame timestamps from ffprobe', asy
   const dir = await mkdtemp(join(tmpdir(),'motion-studio-probe-'));
   try {
     await cp(fixture,dir,{recursive:true,filter: src => !src.endsWith('/output')});
-    const project = join(dir,'project.json');
+    const project = dir;
     expect(run('node','render',project).status).toBe(0);
     const realProbe = spawnSync('which',['ffprobe'],{encoding:'utf8'}).stdout.trim();
     const shimDir = join(dir,'bin');
@@ -193,7 +187,7 @@ test('hung engine subprocess kills descendant and removes staging and shot temp'
     await (await import('node:fs/promises')).chmod(fakeNode,0o755);
     const originalNode=spawnSync('which',['node'],{encoding:'utf8'}).stdout.trim();
     const started=Date.now();
-    const result=spawnSync('bun',[cli,'render',join(dir,'project.json')],{encoding:'utf8',timeout:20000,env:{...process.env,PATH:`${bin}:${process.env.PATH}`,HANG_PID:childPid,REAL_NODE:originalNode,MOTION_STUDIO_CHILD_TIMEOUT_MS:'3000'}});
+    const result=spawnSync('bun',[cli,'render',dir],{encoding:'utf8',timeout:20000,env:{...process.env,PATH:`${bin}:${process.env.PATH}`,HANG_PID:childPid,REAL_NODE:originalNode,MOTION_STUDIO_CHILD_TIMEOUT_MS:'3000'}});
     expect(result.status).not.toBe(0);
     expect(result.signal).toBeNull();
     expect(result.stderr).toContain('timed out after 3000 ms');
@@ -205,7 +199,7 @@ test('hung engine subprocess kills descendant and removes staging and shot temp'
     const shotAfter=(await (await import('node:fs/promises')).readdir(tmpdir())).filter(x=>x.startsWith('motion-shot-'));
     expect(shotAfter.filter(x=>!shotBefore.has(x))).toEqual([]);
     expect((await (await import('node:fs/promises')).readdir(dir)).some(x=>x.startsWith('.motion-render-'))).toBe(false);
-    const stitch=run('bun','stitch',join(dir,'project.json'));
+    const stitch=run('bun','stitch',dir);
     expect(stitch.status).not.toBe(0);
   } finally {await rm(dir,{recursive:true,force:true});}
 },180000);

@@ -1,1 +1,0 @@
-{"fps":30,"width":320,"height":180,"beatsSeconds":[0.09,0.2],"wordsSeconds":[0.05],"shots":[{"id":"remotion","engine":"remotion","start":0,"end":6,"entry":"remotion/index.tsx","composition":"Shot"},{"id":"hyperframes","engine":"hyperframes","start":6,"end":12,"entry":"hyperframes/index.html"}]}
