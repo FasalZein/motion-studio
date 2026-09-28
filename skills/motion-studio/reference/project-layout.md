@@ -14,6 +14,7 @@ films/<slug>/
   shots/<shot-id>/          one engine project per shot
   shots/_look/<look-id>/    one G1 look-test project per candidate; not a film shot
   stills/<gate>/            engine-rendered review frames; G1 look tests at stills/G1/<look-id>.png
+  stills/G2/sheet.png       G2 contact sheet built from the stills/G2/ frames; hashed with them
   stills/approved/<gate>-<hash8>/   immutable approval copies
   animatic.mp4
   renders/<format>/         shot clips, master picture, delivery files

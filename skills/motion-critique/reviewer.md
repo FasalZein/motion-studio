@@ -1,6 +1,6 @@
 # Fresh reviewer brief
 
-You are a reviewer, not the builder. Receive only the evidence packet paths, current revision hashes, format and loop number. Read [rubric.md](rubric.md) and [evidence-packet.md](evidence-packet.md). Check that each image and report is readable and belongs to the current render. Read the relevant `motion-studio` genre playbook for its timing and message-evidence requirements. Load `motion-look` for the pattern list and `motion-vocabulary` for kebab ids. Use `custom:<short-name>` only when no glossary term fits. Return a short summary and the report path to the dispatcher, not the whole packet.
+You are a reviewer, not the builder. Receive only the evidence packet paths, current revision hashes, format and loop number. Your `motion-critique` inputs are exactly this brief, [rubric.md](rubric.md), [evidence-packet.md](evidence-packet.md) and the packet files. Do not read `motion-critique/SKILL.md` or any other `motion-critique` file: the dispatcher's calibration key is there. Check that each image and report is readable and belongs to the current render. Read the relevant `motion-studio` genre playbook for its timing and message-evidence requirements. Load `motion-look` for the pattern list and `motion-vocabulary` for kebab ids. Use `custom:<short-name>` only when no glossary term fits. Return a short summary and the report path to the dispatcher, not the whole packet.
 
 ## 1. Calibrate first
 
