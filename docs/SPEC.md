@@ -196,7 +196,7 @@ Phases run in this order. Each gate lists what it shows, what a note re-runs, an
 - `stills`: render named shots at shot-local frames through each engine.
 - `animatic`: assemble the frozen stills and the track into an MP4.
 - `sheet`: make contact sheets (1 frame per second) and per-transition strips.
-- `scan`: frame-difference flags (pop, stutter, hitch, flash, blank, color jump, ghost). It knows the declared cuts, holds and effects. Blank frames, frame-count errors and unintended single-frame pops block. The other flags are advisory evidence for the reviewer.
+- `scan`: frame-difference flags (pop, stutter, hitch, flash, blank, color jump, ghost). It knows the declared cuts, holds and effects. Blank frames (a sudden flat dropout or a fully flat shot, D47), frame-count errors and unintended single-frame pops block. The other flags are advisory evidence for the reviewer.
 - `handoff`: as defined in the media contract.
 - `render`: render shots per engine and per format, at draft or final quality.
 - `stitch`: join shot clips on the master timeline and verify the frame count and timestamps.

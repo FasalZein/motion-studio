@@ -122,6 +122,112 @@ test(`${runtime}: an unintended single-frame pop blocks`, async () => {
   });
 });
 
+/** One picture across the seam: the slow box keeps moving 2 px per frame over the same background in both shots. */
+const continuous = ():Scene[] => Array.from({length:FRAMES},(_,f) => ({bg:[40,40,48], box:[230,200,60], x:20+2*f, blur:0}));
+
+test(`${runtime}: a pop on the first frame of a shot blocks; a seam explains no pop`, async () => {
+  // Both shots show the same picture, so frames 19 and 21 match; frame 20 (shot hyperframes, local 0) is wrong.
+  const scenes = continuous();
+  scenes[CUT] = {...scenes[CUT], x:scenes[CUT].x+100};
+  await withFilm(scenes.map(draw), async dir => {
+    const result = run(dir);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe('error: 16:9: pop at frame 20 (shot hyperframes, local frame 0)\n');
+  }, s => {delete s.shots[0].holds;});
+});
+
+test(`${runtime}: a repeated frame at a cut is a stutter; at a handoff seam it is context`, async () => {
+  // Shot hyperframes opens on the last frame of shot remotion, then the motion continues.
+  const frames = continuous().map(draw);
+  frames[CUT] = frames[CUT-1];
+  await withFilm(frames, async dir => {
+    const result = run(dir);
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('warning: 16:9: stutter at frame 20 (shot hyperframes, local frame 0)\n');
+  }, s => {delete s.shots[0].holds;});
+  await withFilm(frames, async dir => {
+    const result = run(dir);
+    expect(result.stderr).toBe('');
+    expect((await report(dir)).flags.map((f:Json) => [f.kind,f.frame,f.context])).toEqual([['stutter',CUT,'handoff seam into shot hyperframes']]);
+  }, s => {delete s.shots[0].holds; s.shots[0].exit = 'handoff'; s.shots[1].entry = 'handoff';});
+});
+
+test(`${runtime}: a flat opening and a fade in from a flat color are advisory`, async () => {
+  // Frames 0-3 show only the background, then the content cuts in.
+  const opening = cleanFrames();
+  for (let f=0;f<4;f++) opening[f] = draw({bg:[40,40,48], box:[40,40,48], x:0, blur:0});
+  await withFilm(opening, async dir => {
+    const result = run(dir);
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('warning: 16:9: flat at frame 0 (4 frames) (shot remotion, local frame 0)\n');
+  });
+  // Shot hyperframes cuts to black for frames 20-24, then a still box fades in over 12 frames: the flat run has a
+  // hard edge into it but a soft edge out of it, so it is not a sudden dropout.
+  const fade = cleanFrames();
+  const black:RGB = [0,0,0], still = {bg:black, box:[240,240,240] as RGB, x:140, blur:0};
+  for (let f=CUT;f<FRAMES;f++) fade[f] = blend(draw(still),draw({...still, box:black}),Math.min(1,Math.max(0,(f-24)/12)));
+  await withFilm(fade, async dir => {
+    const result = run(dir);
+    expect(result.status).toBe(0);
+    expect(defects(await report(dir))).toEqual([['flat',CUT,'hyperframes',0,'advisory']]);
+  });
+});
+
+test(`${runtime}: a sudden flat dropout and a fully flat shot block`, async () => {
+  // Frames 30-33 go black between moving frames, with hard edges in and out.
+  const dropout = cleanFrames();
+  for (let f=30;f<34;f++) dropout[f] = draw({bg:[0,0,0], box:[0,0,0], x:0, blur:0});
+  await withFilm(dropout, async dir => {
+    const result = run(dir);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe('error: 16:9: blank at frame 30 (4 frames) (shot hyperframes, local frame 10)\n');
+  });
+  // An effect explains a run only when the run lies inside it: an effect over frames 30-31 does not explain 30-33.
+  await withFilm(dropout, async dir => {
+    const result = run(dir);
+    expect(result.status).toBe(1);
+    expect(defects(await report(dir))).toEqual([['blank',30,'hyperframes',10,'blocking']]);
+  }, s => {s.shots[1].effects = [{start:10, frames:2, term:'custom:black frame'}];});
+  // Shot hyperframes rendered nothing: all its frames are the flat background, up to the end of the film.
+  const empty = cleanFrames();
+  for (let f=CUT;f<FRAMES;f++) empty[f] = draw({bg:[30,60,110], box:[30,60,110], x:0, blur:0});
+  await withFilm(empty, async dir => {
+    const result = run(dir);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe('error: 16:9: blank at frame 20 (20 frames) (shot hyperframes, local frame 0)\n');
+  });
+});
+
+test(`${runtime}: one wrong frame blocks as a pop, while a one-frame brightness flash stays advisory`, async () => {
+  // Frame 12 is a bright frame from another scene, inside the undeclared hold of shot remotion.
+  const wrong = cleanFrames();
+  wrong[12] = draw({bg:[220,220,200], box:[20,20,20], x:200, blur:0});
+  await withFilm(wrong, async dir => {
+    const result = run(dir);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe('error: 16:9: pop at frame 12 (shot remotion, local frame 12)\n');
+  });
+  const flash = cleanFrames();
+  flash[12] = blend(draw({bg:[255,255,255], box:[255,255,255], x:0, blur:0}),flash[12],0.6);
+  await withFilm(flash, async dir => {
+    const result = run(dir);
+    expect(result.status).toBe(0);
+    expect(defects(await report(dir))).toEqual([['flash',12,'remotion',12,'advisory']]);
+  });
+});
+
+test(`${runtime}: a small one-frame pop during fast motion is an advisory cell pop`, async () => {
+  // A 20x20 white square appears for frame 30 only, away from the moving box.
+  const frames = cleanFrames();
+  frames[30] = Buffer.from(frames[30]);
+  for (let y=20;y<40;y++) for (let x=260;x<280;x++) frames[30].set([255,255,255],(y*W+x)*3);
+  await withFilm(frames, async dir => {
+    const result = run(dir);
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('warning: 16:9: cell-pop at frame 30 (shot hyperframes, local frame 10)\n');
+  });
+});
+
 test(`${runtime}: a frame-count error blocks`, async () => withFilm(cleanFrames().slice(0,FRAMES-1), async dir => {
   const result = run(dir);
   expect(result.status).toBe(1);
