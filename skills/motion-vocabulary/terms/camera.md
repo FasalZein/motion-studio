@@ -2,6 +2,9 @@
 
 For code-drawn films, a camera often means one transformed world wrapper rather than a physical lens.
 
+- **Locked off** (`locked-off`) - The viewpoint does not move; only elements inside the frame change.
+  - HF: Keep the `.world` wrapper untransformed for the whole shot; animate only the elements.
+  - Remotion: Apply no frame-driven transform to the scene wrapper; drive motion only on child elements.
 - **Push-in** (`push-in`) - The viewpoint moves closer to one subject without changing the target mid-move.
   - HF: `coordinate-target-zoom` scales and counter-translates the subject's world wrapper.
   - Remotion: `interpolate()` wrapper scale and translation toward the subject over a fixed frame range.
