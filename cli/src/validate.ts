@@ -1,4 +1,4 @@
-import {readFile, stat} from 'node:fs/promises';
+import {readFile, realpath, stat} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {isAbsolute, join, relative, resolve} from 'node:path';
 import {chosenFormats, gateIds, parseProject, type Format, type Project, type Shot} from './project.js';
@@ -129,14 +129,40 @@ const checkAssetIds:Check = ({storyboard,ledger}) => {
   return errorsOnly(errors);
 };
 
+/** True when the real path of `full` (symbolic links followed) is inside the real path of the film folder. */
+export async function realInside(root:string, full:string):Promise<boolean> {
+  const rel = relative(await realpath(root),await realpath(full));
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+}
+
+/** State of one ledger file. `list` prints it and `validate` turns every state but `ok` into an error. */
+export type LedgerFileState = {state:'ok'}|{state:'outside'}|{state:'links outside'}|{state:'missing'}|{state:'altered'; actual:string};
+/**
+ * Checks a ledger `localPath`: inside the film folder by name and, after following symbolic links, by real path,
+ * an existing file, and the recorded SHA-256. A link to a file outside the film is not frozen in the film.
+ */
+export async function ledgerFileState(root:string, {localPath,sha256}:{localPath:string; sha256:string}):Promise<LedgerFileState> {
+  const full = inside(root,localPath);
+  if (!full) return {state:'outside'};
+  if (!await isFile(full)) return {state:'missing'};
+  if (!await realInside(root,full)) return {state:'links outside'};
+  const actual = createHash('sha256').update(await readFile(full)).digest('hex');
+  return actual === sha256 ? {state:'ok'} : {state:'altered', actual};
+}
+
 const checkLedgerFiles:Check = async ({root,ledger}) => {
   const errors:string[] = [];
   for (const asset of ledger.assets) {
-    const full = inside(root,asset.localPath);
-    if (!full) {errors.push(`ledger asset ${asset.id}: path ${asset.localPath} is outside the film folder`); continue;}
-    if (!await isFile(full)) {errors.push(`ledger asset ${asset.id}: file ${asset.localPath} not found`); continue;}
-    const actual = createHash('sha256').update(await readFile(full)).digest('hex');
-    if (actual !== asset.sha256) errors.push(`ledger asset ${asset.id}: sha256 of ${asset.localPath} is ${actual}, ledger records ${asset.sha256}`);
+    const file = await ledgerFileState(root,asset);
+    const where = `ledger asset ${asset.id}:`;
+    switch (file.state) {
+      case 'ok': break;
+      case 'outside': errors.push(`${where} path ${asset.localPath} is outside the film folder`); break;
+      case 'links outside': errors.push(`${where} path ${asset.localPath} is a link to a file outside the film folder`); break;
+      case 'missing': errors.push(`${where} file ${asset.localPath} not found`); break;
+      case 'altered': errors.push(`${where} sha256 of ${asset.localPath} is ${file.actual}, ledger records ${asset.sha256}`); break;
+      default: file satisfies never;
+    }
   }
   return errorsOnly(errors);
 };

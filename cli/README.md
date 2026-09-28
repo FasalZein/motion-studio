@@ -13,6 +13,9 @@ Gate inputs are data in `schema/gate-inputs.json` (D43). Each gate hashes its ow
 
 - `beats <film-dir>` proposes a beat grid from the `audio.track` file and writes the `audio` fields of `storyboard.json` with `grid: "detected"`. `beats <film-dir> --corrected <grid.json>` or `--imported <grid.json>` applies a grid from the creator instead. See "Beat grid" below.
 
+- `doctor` reports whether this machine can run the pipeline: Node (22 or later), ffmpeg, ffprobe, HyperFrames, Chromium (the Chrome that `hyperframes doctor --json` finds; its update check is off), Remotion, the heygen CLI (0.3.0 or later, signed in by `heygen auth status`) and the image provider. It prints one line per item and exits 1 when a required tool (all but heygen and the image provider) is missing. It installs, downloads and signs in nothing, and it never prints keys or account data: for heygen it shows only the credential type and expiry.
+- `assets <film-dir> list | add | resolve` manages `ledger.json`; see "Asset ledger" below.
+
 Expected failures (usage, invalid project, init refusal, media checks) print `error: <message>` lines without a stack trace.
 - `render <film-dir>`, `stitch <film-dir>` and `still <film-dir> <shot-id> [local-frame]` read the shots from `storyboard.json`. They validate the project first and write nothing when it is invalid.
 - `handoff <film-dir> [<shot-a> <shot-b>]` checks every seam declared `exit: handoff`, or one explicit adjacent pair. `mix <film-dir>` builds the master audio. Both need a successful `render` and `stitch`; see below.
@@ -36,6 +39,21 @@ A handoff compares frames for identity, so the moving element must land on a sti
 `mix` owns the film audio at 48 kHz stereo. It reads `audio.track` and every shot's `soundCues` from `storyboard.json` and their files from `ledger.json`. It trims or pads the track to the film. For each cue it finds the SFX's largest absolute sample and places it on the first sample of film frame `eventFrame + peakOffsetFrames` (`eventFrame` is a film frame inside the shot; `peakOffsetFrames` is the planned peak offset, usually 0). Lead-in before frame 0 and tails after the end are cut. The optional cue field `gainDb` (-60 to 24, default 0) changes that SFX's level before the sum. The sum gets one gain to reach -14 LUFS (ffmpeg `ebur128`). The mix fails if the result would clip (then lower a cue with `gainDb`), is silent or shorter than 400 ms, or measures outside -14 +/- 0.5 LUFS. It writes `mix.wav` (PCM 24-bit), `final.mkv` (the master video, stream-copied, with that audio) and `sync.json`. The sync report measures the delivered audio: integrated LUFS, and for each cue the frame of the loudest sample within 3 frames of its target and its offset from `eventFrame`. It also lists every cut seam with its nearest beat frame, the offset in frames and any `offBeatCut` reason. A failed mix removes earlier mix outputs.
 
 `fixtures/handoff/` is a three-shot film: a Remotion title slides in and holds on the HyperFrames title's pose (a matching handoff), then the HyperFrames title hands off to a shot whose title starts higher (the intentional mismatch). `fixtures/two-engine/` cuts on the beat and places an SFX peak on the cut at frame 6. `fixtures/two-engine/audio/generate.sh` regenerates its audio with ffmpeg; the script lists their construction.
+
+## Asset ledger
+
+`assets` needs only a schema-valid project, because assets come before shots.
+
+- `assets <film-dir> add <id> --file <path> --type <type> --source-kind <kind> --source <url-or-generator> --license <known|unknown|restricted> [--license-name <name>] --evidence <text> [--provider-asset-id <id>] [--shot <shot-id>]...` records a file from a website capture, stock, code, data or any other source kind. The file must be a regular file, not a symbolic link. A file inside the film folder is recorded in place, unless its real path leads outside the film; a file outside it is copied to `assets/<id><ext>` through a hidden temp file and a rename, so a crash never leaves a truncated asset file. The CLI adds the film-relative path and the SHA-256. A `known` license needs `--license-name`. For data, put the retrieval date and field in `--evidence`.
+- `assets <film-dir> resolve <id> --provider <name> --type <type> --intent <text> [--shot <shot-id>]...` asks a provider for a file and records it with the provider's provenance. The provider writes into a hidden `.motion-assets-*` folder of the film; the CLI moves the file to `assets/<id><ext>`. A reply that names a symbolic link is refused. A missing provider is an error, never a switch to another source. Ask the creator before a paid generation.
+- `assets <film-dir> list` prints each entry (source, provider id, license and evidence, path, SHA-256, shots) with the file state `ok`, `missing`, `altered`, `outside the film folder` or `links outside the film folder`, then `unresolved rights:` with every `unknown` or `restricted` entry (D37).
+
+Every new entry is checked against `schema/ledger.schema.json` before any file moves, and `ledger.json` is written through a temp file and a rename. So a refused entry or a provider failure leaves no ledger entry, no file under `assets/` and no staging folder. `validate` checks every ledger path and hash, and rejects a path whose real path (links followed) is outside the film folder.
+
+The image provider is a command named by `MOTION_STUDIO_IMAGE_PROVIDER` (source kind `ai-image`). The CLI ships no built-in paid provider. The command must support:
+
+- `<command> ready`: exit 0 when it can work. It must not start paid work, because `doctor` runs it. Its output is not printed.
+- `<command> resolve --type <type> --intent <text> --out <dir>`: write one file into `<dir>`, print `{"file":"<name in dir>","sourceUrlOrGenerator":"...","providerAssetId":"..." or null,"license":{"status":"known|unknown|restricted","name":"..." or null,"evidence":"..."}}` on stdout and exit 0. Any other exit, invalid JSON, a missing file or a path outside `<dir>` is a provider failure.
 
 ## Beat grid
 
