@@ -1,0 +1,11 @@
+# motion-studio CLI: two-engine media seam
+
+Requires Node 22+, ffmpeg, ffprobe, and Chromium. Develop with Bun 1.4.0. Install with `npm install`, then run `npm run build`. For a packaged install, run `npm pack` and install the tarball in a project.
+
+This first CLI slice supports `render <project.json>`, `stitch <project.json>`, and `still <project.json> <shot-id> [local-frame]`. Outputs live in the project's `output/` directory. `still` renders a PNG at the given zero-based shot-local frame (default 0). `render` creates video-only FFV1 Matroska clips and a `render.json` timing report. `stitch` checks the clips and creates the video-only master. Handoff comparison and mixing are separate work.
+
+The project JSON has `fps` (24, 25, 30 or 60), `width`, `height`, `beatsSeconds`, `wordsSeconds`, and contiguous `shots`. Each shot has an `id`, `engine` (`remotion` or `hyperframes`), `start` and `end` frames (half-open), and a project-relative `entry`. Remotion shots also name their `composition`. Remotion composition dimensions, frame rate and duration must equal the project and shot range. HyperFrames compositions set their dimensions and duration in HTML. Beat and word seconds round to the nearest frame, with `Math.round` on exact ties. See `fixtures/two-engine/project.json` for a working example.
+
+Both engines produce PNG frame sequences, then ffmpeg encodes the same lossless FFV1/yuv444p/BT.709 intermediate. The CLI verifies frame count, dimensions, color tags and ordered presentation timestamps in both clips and the stitched master. Matroska timestamps have millisecond precision, so checks allow 0.6 ms rounding error. Engine audio is not included. The fixture includes one OFL-licensed IBM Plex Sans local font and the same color patch in both compositions; the font license is in `fixtures/two-engine/fonts/OFL.txt`.
+
+Run `npm run typecheck`, `npm run build`, `npm pack`, and `bun test test/cli.test.ts` for the process-level fixture checks under both Node and Bun. Remotion's company license is required for companies with more than three people.
