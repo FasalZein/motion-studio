@@ -1,5 +1,5 @@
 import {spawn} from 'node:child_process';
-import {CliError, type LedgerAsset, type SourceKind} from './project.js';
+import {CliError, licenseStatuses, type LedgerAsset, type SourceKind} from './project.js';
 
 /** Result of one child process: it ran to an exit code, or it could not run or did not finish in time. */
 export type RunResult = {kind:'exited'; code:number; stdout:string; stderr:string}|{kind:'failed'; reason:string};
@@ -50,7 +50,6 @@ export const IMAGE_PROVIDER_ENV = 'MOTION_STUDIO_IMAGE_PROVIDER';
 /** Readiness checks are local probes; a provider that takes longer counts as not ready. */
 const READY_TIMEOUT_MS = 20_000;
 
-const licenseStatuses = ['known','unknown','restricted'] as const;
 const isObject = (v:unknown):v is Record<string,unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 /** Parses the provider's JSON reply. The whole ledger entry is checked against the ledger schema later. */
 function parseProvided(value:unknown):ProvidedAsset|string {

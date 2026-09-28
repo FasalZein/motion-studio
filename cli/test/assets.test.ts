@@ -33,7 +33,8 @@ async function script(path:string, body:string) {
 /**
  * A local fake image provider. `resolve` writes `image.png` holding `PNG:<intent>` into --out, then acts on FAKE_MODE:
  * ok prints a valid reply; fail exits 1; badjson prints non-JSON; noname claims a known license without a name;
- * ghost names a file it did not write; escape names a path outside --out.
+ * ghost names a file it did not write; escape names a path outside --out; link replies with image.png replaced by a
+ * symbolic link to a file beside it.
  */
 const fakeProvider = (dir:string) => script(join(dir,'provider'),`
 case "$1" in
@@ -53,6 +54,8 @@ case "$FAKE_MODE" in
   noname) echo '{"file":"image.png","sourceUrlOrGenerator":"fake","providerAssetId":null,"license":{"status":"known","name":null,"evidence":"x"}}';;
   ghost) echo '{"file":"other.png","sourceUrlOrGenerator":"fake","providerAssetId":null,"license":{"status":"unknown","name":null,"evidence":"x"}}';;
   escape) echo '{"file":"../ledger.json","sourceUrlOrGenerator":"fake","providerAssetId":null,"license":{"status":"unknown","name":null,"evidence":"x"}}';;
+  link) mv "$out/image.png" "$out/real.png"; ln -s "$out/real.png" "$out/image.png"
+    echo '{"file":"image.png","sourceUrlOrGenerator":"fake","providerAssetId":null,"license":{"status":"unknown","name":null,"evidence":"x"}}';;
 esac`);
 
 test('assets add records website, code and data files and lists them with rights and file state', async () => {
@@ -129,6 +132,40 @@ test('assets add refuses bad entries without changing the ledger or leaving a fi
   });
 });
 
+test('a link inside the film to a file outside it is refused by add and by validate', async () => {
+  for (const runtime of runtimes) await withFilm(async (dir,film) => {
+    const outside = join(dir,'outside');
+    await mkdir(outside);
+    await writeFile(join(outside,'logo.svg'),'<svg id="outside"/>');
+    await symlink(join(outside,'logo.svg'),join(film,'assets','logo.svg'));
+    // A folder link: the file name is inside the film, its real path is not.
+    await symlink(outside,join(film,'data'));
+    const ledger = await readFile(join(film,'ledger.json'),'utf8');
+    const base = ['--type','logo','--source-kind','website','--source','https://example.com','--license','unknown','--evidence','press kit page'];
+    const fileLink = join(film,'assets','logo.svg');
+    const folderLink = join(film,'data','logo.svg');
+    for (const [file,message] of [
+      [fileLink,`error: assets: file ${fileLink} is a symbolic link, not a regular file`],
+      [folderLink,`error: assets: file ${folderLink} is inside the film folder by name, but its real path is outside it`],
+    ]) {
+      const result = run(runtime,['assets',film,'add','logo','--file',file,...base]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(message);
+      expect(await readFile(join(film,'ledger.json'),'utf8')).toBe(ledger);
+    }
+    // A hand-written entry with such a path fails validate, and list shows why.
+    const entry = (id:string, localPath:string) => ({id, type:'logo', sourceKind:'website', sourceUrlOrGenerator:'https://example.com', providerAssetId:null, license:{status:'unknown', name:null, evidence:'x'}, localPath, sha256:sha('<svg id="outside"/>'), shots:[]});
+    await writeFile(join(film,'ledger.json'),JSON.stringify({version:'0', assets:[entry('file-link','assets/logo.svg'),entry('folder-link','data/logo.svg')]}));
+    const invalid = run(runtime,['validate',film]);
+    expect(invalid.status).toBe(1);
+    expect(invalid.stderr).toContain('error: ledger asset file-link: path assets/logo.svg is a link to a file outside the film folder');
+    expect(invalid.stderr).toContain('error: ledger asset folder-link: path data/logo.svg is a link to a file outside the film folder');
+    const listed = run(runtime,['assets',film,'list']).stdout.split('\n');
+    expect(listed[0].endsWith(', file links outside the film folder')).toBe(true);
+    expect(listed[1].endsWith(', file links outside the film folder')).toBe(true);
+  });
+});
+
 test('assets resolve freezes a provider file and records its provenance', async () => {
   for (const runtime of runtimes) await withFilm(async (dir,film) => {
     const provider = await fakeProvider(dir);
@@ -157,6 +194,7 @@ test('a provider failure leaves no ledger entry, no asset file and no staging fo
       [{[PROVIDER_ENV]:provider, FAKE_MODE:'noname'},'error: ledger.json /assets/0/license: a known license needs a non-empty name'],
       [{[PROVIDER_ENV]:provider, FAKE_MODE:'ghost'},'error: image provider: file other.png was not written'],
       [{[PROVIDER_ENV]:provider, FAKE_MODE:'escape'},'error: image provider: "file" must be a file name inside the output folder, got ../ledger.json'],
+      [{[PROVIDER_ENV]:provider, FAKE_MODE:'link'},'error: image provider: file image.png is a symbolic link, not a regular file'],
       [{[PROVIDER_ENV]:join(dir,'no-such-provider')},'error: image provider failed: not found'],
       [{[PROVIDER_ENV]:''},'error: assets: provider image is not configured (configured: none); run motion-studio doctor'],
     ];

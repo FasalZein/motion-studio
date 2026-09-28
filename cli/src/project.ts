@@ -33,10 +33,12 @@ export type Critique = {
   worstIssues:{shot:string; frame:number; term:string; issue:string; repair:string}[];
   stillMatches:{shot:string; frame:number; status:'match'|'drift'|'departure'; reason:string}[];
 };
-export type SourceKind = 'heygen'|'website'|'stock'|'code'|'ai-image'|'data'|'video-model';
+export const sourceKinds = ['heygen','website','stock','code','ai-image','data','video-model'] as const;
+export type SourceKind = typeof sourceKinds[number];
+export const licenseStatuses = ['known','unknown','restricted'] as const;
 export type LedgerAsset = {
   id:string; type:string; sourceKind:SourceKind; sourceUrlOrGenerator:string; providerAssetId:string|null;
-  license:{status:'known'|'unknown'|'restricted'; name:string|null; evidence:string};
+  license:{status:typeof licenseStatuses[number]; name:string|null; evidence:string};
   localPath:string; sha256:string; shots:string[];
 };
 export type Ledger = {version:'0'; assets:LedgerAsset[]};

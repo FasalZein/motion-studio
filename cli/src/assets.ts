@@ -1,15 +1,12 @@
-import {constants, copyFile, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile} from 'node:fs/promises';
+import {copyFile, lstat, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {basename, extname, isAbsolute, join, relative, resolve, sep} from 'node:path';
-import {CliError, schemaErrors, type Ledger, type LedgerAsset, type Project, type SourceKind} from './project.js';
+import {CliError, licenseStatuses, schemaErrors, sourceKinds, type Ledger, type LedgerAsset, type Project} from './project.js';
 import type {AssetProvider} from './providers.js';
+import {ledgerFileState, realInside, type LedgerFileState} from './validate.js';
 
 export const assetsUsage = 'usage: motion-studio assets <film-dir> list | assets <film-dir> add <id> --file <path> --type <type> --source-kind <kind> --source <url-or-generator> --license <known|unknown|restricted> [--license-name <name>] --evidence <text> [--provider-asset-id <id>] [--shot <shot-id>]... | assets <film-dir> resolve <id> --provider <name> --type <type> --intent <text> [--shot <shot-id>]...';
 
-const sourceKinds:SourceKind[] = ['heygen','website','stock','code','ai-image','data','video-model'];
-const licenseStatuses = ['known','unknown','restricted'] as const;
-
-const isFile = (path:string) => stat(path).then(s => s.isFile(),() => false);
 const sha256 = async (path:string) => createHash('sha256').update(await readFile(path)).digest('hex');
 /** The film-relative path with `/` separators, or null when `full` is not inside the film folder. */
 function filmPath(root:string, full:string):string|null {
@@ -46,17 +43,33 @@ function required(flags:Flags, name:string):string {
 
 /** The entry fields a caller supplies; the CLI adds the local path and the content hash. */
 type Draft = Omit<LedgerAsset,'localPath'|'sha256'>;
+/** The file to freeze, with the prefix and name its error messages use and the wording for a missing file. */
+type Source = {path:string; label:string; shown:string; missing:string};
 
 /**
- * Freezes one file and appends its ledger entry. A file outside the film folder is copied (or moved, for a
+ * Accepts only a regular file. A symbolic link is refused: moving a link freezes nothing, and a link can point
+ * outside the film or into a staging folder that is deleted afterwards.
+ */
+async function requireRegularFile({path,label,shown,missing}:Source):Promise<void> {
+  const info = await lstat(path).catch(() => null);
+  if (info === null) throw new CliError(`${label}: file ${shown} ${missing}`);
+  if (info.isSymbolicLink()) throw new CliError(`${label}: file ${shown} is a symbolic link, not a regular file`);
+  if (!info.isFile()) throw new CliError(`${label}: file ${shown} is not a regular file`);
+}
+
+/**
+ * Freezes one regular file and appends its ledger entry. A file outside the film folder is copied (or moved, for a
  * provider's staged file) to `assets/<id><ext>`; a file inside it is recorded in place. The new ledger is checked
  * against the schema before any file moves, and a failed ledger write removes the frozen copy, so a failure leaves
  * neither a partial entry nor a stray file.
  */
-async function record(project:Project, draft:Draft, source:string, mode:'copy'|'move'):Promise<LedgerAsset> {
+async function record(project:Project, draft:Draft, src:Source, mode:'copy'|'move'):Promise<LedgerAsset> {
   const {root,ledger} = project;
-  if (!await isFile(source)) throw new CliError(`assets: file ${source} not found`);
+  const source = src.path;
+  await requireRegularFile(src);
   const inPlace = mode === 'copy' ? filmPath(root,resolve(source)) : null;
+  // A folder link inside the film can still lead outside it; such a file is not frozen in the film.
+  if (inPlace !== null && !await realInside(root,source)) throw new CliError(`${src.label}: file ${src.shown} is inside the film folder by name, but its real path is outside it`);
   const target = inPlace === null ? join(root,'assets',`${draft.id}${extname(source)}`) : resolve(root,inPlace);
   const localPath = filmPath(root,target)!;
   const asset:LedgerAsset = {...draft, localPath, sha256:await sha256(source)};
@@ -70,9 +83,16 @@ async function record(project:Project, draft:Draft, source:string, mode:'copy'|'
     await writeLedger(root,next);
     return asset;
   }
-  if (await stat(target).then(() => true,() => false)) throw new CliError(`assets: ${localPath} already exists; choose another id or record that file in place`);
+  if (await stat(target).then(() => true,() => false)) throw new CliError(`assets: ${localPath} already exists; choose another id`);
   await mkdir(join(root,'assets'),{recursive:true});
-  if (mode === 'copy') await copyFile(source,target,constants.COPYFILE_EXCL);
+  if (mode === 'copy') {
+    // Copy to a hidden name beside the target, then rename, so a crash never leaves a truncated asset file.
+    // Gates never hash hidden files; a retry overwrites a leftover temp file.
+    const temp = join(root,'assets',`.${basename(target)}.tmp`);
+    try {await copyFile(source,temp); await rename(temp,target);}
+    catch (e) {await rm(temp,{force:true}); throw e;}
+  }
+  // The staging folder is inside the film, so this rename is atomic.
   else await rename(source,target);
   try {await writeLedger(root,next);}
   catch (e) {await rm(target,{force:true}); throw e;}
@@ -93,12 +113,13 @@ async function add(project:Project, [idArg,...rest]:string[]):Promise<string[]> 
   if (!sourceKind) throw new CliError(`assets: --source-kind must be one of ${sourceKinds.join(', ')}`);
   const status = licenseStatuses.find(s => s === required(flags,'license'));
   if (!status) throw new CliError(`assets: --license must be one of ${licenseStatuses.join(', ')}`);
+  const file = required(flags,'file');
   const asset = await record(project,{
     id, type:required(flags,'type'), sourceKind, sourceUrlOrGenerator:required(flags,'source'),
     providerAssetId:flags.values.get('provider-asset-id') ?? null,
     license:{status, name:flags.values.get('license-name') ?? null, evidence:required(flags,'evidence')},
     shots:flags.shots,
-  },required(flags,'file'),'copy');
+  },{path:file, label:'assets', shown:file, missing:'not found'},'copy');
   return [`added ${describe(asset,'ok')}`];
 }
 
@@ -116,24 +137,17 @@ async function resolveAsset(project:Project, [idArg,...rest]:string[], providers
   try {
     const provided = await provider.resolve({type,intent,outDir:staging});
     if (basename(provided.file) !== provided.file || provided.file.startsWith('.')) throw new CliError(`${name} provider: "file" must be a file name inside the output folder, got ${provided.file}`);
-    const staged = join(staging,provided.file);
-    if (!await isFile(staged)) throw new CliError(`${name} provider: file ${provided.file} was not written`);
     const asset = await record(project,{
       id, type, sourceKind:provider.sourceKind, sourceUrlOrGenerator:provided.sourceUrlOrGenerator,
       providerAssetId:provided.providerAssetId, license:provided.license, shots:flags.shots,
-    },staged,'move');
+    },{path:join(staging,provided.file), label:`${name} provider`, shown:provided.file, missing:'was not written'},'move');
     return [`added ${describe(asset,'ok')}`];
   } finally {await rm(staging,{recursive:true,force:true});}
 }
 
-type FileState = 'ok'|'missing'|'altered'|'outside the film folder';
-async function fileState(root:string, asset:LedgerAsset):Promise<FileState> {
-  const full = resolve(root,asset.localPath);
-  if (isAbsolute(asset.localPath) || filmPath(root,full) === null) return 'outside the film folder';
-  if (!await isFile(full)) return 'missing';
-  return await sha256(full) === asset.sha256 ? 'ok' : 'altered';
-}
-function describe(a:LedgerAsset, state:FileState):string {
+/** The file state word `list` prints; `validate` reports the same states as errors. */
+const stateWords = {ok:'ok', missing:'missing', altered:'altered', outside:'outside the film folder', 'links outside':'links outside the film folder'} satisfies Record<LedgerFileState['state'],string>;
+function describe(a:LedgerAsset, state:string):string {
   const license = `${a.license.status}${a.license.name ? ` ${a.license.name}` : ''} (evidence: ${a.license.evidence})`;
   return [`${a.id}: ${a.type}, ${a.sourceKind} ${a.sourceUrlOrGenerator}`,
     ...(a.providerAssetId === null ? [] : [`provider id ${a.providerAssetId}`]),
@@ -143,7 +157,7 @@ function describe(a:LedgerAsset, state:FileState):string {
 
 async function list({root,ledger}:Project):Promise<string[]> {
   const lines = ledger.assets.length ? [] : ['ledger.json has no assets'];
-  for (const asset of ledger.assets) lines.push(describe(asset,await fileState(root,asset)));
+  for (const asset of ledger.assets) lines.push(describe(asset,stateWords[(await ledgerFileState(root,asset)).state]));
   // D37: the final render waits until the user accepts or swaps each of these.
   const unresolved = ledger.assets.filter(a => a.license.status !== 'known').map(a => `${a.id} (${a.license.status})`);
   lines.push(`unresolved rights: ${unresolved.join(', ') || 'none'}`);
