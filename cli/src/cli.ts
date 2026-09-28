@@ -12,7 +12,9 @@ type Project = {fps:24|25|30|60; width:number; height:number; beatsSeconds:numbe
 const rates = [24,25,30,60];
 const require = createRequire(import.meta.url);
 const hfBin = resolve(dirname(require.resolve('hyperframes/package.json')), 'bin/hyperframes.mjs');
-const timeoutMs = 120_000;
+const configuredTimeout = process.env.MOTION_STUDIO_CHILD_TIMEOUT_MS;
+const timeoutMs = configuredTimeout === undefined ? 120_000 : Number(configuredTimeout);
+if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw Error('invalid child timeout');
 
 function frame(seconds:number, fps:number):number {
   if (!Number.isFinite(seconds) || seconds < 0) throw Error('time must be a non-negative finite number');
@@ -39,12 +41,14 @@ async function command(bin:string,args:string[],cwd?:string):Promise<string> {
     let output = '';
     child.stdout.on('data',d => { output += d; });
     child.stderr.on('data',d => { output += d; });
+    let timedOut = false;
     const timer = setTimeout(() => {
+      timedOut = true;
       if (child.pid && process.platform !== 'win32') { try {process.kill(-child.pid, 'SIGKILL');} catch {} }
       else child.kill('SIGKILL');
     },timeoutMs);
     child.on('error',err => {clearTimeout(timer); fail(err);});
-    child.on('close',code => {clearTimeout(timer); code === 0 ? ok(output) : fail(Error(`${bin} exited ${code}: ${output.slice(-3500)}`));});
+    child.on('close',code => {clearTimeout(timer); code === 0 && !timedOut ? ok(output) : fail(Error(timedOut ? `${bin} timed out after ${timeoutMs} ms` : `${bin} exited ${code}: ${output.slice(-3500)}`));});
   });
 }
 async function verify(path:string, expected:number, fps:number, width:number, height:number) {
@@ -53,7 +57,10 @@ async function verify(path:string, expected:number, fps:number, width:number, he
   const data = JSON.parse(await command('ffprobe',['-v','error','-select_streams','v:0','-count_frames','-show_entries','stream=nb_read_frames,width,height,codec_name,pix_fmt,color_space,color_transfer,color_primaries:frame=best_effort_timestamp_time','-show_frames','-of','json',path]));
   const video = data.streams?.[0];
   if (Number(video?.nb_read_frames) !== expected || data.frames?.length !== expected || video.width !== width || video.height !== height || video.codec_name !== 'ffv1' || video.pix_fmt !== 'yuv444p' || video.color_space !== 'bt709' || video.color_transfer !== 'bt709' || video.color_primaries !== 'bt709') throw Error(`media contract failed: ${path}`);
-  for (let i=0;i<expected;i++) if (Math.abs(Number(data.frames[i].best_effort_timestamp_time) - i/fps) > .0006) throw Error(`timestamp mismatch: ${path} frame ${i}`);
+  for (let i=0;i<expected;i++) {
+    const timestamp = data.frames[i].best_effort_timestamp_time;
+    if (timestamp === undefined || timestamp === null || timestamp === '' || !Number.isFinite(Number(timestamp)) || Math.abs(Number(timestamp) - i/fps) > .0006) throw Error(`timestamp mismatch: ${path} frame ${i}`);
+  }
 }
 async function renderShot(shot:Shot, project:Project, base:string, output:string) {
   const temp = await mkdtemp(join(tmpdir(),'motion-shot-'));
@@ -91,6 +98,11 @@ async function main() {
     if (!shots.length) throw Error('unknown shot');
     const stillFrame = action === 'still' ? Number(process.argv[5] ?? '0') : 0;
     if (!Number.isInteger(stillFrame) || stillFrame < 0 || (action === 'still' && stillFrame >= shots[0].end-shots[0].start)) throw Error('still frame outside shot');
+    // The success marker must be absent throughout a rerender, even if old clips remain.
+    if (action === 'render') {
+      await rm(join(output,'render.json'),{force:true});
+      await rm(join(output,'master.mkv'),{force:true});
+    }
     const staging = await mkdtemp(join(base,'.motion-render-'));
     try {
       for (const shot of shots) await renderShot(shot,project,base,join(staging,`${shot.id}.mkv`));
@@ -98,11 +110,14 @@ async function main() {
         const shot = shots[0];
         await command('ffmpeg',['-hide_banner','-loglevel','error','-y','-i',join(staging,`${shot.id}.mkv`),'-vf',`select=eq(n\\,${stillFrame})`,'-vsync','0','-frames:v','1',join(staging,`${shot.id}.png`)]);
         await rm(join(staging,`${shot.id}.mkv`));
-      } else await writeFile(join(staging,'render.json'), JSON.stringify({beats:project.beatsSeconds.map(t => frame(t,project.fps)),words:project.wordsSeconds.map(t => frame(t,project.fps))}));
+      }
       await mkdir(output,{recursive:true});
       for (const file of await readdir(staging)) await rename(join(staging,file),join(output,file));
+      if (action === 'render') await writeFile(join(output,'render.json'), JSON.stringify({beats:project.beatsSeconds.map(t => frame(t,project.fps)),words:project.wordsSeconds.map(t => frame(t,project.fps))}));
     } finally {await rm(staging,{recursive:true,force:true});}
   } else {
+    try {await readFile(join(output,'render.json'),'utf8');}
+    catch {throw Error('successful render required before stitch');}
     for (const shot of project.shots) await verify(join(output,`${shot.id}.mkv`),shot.end-shot.start,project.fps,project.width,project.height);
     const list = join(output,'clips.txt');
     await writeFile(list,project.shots.map(s=>`file '${join(output,`${s.id}.mkv`).replaceAll("'", "'\\''")}'`).join('\n')+'\n');

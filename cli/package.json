@@ -3,10 +3,34 @@
   "version": "0.1.0",
   "private": false,
   "type": "module",
-  "bin": {"motion-studio": "dist/cli.js"},
-  "files": ["dist", "README.md", "LICENSE"],
-  "engines": {"node": ">=22"},
-  "scripts": {"build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit", "test": "bun test test/cli.test.ts"},
-  "dependencies": {"@remotion/bundler": "4.0.529", "@remotion/renderer": "4.0.529", "remotion": "4.0.529", "hyperframes": "0.8.81"},
-  "devDependencies": {"@types/node": "^22.15.0", "typescript": "~5.9.3"}
+  "bin": {
+    "motion-studio": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "npm run build && npm pack --silent",
+    "test": "npm run test:node && npm run test:bun",
+    "test:node": "node --experimental-strip-types --test test/cli.test.ts",
+    "test:bun": "bun test test/cli.test.ts"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.529",
+    "@remotion/renderer": "4.0.529",
+    "remotion": "4.0.529",
+    "hyperframes": "0.8.81"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "~5.9.3",
+    "expect": "^30.2.0"
+  }
 }
