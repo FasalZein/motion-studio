@@ -38,11 +38,12 @@ for (const runtime of ['bun','node']) test(`${runtime}: two engines render and s
     const stitched = run(runtime, 'stitch', dir);
     expect(stitched.status).toBe(0);
     for (const name of ['remotion','hyperframes','master']) {
-      const data = probe(join(dir,'renders','16x9',`${name}.mkv`));
+      // Shot clips live in shots/; the master is a pipeline output beside render.json.
+      const file = name === 'master' ? join(dir,'renders','16x9','master.mkv') : join(dir,'renders','16x9','shots',`${name}.mkv`);
+      const data = probe(file);
       expect(Number(data.streams[0].nb_read_frames)).toBe(name === 'master' ? 12 : 6);
       expect(data.streams[0].pix_fmt).toBe('yuv444p');
       expect(data.streams[0].color_space).toBe('bt709');
-      const file = join(dir,'renders','16x9',`${name}.mkv`);
       expect(pixel(file,14,14)).toEqual([223,91,69]);
       expect(pixel(file,290,140)).toEqual([23,43,70]);
       data.frames.forEach((f: {best_effort_timestamp_time:string}, i:number) => expect(Math.abs(Number(f.best_effort_timestamp_time)-i/30)).toBeLessThan(0.0006));
@@ -52,8 +53,8 @@ for (const runtime of ['bun','node']) test(`${runtime}: two engines render and s
     const after=decodedFrame(master,6);
     expect(before.length).toBe(320*180*3);
     expect(after.length).toBe(320*180*3);
-    expect(before).toEqual(decodedFrame(join(dir,'renders','16x9','remotion.mkv'),5));
-    expect(after).toEqual(decodedFrame(join(dir,'renders','16x9','hyperframes.mkv'),0));
+    expect(before).toEqual(decodedFrame(join(dir,'renders','16x9','shots','remotion.mkv'),5));
+    expect(after).toEqual(decodedFrame(join(dir,'renders','16x9','shots','hyperframes.mkv'),0));
     expect(after.equals(before)).toBe(false);
     const fontHash = async (file:string) => createHash('sha256').update(await readFile(file)).digest('hex');
     expect(await fontHash(join(dir,'shots','hyperframes','IBMPlexSans.ttf'))).toBe(await fontHash(join(dir,'shots','remotion','public','IBMPlexSans.ttf')));
@@ -75,7 +76,7 @@ for (const runtime of ['bun','node']) test(`${runtime}: failed engine subprocess
     expect(result.stderr).toContain('node exited 1');
     expect(result.stderr).toContain('Not a directory');
     expect((await import('node:fs/promises')).readdir(dir).then(files=>files.some(f=>f.startsWith('.motion-render-')))).resolves.toBe(false);
-    expect((await import('node:fs/promises')).stat(join(dir,'renders','16x9','remotion.mkv')).then(()=>true,()=>false)).resolves.toBe(false);
+    expect((await import('node:fs/promises')).stat(join(dir,'renders','16x9','shots','remotion.mkv')).then(()=>true,()=>false)).resolves.toBe(false);
     // The HyperFrames staging copy beside the shot folder is removed too.
     expect((await import('node:fs/promises')).readdir(join(dir,'shots')).then(files=>files.some(f=>f.startsWith('.motion-')))).resolves.toBe(false);
   } finally {await rm(dir,{recursive:true,force:true});}
@@ -93,10 +94,10 @@ test('packed CLI renders stills and video under both runtimes', async () => {
     for (const runtime of ['node','bun']) {
       const still = spawnSync(runtime,[binary,'still',project,'remotion'],{encoding:'utf8',timeout:180000});
       expect(still.status).toBe(0);
-      expect((await import('node:fs/promises')).stat(join(project,'renders','16x9','remotion.png')).then(s=>s.size>0,()=>false)).resolves.toBe(true);
+      expect((await import('node:fs/promises')).stat(join(project,'renders','16x9','shots','remotion.png')).then(s=>s.size>0,()=>false)).resolves.toBe(true);
       const hyperStill = spawnSync(runtime,[binary,'still',project,'hyperframes','2'],{encoding:'utf8',timeout:180000});
       expect(hyperStill.status).toBe(0);
-      expect((await import('node:fs/promises')).stat(join(project,'renders','16x9','hyperframes.png')).then(s=>s.size>0,()=>false)).resolves.toBe(true);
+      expect((await import('node:fs/promises')).stat(join(project,'renders','16x9','shots','hyperframes.png')).then(s=>s.size>0,()=>false)).resolves.toBe(true);
       const video = spawnSync(runtime,[binary,'render',project],{encoding:'utf8',timeout:180000});
       expect(video.status).toBe(0);
       const stitch = spawnSync(runtime,[binary,'stitch',project],{encoding:'utf8',timeout:180000});
@@ -112,7 +113,7 @@ test('stitch rejects an audio-bearing shot even when video frames match', async 
     await cp(fixture,dir,{recursive:true,filter: src => !src.endsWith('/renders')});
     const project = dir;
     expect(run('node','render',project).status).toBe(0);
-    const original = join(dir,'renders','16x9','remotion.mkv');
+    const original = join(dir,'renders','16x9','shots','remotion.mkv');
     const altered = join(dir,'audio.mkv');
     const mux = spawnSync('ffmpeg',['-v','error','-y','-i',original,'-f','lavfi','-i','sine=frequency=440:duration=0.2','-map','0:v','-map','1:a','-c:v','copy','-c:a','pcm_s16le',altered],{encoding:'utf8',timeout:15000});
     expect(mux.status).toBe(0);
@@ -129,7 +130,7 @@ test('stitch rejects a shifted presentation timestamp', async () => {
     await cp(fixture,dir,{recursive:true,filter: src => !src.endsWith('/renders')});
     const project = dir;
     expect(run('bun','render',project).status).toBe(0);
-    const original = join(dir,'renders','16x9','hyperframes.mkv');
+    const original = join(dir,'renders','16x9','shots','hyperframes.mkv');
     const altered = join(dir,'shifted.mkv');
     const shift = spawnSync('ffmpeg',['-v','error','-y','-i',original,'-vf','setpts=PTS+1/(30*TB)','-c:v','ffv1','-level','3','-pix_fmt','yuv444p',altered],{encoding:'utf8',timeout:15000});
     expect(shift.status).toBe(0);

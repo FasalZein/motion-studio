@@ -2,6 +2,7 @@ import {mkdtemp, readdir, readFile, rm, writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {CliError, layoutOf, type Project, type Shot} from './project.js';
 import {isHandoffOutput, requireMaster, round3, type Tools} from './seam.js';
+import type {Outputs} from './outputs.js';
 
 // A handoff compares shot A's last frame with shot B's first frame for identity, so the moving
 // element must land on a still pose at the seam. One frame of motion (about 2 px at 320x180) already
@@ -61,26 +62,27 @@ function seams(shots:Shot[], pair:string[]):[Shot,Shot][] {
 }
 
 /**
- * Checks each seam, writes `handoff-<a>-<b>.json` and `.png` per seam, prints one line per passing seam
- * and fails with one line per failing seam.
+ * Checks each seam of one format, writes `handoff-<a>-<b>.json` and `.png` per seam, prints one line per
+ * passing seam and fails with one line per failing seam.
  */
-export async function handoff(project:Project, output:string, pair:string[], tools:Tools):Promise<void> {
-  const {shots,meta:{fps,formats}} = project.storyboard;
-  const {width,height} = layoutOf(project.storyboard,formats.primary).canvas;
+export async function handoff(project:Project, out:Outputs, pair:string[], tools:Tools):Promise<void> {
+  const {shots,meta:{fps}} = project.storyboard;
+  const {width,height} = layoutOf(project.storyboard,out.format).canvas;
+  const output = out.dir;
   const selected = seams(shots,pair);
   // Old reports must never survive a failed run: checking every seam clears every report.
   const stale = pair.length ? selected.map(([a,b]) => `handoff-${a.id}-${b.id}`).flatMap(n => [`${n}.json`,`${n}.png`]) : (await readdir(output).catch(() => [] as string[])).filter(isHandoffOutput);
   for (const file of stale) await rm(join(output,file),{force:true});
-  const master = await requireMaster(project,output,tools);
+  const master = await requireMaster(project,out,tools);
   const size = width*height*3;
   const passed:string[] = [], failed:string[] = [];
   const temp = await mkdtemp(join(output,'.motion-handoff-'));
   try {
     for (const [from,to] of selected) {
-      for (const shot of [from,to]) await tools.verify(join(output,`${shot.id}.mkv`),shot.endFrame-shot.startFrame,fps,width,height);
+      for (const shot of [from,to]) await tools.verify(out.clip(shot.id),shot.endFrame-shot.startFrame,fps,width,height);
       const cut = to.startFrame;
-      const last = await decode(tools,join(output,`${from.id}.mkv`),from.endFrame-from.startFrame-1,fps,size,join(temp,'last'));
-      const first = await decode(tools,join(output,`${to.id}.mkv`),0,fps,size,join(temp,'first'));
+      const last = await decode(tools,out.clip(from.id),from.endFrame-from.startFrame-1,fps,size,join(temp,'last'));
+      const first = await decode(tools,out.clip(to.id),0,fps,size,join(temp,'first'));
       const before = await decode(tools,master,cut-1,fps,size,join(temp,'before'));
       const after = await decode(tools,master,cut,fps,size,join(temp,'after'));
       const pairDifference = difference(last.cells,first.cells);
@@ -92,9 +94,9 @@ export async function handoff(project:Project, output:string, pair:string[], too
       // The strip image lets the creator inspect the two master frames at the cut.
       await tools.command('ffmpeg',['-hide_banner','-loglevel','error','-y','-ss',String((cut-1.25 > 0 ? cut-1.25 : 0)/fps),'-i',master,'-vf','tile=2x1','-frames:v','1',join(output,`${name}.png`)]);
       await writeFile(join(output,`${name}.json`),JSON.stringify({from:from.id,to:to.id,cutFrame:cut,declared:from.exit === 'handoff',thresholds:THRESHOLDS,pair:pairDifference,strip:{frames:[cut-1,cut],acrossCut,identicalToShots},status},null,2)+'\n');
-      if (status === 'match') passed.push(`handoff verified ${from.id} -> ${to.id}: ${describe(pairDifference)}`);
-      else if (status === 'mismatch') failed.push(`handoff mismatch ${from.id} -> ${to.id}: ${describe(pairDifference)}`);
-      else failed.push(`encoded color jump in master strip at frame ${cut}: ${identicalToShots.includes(false) ? `master frames ${cut-1}, ${cut} identical to shot frames: ${identicalToShots.join(', ')}` : describe(acrossCut)}`);
+      if (status === 'match') passed.push(`handoff verified ${from.id} -> ${to.id} (${out.format}): ${describe(pairDifference)}`);
+      else if (status === 'mismatch') failed.push(`handoff mismatch ${from.id} -> ${to.id} (${out.format}): ${describe(pairDifference)}`);
+      else failed.push(`encoded color jump in master strip at frame ${cut} (${out.format}): ${identicalToShots.includes(false) ? `master frames ${cut-1}, ${cut} identical to shot frames: ${identicalToShots.join(', ')}` : describe(acrossCut)}`);
     }
   } finally {await rm(temp,{recursive:true,force:true});}
   for (const line of passed) console.log(line);
