@@ -259,7 +259,7 @@ Phases run in this order. Each gate lists what it shows, what a note re-runs, an
   - **handoff:** a matching pair, a mismatched pair, and an encoded color jump in the stitched strip.
   - **safezone:** landscape, portrait and square layouts in both engines, with text wrapping, full-bleed art, and protected text outside the safe zone.
   - **mix:** loudness at -14 LUFS within tolerance, and the offsets in the sync report.
-  - **validate:** each invalid project kind (missing engine, asset not in the ledger, off-grid shot, gap or overlap, unknown vocabulary term, stale hash) is rejected with a clear message.
+  - **validate:** each invalid project kind (missing engine, asset not in the ledger, off-grid shot, gap or overlap, stale hash) is rejected with a clear message; an unknown vocabulary term gets a warning (D56).
   - **gates:** resume after an upstream edit, after a rejection, after an exhausted loop budget, and after a change made after approval.
   - **assets:** missing or expired heygen auth, successful catalog resolution into a shot of each engine, provider failure without a partial entry, and unknown-license blocking.
   - **Runtime:** a packed-CLI still and video render smoke test under each supported runtime, including renderer cleanup and bounded termination on a subprocess failure.
