@@ -2,9 +2,9 @@ import {test as nodeTest} from 'node:test';
 const {expect} = await import('bun' in process.versions ? 'bun:test' : 'expect');
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
+import {cp, mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
-import {spawnSync} from 'node:child_process';
+import {spawn, spawnSync} from 'node:child_process';
 
 // Black-box taste and style-bible checks: each case runs the built CLI as a process with HOME pointed at a scratch
 // folder, so no run reads or writes the real ~/.motion-studio/taste.json. Expected profiles are built from the notes and
@@ -54,6 +54,18 @@ async function seed(home:string, value:unknown) {
   await mkdir(join(home,'.motion-studio'));
   await writeFile(profilePath(home),typeof value === 'string' ? value : JSON.stringify(value));
 }
+/** A G1 look-test still; the approved G1 hashes it, which marks the look as shown. */
+async function writeLook(film:string, look:string) {
+  await mkdir(join(film,'stills','G1'),{recursive:true});
+  await writeFile(join(film,'stills','G1',`${look}.png`),`look test ${look}`);
+}
+/** Runs the CLI without waiting, so two commands overlap. */
+const start = (runtime:string, home:string, args:string[]) => new Promise<{status:number|null; stderr:string}>(done => {
+  const child = spawn(runtime,[cli,...args],{env:{...process.env, HOME:home}});
+  let stderr = '';
+  child.stderr.on('data',d => {stderr += d;});
+  child.on('close',status => done({status, stderr}));
+});
 const day = () => new Date().toISOString().slice(0,10);
 // A run near midnight UTC may date an entry either day; compare with the date the entry recorded.
 const dated = (entry:Json) => {expect([day(),new Date(Date.now()-86400000).toISOString().slice(0,10)]).toContain(entry.date); return entry;};
@@ -63,6 +75,7 @@ test('taste g1 likes the chosen look, rejects or notes passed looks, and snapsho
   await scratch(async (home,film) => {
     await seed(home,{version:1, liked:[earlier], rejected:[], notes:[]});
     await edit(film,s => {s.look.id = 'keynote-minimal'; s.look.axes = {density:'one object'};});
+    for (const look of ['keynote-minimal','swiss-grid','editorial-serif']) await writeLook(film,look);
     ok(home,['gate',film,'G1','approve','--note','keynote: the flood makes the action obvious','--note','swiss grid feels cold']);
     const out = ok(home,['taste','g1',film,'--rejected','swiss-grid','--kept','editorial-serif:Uniform fade-in']);
     expect(out).toBe([
@@ -106,6 +119,7 @@ test('taste g1 likes the chosen look, rejects or notes passed looks, and snapsho
 test('taste g1 refuses without an approved G1, the director words or a chosen look, and never overwrites a bad profile', async () => {
   await scratch(async (home,film) => {
     await edit(film,s => {s.look.id = 'keynote-minimal';});
+    await writeLook(film,'swiss-grid');
     fails(home,['taste','g1',film],'taste g1 needs G1 approved and not stale; G1 is pending');
     ok(home,['gate',film,'G1','approve']);
     fails(home,['taste','g1',film],'taste g1 quotes the director: record the decision words with motion-studio gate <film-dir> G1 approve --note <text>');
@@ -113,6 +127,9 @@ test('taste g1 refuses without an approved G1, the director words or a chosen lo
     fails(home,['taste','g1',film,'--rejected','keynote-minimal'],'taste g1: keynote-minimal is the chosen look (look.id), not a passed candidate');
     fails(home,['taste','g1',film,'--rejected','swiss-grid','--kept','swiss-grid:Crossfade'],'taste g1: swiss-grid is listed more than once');
     fails(home,['taste','g1',film,'--kept','swiss-grid'],'taste g1: --kept needs <look-id>:<pattern>, got "swiss-grid"');
+    // An unshown candidate is never a rejection or a note: G1 showed only swiss-grid.
+    fails(home,['taste','g1',film,'--rejected','paper-collage'],'taste g1: paper-collage has no look-test still at G1 (stills/G1/paper-collage.png); only a shown candidate can be passed');
+    fails(home,['taste','g1',film,'--kept','swiss-gri:Crossfade'],'taste g1: swiss-gri has no look-test still at G1 (stills/G1/swiss-gri.png); only a shown candidate can be passed');
     await edit(film,s => {s.look.id = null;});
     // Clearing look.id changes the G1 inputs, so re-approve before checking the look.id refusal.
     ok(home,['gate',film,'G1','approve','--note','keynote']);
@@ -160,6 +177,34 @@ test('taste notes appends each gate note once with the vocabulary term ids it na
     expect(ok(home,['taste','notes',film,'G2'])).toBe('G2: no new notes (5 already in the profile)\n');
     expect((await profile(home)).notes).toHaveLength(5);
     fails(home,['taste','notes',film,'G9'],'usage: motion-studio taste show | taste g1 <film-dir> [--rejected <look-id>]... [--kept <look-id>:<pattern>]... | taste notes <film-dir> <G1-G5> | taste accept <film-dir> [--move <term>]... [--pacing <text>]');
+  });
+});
+
+test('two taste commands at once keep both notes; a stale lock is removed', async () => {
+  await scratch(async (home,film) => {
+    const other = join(dirname(film),'other');
+    await cp(film,other,{recursive:true});
+    await edit(film,s => {s.gates[1].notes = ['note from launch'];});
+    await edit(other,s => {s.gates[1].notes = ['note from other'];});
+    // Both commands of a round use one runtime so their start-up times match and their reads and writes overlap.
+    // Several rounds, because one overlap may not interleave them.
+    for (let round = 0; round < 10; round++) {
+      await rm(join(home,'.motion-studio'),{recursive:true,force:true});
+      const runtime = runtimes[round % 2];
+      const results = await Promise.all([start(runtime,home,['taste','notes',film,'G2']),start(runtime,home,['taste','notes',other,'G2'])]);
+      for (const r of results) {expect(r.stderr).toBe(''); expect(r.status).toBe(0);}
+      expect((await profile(home)).notes.map((n:Json) => n.text).sort()).toEqual(['note from launch','note from other']);
+      expect(await readdir(join(home,'.motion-studio'))).toEqual(['taste.json']);
+    }
+    // A lock left by a process that died more than 30 s ago does not block a command.
+    const lock = join(home,'.motion-studio','taste.json.lock');
+    await writeFile(lock,'99999\n');
+    const old = new Date(Date.now()-60_000);
+    await utimes(lock,old,old);
+    await edit(film,s => {s.gates[1].notes.push('after the crash');});
+    ok(home,['taste','notes',film,'G2']);
+    expect((await profile(home)).notes.map((n:Json) => n.text)).toContain('after the crash');
+    expect(await readdir(join(home,'.motion-studio'))).toEqual(['taste.json']);
   });
 });
 

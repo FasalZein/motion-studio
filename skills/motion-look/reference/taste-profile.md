@@ -25,7 +25,7 @@ In the brief phase, run `motion-studio taste show`; it prints the profile JSON. 
 | Any gate note | `taste notes <film-dir> <G1-G5>` | each note of the gate record that the profile does not hold yet, with `terms` |
 | G5 approved | `taste accept <film-dir> [--move <term-id>]... [--pacing <text>]` | `look.id`, each move and the pacing to `liked` |
 
-`taste g1` and `taste accept` need their gate approved and not stale, and `storyboard.json` `look.id` set. `--move` takes a `motion-vocabulary` term id or `custom:<description>`. Record pacing only when acceptance gives pacing evidence. A rerun adds nothing: an entry with the same kind, value and note is kept once, and `taste notes` adds only notes past the count already held for that film and gate. `terms` lists every vocabulary term id the text contains as a whole word, so write a move by its exact id in a gate note. A common word that is also a term id, such as `hold` or `drop`, is tagged too.
+`taste g1` refuses a `--rejected` or `--kept` look without a G1 look-test still (`stills/G1/<look-id>.png`) in the approved G1. Concurrent taste commands wait for each other through a lock file. `taste g1` and `taste accept` need their gate approved and not stale, and `storyboard.json` `look.id` set. `--move` takes a `motion-vocabulary` term id or `custom:<description>`. Record pacing only when acceptance gives pacing evidence. A rerun adds nothing: an entry with the same kind, value and note is kept once, and `taste notes` adds only notes past the count already held for that film and gate. `terms` lists every vocabulary term id the text contains as a whole word, so write a move by its exact id in a gate note. A common word that is also a term id, such as `hold` or `drop`, is tagged too.
 
 ## Snapshot
 
