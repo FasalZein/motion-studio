@@ -26,8 +26,10 @@ export const THRESHOLDS = {
   pop:0.1,
   /** ...while the frames on either side differ by at most this share of the mean change into and out of it. */
   popReturn:0.25,
-  /** Flash fit: a 1-frame flash is a brightness change when a per-channel gain and offset of the frame before predicts
-   * it. A mean residual more than this above the change between its neighbors (motion) makes it a wrong frame (a pop). */
+  /** Flash fit: a 1-frame flash is a brightness change when the frame before predicts it, either by one gain and offset
+   * per channel (a uniform flash) or by a per-cell blend toward white or black (a glow, bloom or light leak). A mean
+   * residual of the better model more than this above the change between its neighbors (motion) makes it a wrong frame
+   * (a pop). */
   flashFit:0.02,
   /** Flash: the mean luma moves at least this much and returns within FLASH_FRAMES frames... */
   flash:0.15,
@@ -57,8 +59,11 @@ type Status = {status:'defect'}|{status:'context'; context:string};
 export type Flag = {kind:FlagKind; frame:number; frames:number; shot:string|null; localFrame:number|null; severity:'blocking'|'advisory'; measure:Record<string,number>}&Status;
 
 type Frame = {mean:[number,number,number]; luma:number; spread:number};
-/** `fit`: mean residual of the best per-channel gain and offset from the earlier frame to the later one. */
-type Step = {mad:number; peak:number; fit:number};
+/**
+ * `fit`: mean residual of the best per-channel gain and offset from the earlier frame to the later one.
+ * `glow`: mean residual of the best per-cell blend of the earlier frame toward white, or toward black.
+ */
+type Step = {mad:number; peak:number; fit:number; glow:number};
 /** `skips[i]` also holds the blend fit of frame i and the worst cell pop of frame i (0 when no cell pops). */
 type Skip = {mad:number; peak:number; blend:number; residual:number; cellPop:number};
 /** Per-frame and per-step measures; `steps[i]` compares frame i-1 with frame i, `skips[i]` frame i-1 with frame i+1. */
@@ -95,7 +100,23 @@ function fitOf(a:Buffer, b:Buffer):number {
   }
   return residual/(a.length*255);
 }
-const stepOf = (a:Buffer, b:Buffer):Step => ({...diffOf(a,b), fit:fitOf(a,b)});
+/** Fits each cell of b as a blend of the same cell of a toward one target color, with its own weight in [0, 1]. A
+ * glow agrees across the three channels of each cell; a frame from another scene does not. */
+function glowOf(a:Buffer, b:Buffer):number {
+  let best = Infinity;
+  for (const target of [0,255]) {
+    let residual = 0;
+    for (let i=0;i<a.length;i+=3) {
+      let dot = 0, norm = 0;
+      for (let c=0;c<3;c++) {dot += (b[i+c]-a[i+c])*(target-a[i+c]); norm += (target-a[i+c])**2;}
+      const weight = norm ? Math.min(1,Math.max(0,dot/norm)) : 0;
+      for (let c=0;c<3;c++) residual += Math.abs(b[i+c]-a[i+c]-weight*(target-a[i+c]));
+    }
+    best = Math.min(best,residual/(a.length*255));
+  }
+  return best;
+}
+const stepOf = (a:Buffer, b:Buffer):Step => ({...diffOf(a,b), fit:fitOf(a,b), glow:glowOf(a,b)});
 /** Cell pop: the worst change into and out of b over the cells that change at most `moving` from a to c (0 when none). */
 function cellPopOf(a:Buffer, b:Buffer, c:Buffer):number {
   let worst = 0;
@@ -123,7 +144,7 @@ async function measure(tools:Tools, video:string):Promise<Measures> {
     await tools.command('ffmpeg',['-hide_banner','-loglevel','error','-y','-i',video,'-map','0:v:0','-fps_mode','passthrough','-vf',`scale=${GRID}:${GRID}:flags=area,format=rgb24`,'-f','rawvideo',raw]);
     const count = Math.floor((await stat(raw)).size/CELL_BYTES);
     const none:Skip = {mad:0,peak:0,blend:0,residual:0,cellPop:0};
-    const result:Measures = {frames:[], steps:[{mad:0,peak:0,fit:0}], skips:[none]};
+    const result:Measures = {frames:[], steps:[{mad:0,peak:0,fit:0,glow:0}], skips:[none]};
     const file = await open(raw);
     try {
       const window:Buffer[] = [];
@@ -153,6 +174,8 @@ function detect({frames,steps,skips}:Measures):Found[] {
   // frame belong to that finding, so they do not also count as a stutter, hitch or color jump.
   const odd = new Set<number>();
   const touches = (first:number, last:number) => Array.from({length:last-first+1},(_,k) => first+k).some(f => odd.has(f));
+  // The current run of cell pops: pops less than FLASH_FRAMES apart (a sweeping bar, particles) form one flag.
+  let cellRun:Found|undefined;
   // Flat runs (D47). A run is a blank dropout when it appears suddenly: content on both sides and an abrupt step into
   // and out of it. A flat opening or ending, and a cut to or a fade from a flat color, are advisory `flat` runs;
   // scanVideo makes a run that covers a whole shot blank.
@@ -173,8 +196,9 @@ function detect({frames,steps,skips}:Measures):Found[] {
       if (Math.abs(frames[j+1].luma-before) > T.flashReturn) continue;
       if (!touches(i,j)) {
         // One frame that no brightness change of the frame before explains is a wrong frame: a pop, not a flash.
-        const wrong = i === j && steps[i].fit-skips[i].mad > T.flashFit;
-        add(wrong ? 'pop' : 'flash',i,j-i+1,{luma:frames[i].luma-before, fit:steps[i].fit, neighbors:skips[i].mad});
+        const fit = Math.min(steps[i].fit,steps[i].glow);
+        const wrong = i === j && fit-skips[i].mad > T.flashFit;
+        add(wrong ? 'pop' : 'flash',i,j-i+1,{luma:frames[i].luma-before, fit, neighbors:skips[i].mad});
         for (let k=i;k<=j;k++) odd.add(k);
       }
       i = j;
@@ -202,7 +226,14 @@ function detect({frames,steps,skips}:Measures):Found[] {
     // Cell pop: a local pop that the whole-frame test misses because the rest of the frame moves. Fast thin objects
     // can look the same, so it is advisory. Next to a blank, flat or flash frame the cell comparison means nothing.
     if (skips[i].cellPop >= T.pop && !touches(i-1,i+1)) {
-      add('cell-pop',i,1,{change:skips[i].cellPop});
+      if (cellRun && i-(cellRun.frame+cellRun.frames-1) < FLASH_FRAMES) {
+        cellRun.frames = i-cellRun.frame+1;
+        cellRun.measure.change = Math.max(cellRun.measure.change,round3(skips[i].cellPop));
+        cellRun.measure.pops++;
+      } else {
+        add('cell-pop',i,1,{change:skips[i].cellPop, pops:1});
+        cellRun = found.at(-1);
+      }
       odd.add(i);
     }
   }
@@ -257,10 +288,13 @@ function explain(f:Found, {seams,holds,effects}:Context):string|null {
   // Seams explain the step-based flags whose change crosses the seam. A pop needs matching neighbors, which a cut
   // never gives, so a pop at a seam is a wrong first or last frame. A cell pop needs only one matching cell, which a
   // cut can give by chance. Blank frames, flashes and blended frames are defects at a cut too: a clean cut has none.
-  const crossing:Partial<Record<FlagKind,number[]>> = {'cell-pop':[first,first+1], 'color-jump':[first], hitch:[first], stutter:Array.from({length:f.frames+1},(_,k) => first+k)};
-  const seam = (crossing[f.kind] ?? []).map(frame => seams.get(frame)).find(s => s !== undefined);
-  // A repeated frame continues the motion at a handoff seam; at a cut it is a doubled frame.
-  if (seam && (f.kind !== 'stutter' || seam.handoff)) return seam.reason;
+  const run = Array.from({length:f.frames+1},(_,k) => first+k);
+  const crossing:Partial<Record<FlagKind,number[]>> = {'cell-pop':run, 'color-jump':[first], hitch:[first], stutter:run};
+  const at = (crossing[f.kind] ?? []).find(frame => seams.has(frame));
+  const seam = at === undefined ? undefined : seams.get(at)!;
+  // A repeat that ends at the seam is motion that settles before the cut (an ease-out). A repeat that starts at or
+  // crosses the seam continues the motion at a handoff seam; at a cut it is a doubled frame.
+  if (seam && (f.kind !== 'stutter' || seam.handoff || at === first+f.frames)) return seam.reason;
   if ((f.kind === 'stutter' || f.kind === 'hitch') && holds.some(inside)) return 'declared hold';
   return null;
 }

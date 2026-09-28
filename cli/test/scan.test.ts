@@ -152,6 +152,18 @@ test(`${runtime}: a repeated frame at a cut is a stutter; at a handoff seam it i
   }, s => {delete s.shots[0].holds; s.shots[0].exit = 'handoff'; s.shots[1].entry = 'handoff';});
 });
 
+test(`${runtime}: an ease-out that stops before a cut is context, not a stutter`, async () => {
+  // Frames 18 and 19 repeat frame 17: the box settles 2 frames before the cut at frame 20.
+  const scenes = withDeclaredHold(clean());
+  scenes[18] = {...scenes[17]}; scenes[19] = {...scenes[17]};
+  await withFilm(scenes.map(draw), async dir => {
+    const result = run(dir);
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+    expect((await report(dir)).flags.find((f:Json) => f.kind === 'stutter' && f.frame === 18).context).toBe('declared cut into shot hyperframes');
+  });
+});
+
 test(`${runtime}: a flat opening and a fade in from a flat color are advisory`, async () => {
   // Frames 0-3 show only the background, then the content cuts in.
   const opening = cleanFrames();
@@ -213,6 +225,43 @@ test(`${runtime}: one wrong frame blocks as a pop, while a one-frame brightness 
     const result = run(dir);
     expect(result.status).toBe(0);
     expect(defects(await report(dir))).toEqual([['flash',12,'remotion',12,'advisory']]);
+  });
+});
+
+test(`${runtime}: a one-frame radial glow is an advisory flash, in a still and in a fast shot`, async () => {
+  // A white glow at the frame center that fades to nothing at the edges: a flash that no single gain explains.
+  const glow = (frame:Buffer) => {
+    const g = Buffer.from(frame);
+    for (let y=0;y<H;y++) for (let x=0;x<W;x++) {
+      const a = 0.9*Math.max(0,1-Math.hypot((x-160)/160,(y-90)/90));
+      for (let c=0;c<3;c++) g[(y*W+x)*3+c] = Math.round(255*a + g[(y*W+x)*3+c]*(1-a));
+    }
+    return g;
+  };
+  const frames = cleanFrames();
+  frames[12] = glow(frames[12]);
+  frames[30] = glow(frames[30]);
+  await withFilm(frames, async dir => {
+    const result = run(dir);
+    expect(result.status).toBe(0);
+    expect(defects(await report(dir))).toEqual([['flash',12,'remotion',12,'advisory'],['flash',30,'hyperframes',10,'advisory']]);
+  });
+});
+
+test(`${runtime}: a thin bar sweeping fast gives one cell-pop run, not one flag per frame`, async () => {
+  // A 4 px yellow bar crosses shot hyperframes at 40 px per frame, wrapping every 8 frames.
+  const frames = cleanFrames().map((frame,f) => {
+    if (f < CUT) return frame;
+    const b = Buffer.from(frame), x0 = (f-CUT)*40 % W;
+    for (let y=10;y<50;y++) for (let x=x0;x<Math.min(W,x0+4);x++) b.set([255,255,0],(y*W+x)*3);
+    return b;
+  });
+  await withFilm(frames, async dir => {
+    const result = run(dir);
+    expect(result.status).toBe(0);
+    const pops = defects(await report(dir)).filter((d:any[]) => d[0] === 'cell-pop');
+    expect(pops.length).toBe(1);
+    expect(result.stderr.split('\n').filter((l:string) => l.includes('cell-pop')).length).toBe(1);
   });
 });
 
