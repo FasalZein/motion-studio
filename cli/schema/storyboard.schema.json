@@ -133,8 +133,24 @@
             "required": ["id", "bounds", "heldFrames"],
             "properties": {"id": {"$ref": "#/definitions/id", "description": "Matches the element's data-protected attribute in both engines."}, "bounds": {"$ref": "#/definitions/path", "description": "\"measured\": safezone measures the rendered element marked data-protected. Otherwise a film-relative JSON file of declared geometry for canvas or SVG content: {\"<format>\": {x, y, width, height}}."}, "heldFrames": {"$ref": "#/definitions/frames", "description": "Shot-local frames where the element is held; entrance and exit travel frames are not listed."}}
           }
+        },
+        "holds": {"type": "array", "items": {"$ref": "#/definitions/frameSpan"}, "description": "Optional shot-local frame runs where the picture is intentionally still. scan treats repeated frames and a motion restart there as context, not stutter or hitch."},
+        "effects": {
+          "type": "array",
+          "description": "Optional shot-local frame runs of a declared effect (for example a flash, strobe or glitch). scan treats every flag inside the run, except a frame-count error, as context.",
+          "items": {
+            "type": "object",
+            "allOf": [{"$ref": "#/definitions/frameSpan"}],
+            "required": ["term"],
+            "properties": {"term": {"type": "string", "minLength": 1, "description": "motion-vocabulary term id or custom:<description> of the effect."}}
+          }
         }
       }
+    },
+    "frameSpan": {
+      "type": "object",
+      "required": ["start", "frames"],
+      "properties": {"start": {"$ref": "#/definitions/frame", "description": "First shot-local frame."}, "frames": {"type": "integer", "minimum": 1, "description": "Number of frames in the run."}}
     },
     "gate": {
       "type": "object",
