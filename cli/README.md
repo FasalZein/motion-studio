@@ -8,6 +8,8 @@ Commands:
 - `validate <film-dir>` checks `storyboard.json` and `ledger.json` against `schema/storyboard.schema.json` and `schema/ledger.schema.json`, then checks cross-references: engine entrypoints exist, every asset id is in the ledger, every ledger file exists with the recorded SHA-256, shot ranges are half-open and contiguous from frame 0 to `meta.durationFrames`, each `cut` between shots falls on `audio.beatFrames` when a beat grid exists (handoff seams and shots with an `offBeatCut` reason are exempt), handoffs are declared on both sides of a seam, and still frames are inside their shot. It exits 1 and prints one `error:` line per problem.
 - `status <film-dir>` prints each gate state (G1 to G5) and the next step. On a film with cross-reference errors it adds a `validation: N errors` line and still exits 0; only a schema or JSON failure exits 1.
 
+- `beats <film-dir>` proposes a beat grid from the `audio.track` file and writes the `audio` fields of `storyboard.json` with `grid: "detected"`. `beats <film-dir> --corrected <grid.json>` or `--imported <grid.json>` applies a grid from the creator instead. See "Beat grid" below.
+
 Expected failures (usage, invalid project, init refusal, media checks) print `error: <message>` lines without a stack trace.
 - `render <film-dir>`, `stitch <film-dir>` and `still <film-dir> <shot-id> [local-frame]` read the shots from `storyboard.json`. They validate the project first and write nothing when it is invalid.
 - `handoff <film-dir> [<shot-a> <shot-b>]` checks every seam declared `exit: handoff`, or one explicit adjacent pair. `mix <film-dir>` builds the master audio. Both need a successful `render` and `stitch`; see below.
@@ -22,8 +24,28 @@ A handoff compares frames for identity, so the moving element must land on a sti
 
 `fixtures/handoff/` is a three-shot film: a Remotion title slides in and holds on the HyperFrames title's pose (a matching handoff), then the HyperFrames title hands off to a shot whose title starts higher (the intentional mismatch). `fixtures/two-engine/` cuts on the beat and places an SFX peak on the cut at frame 6. `fixtures/two-engine/audio/generate.sh` regenerates its audio with ffmpeg; the script lists their construction.
 
+## Beat grid
+
+`beats` needs only a schema-valid project, because the grid comes before the shots and a new grid can move existing cuts off it. Every time in seconds becomes a frame with one rule, `round(seconds * fps)` (nearest frame, halves up; `src/frames.ts`). The product is first snapped to a millionth of a frame, so float error does not turn a half frame down: 0.58 s at 25 fps is frame 15. For example, 0.09 s at 30 fps is frame 3.
+
+Detection decodes the track to mono 22.05 kHz PCM with ffmpeg and works in TypeScript:
+
+1. Silence: a track whose peak is below -60 dBFS gives `grid: none (silent track ...)` and clears the grid (`grid`, `bpm` and `confidence` null, empty frame lists). A track without periodic onsets (speech, noise, a held tone) gives `grid: none (no periodic onsets ...)` in the same way. The command exits 0 in both cases; import a grid if the film needs one.
+2. Onsets: every 2.9 ms, the RMS of the next 11.6 ms against the RMS of the 11.6 ms before it.
+3. Tempo: the autocorrelation peak of the onset envelope between 70 and 180 BPM. Faster music is reported at half tempo and slower music at double tempo.
+4. Beats: each beat is snapped to the strongest onset within 10 % of a period of its prediction, so the grid follows tempo drift. Beats are measured to about 3 ms. A true beat within 3 ms of a frame boundary can land on either frame.
+5. Downbeats: meters 3 and 4 only. In the median bar the first beat must peak 1.25 times above the mean of the other beats. The best bar start must also score 1.2 times every other start in that meter. When both meters or neither fit, or accents repeat every 2 beats (kick on 1 and 3, snare on 2 and 4) so two bar starts fit, no downbeats are proposed and confidence is low.
+6. Drops: a bar whose RMS is at least +6 dB above the two bars before it. The drop starts on a downbeat (on any beat without a meter). No such bar gives `drops: none`, never a guess.
+7. Confidence is `high` only when at least 90 % of beats land on an onset, beat intervals vary by less than 5 % and the meter is clear. Each reason for `low` is printed.
+
+Detection writes the proposal in seconds to `audio/beats.detected.json` (`{"bpm", "beats", "downbeats", "drops"}`) and does not replace a `corrected` or `imported` grid; set `audio.grid` to null to detect again. To correct it, edit a copy and run `beats <film-dir> --corrected <copy>`. A grid from another tool uses the same format with `--imported`. A user grid needs increasing, non-negative times, at least one beat, no two beats on one frame, and every downbeat and drop on a beat frame; each problem prints an `error:` line and nothing is written. A user grid gets confidence `high`.
+
+The command prints `grid changed` or `grid unchanged` (tempo or any beat, downbeat or drop frame). Ticket #5 uses that result to mark G2 and later gates stale.
+
+The bundled `hyperframes beats` utility was checked and not wrapped: it gives no downbeats or drops, reports its confidence only in a console line, needs Chrome and a HyperFrames project, and returns a constant-tempo grid from a rounded BPM that drifts over a long track.
+
 The storyboard fields are described in `skills/motion-studio/reference/storyboard-schema.md` and defined by the JSON Schemas. `meta.fps` is 24, 25, 30 or 60. `meta.canvas` gives the master width and height. Each shot has `startFrame` and `endFrame` (half-open) and an `engine` (`remotion` or `hyperframes`). A HyperFrames `entrypoint` is an HTML file under `shots/<id>/`. A Remotion `entrypoint` is the composition id; its entry file is `shots/<id>/src/index.ts` or `src/index.tsx` and its public directory is `shots/<id>/public/`. Remotion composition dimensions, frame rate and duration must equal the canvas, fps and shot range. HyperFrames compositions set their dimensions and duration in HTML. See `fixtures/two-engine/` for a working film folder.
 
 Both engines produce PNG frame sequences, then ffmpeg encodes the same lossless FFV1/yuv444p/BT.709 intermediate. The CLI requires a successful render marker for stitching and invalidates it before every rerender. A failed rerender cannot stitch stale clips. A test-only `MOTION_STUDIO_CHILD_TIMEOUT_MS` overrides the 120-second subprocess timeout. The CLI verifies frame count, dimensions, color tags and ordered presentation timestamps in both clips and the stitched master. Matroska timestamps have millisecond precision, so checks allow 0.6 ms rounding error. Engine audio is not included. The fixture includes one OFL-licensed IBM Plex Sans local font, recorded in its ledger, and the same color patch in both compositions; the font license is in `fixtures/two-engine/assets/OFL.txt`.
 
-Run `npm run typecheck` and `npm test` (it builds and packs first, then runs the suite under the Node and Bun test runners) for the process-level fixture checks under both Node and Bun. Remotion's company license is required for companies with more than three people.
+Run `npm run typecheck` and `npm test` (it builds and packs first, then runs the suite under the Node and Bun test runners) for the process-level fixture checks under both Node and Bun. `test/beats.test.ts` builds its audio fixtures with ffmpeg `aevalsrc`, so each beat, downbeat and drop is known by construction. Remotion's company license is required for companies with more than three people.

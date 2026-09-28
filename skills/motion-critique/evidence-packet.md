@@ -15,7 +15,7 @@ The third column names the v0 route. "Manual" means the dispatcher copies the it
 | Contact sheet | Sample 1 fps across the **entire** rendered clip. Keep numbered pages and timestamps; do not substitute an old sheet. | Tile below (`sheet`, #7) |
 | Transition strips | Full-rate frames around **every** declared cut or handoff, including the preceding and following frame. Record each cut frame and shot pair. Include suspected fast-motion spans if the video reader cannot scrub. | Tile below (`sheet`, #7) |
 | Glitch findings | In v0 inspect strips and decoded frame count for blank, pop, stutter, hitch, flash, color jump and ghost. Mark declared cuts and holds before interpreting flags. Verified blank frames, frame-count errors and unintended single-frame pops block review; ambiguous flags are advisory. | Manual scan (`scan`, #8) |
-| Beat grid and sync report | `beats.json`, storyboard beat and cut/event frames, measured integrated LUFS and measured SFX peaks. Note low-confidence or corrected grids. | `motion-studio mix` writes `sync.json`; otherwise measure below |
+| Beat grid and sync report | Beat grid from `storyboard.json` `audio` (`beats.json` in the v0 manual flow), storyboard beat and cut/event frames, measured integrated LUFS and measured SFX peaks. Note low-confidence or corrected grids. | `motion-studio mix` writes `sync.json`; otherwise measure below |
 | Draft clip | Give the actual video path if the harness can read video. Otherwise state that continuous motion and audio listening are not directly verified; strips cannot prove continuous easing. | Manual |
 
 In standalone mode, the video is the only required input. Generate sheets and strips where possible. Record each missing brief, board, look, beat grid and ledger; pass unverified checks to the reviewer. Never fill absent evidence with a guess.
@@ -47,7 +47,7 @@ Contact tiles run left to right, then top to bottom. Page 1 starts at second 0; 
 
 ## Sync report
 
-When the film was mixed with `motion-studio mix`, use its `sync.json` (integrated LUFS, per-cue peak offsets, cut-to-beat offsets and `offBeatCut` reasons) and check that it belongs to the reviewed render. Otherwise v0 reports evidence, not a finished mix. Measure the **actual reviewed mix**. Parse `input_i` from loudnorm's JSON for integrated LUFS; `output_i` from a normalization run is not a measurement of the final file. Read the actual `beats.json` and storyboard frames rather than guessing tempo. Example:
+When the film was mixed with `motion-studio mix`, use its `sync.json` (integrated LUFS, per-cue peak offsets, cut-to-beat offsets and `offBeatCut` reasons) and check that it belongs to the reviewed render. Otherwise v0 reports evidence, not a finished mix. Measure the **actual reviewed mix**. Parse `input_i` from loudnorm's JSON for integrated LUFS; `output_i` from a normalization run is not a measurement of the final file. Read the actual beat grid (`storyboard.json` `audio`, or `beats.json` in the v0 manual flow) and storyboard frames rather than guessing tempo. Example:
 
 ```sh
 ffmpeg -hide_banner -nostdin -i "$VIDEO" -map 0:a:0 \
