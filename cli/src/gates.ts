@@ -10,7 +10,7 @@ import {CliError, gateIds, type Gate, type GateId, type GateState, type Project}
 export const noteRounds = 3;
 
 // schema/gate-inputs.json lists what each gate hashes. It is data so later tickets add inputs without code changes.
-type Source = {file:string}|{storyboard:string}|{storyboardPath:string}|{frozen:GateId};
+type Source = {file:string}|{storyboard:string; fields?:string[]}|{storyboardPath:string};
 type GateInput = {name:string; freeze?:boolean; sources:Source[]};
 type GateInputs = Record<GateId,GateInput[]>;
 
@@ -21,9 +21,8 @@ const inputsSchema = {
     type:'object', required:['name','sources'], additionalProperties:false,
     properties:{name:{type:'string', minLength:1}, freeze:{type:'boolean'}, sources:{type:'array', items:{oneOf:[
       {type:'object', required:['file'], additionalProperties:false, properties:{file:{type:'string', minLength:1}}},
-      {type:'object', required:['storyboard'], additionalProperties:false, properties:{storyboard:pointer}},
+      {type:'object', required:['storyboard'], additionalProperties:false, properties:{storyboard:pointer, fields:{type:'array', minItems:1, items:{type:'string', minLength:1}}}},
       {type:'object', required:['storyboardPath'], additionalProperties:false, properties:{storyboardPath:pointer}},
-      {type:'object', required:['frozen'], additionalProperties:false, properties:{frozen:{enum:gateIds}}},
     ]}}},
   }}]))},
 };
@@ -37,7 +36,7 @@ async function gateInputs():Promise<GateInputs> {
   return inputsCache = data;
 }
 
-// Folders never hashed: dependency installs and hidden work folders such as render staging.
+// Never hashed: dependency installs and hidden files and folders, such as render staging and the storyboard temp file.
 const skipDir = (name:string) => name === 'node_modules' || name.startsWith('.');
 async function filmFiles(root:string, dir = ''):Promise<string[]> {
   const entries = await readdir(join(root,dir),{withFileTypes:true}).catch(() => []);
@@ -45,7 +44,7 @@ async function filmFiles(root:string, dir = ''):Promise<string[]> {
   for (const e of entries) {
     const path = dir ? `${dir}/${e.name}` : e.name;
     if (e.isDirectory()) { if (!skipDir(e.name)) files.push(...await filmFiles(root,path)); }
-    else if (e.isFile()) files.push(path);
+    else if (e.isFile() && !e.name.startsWith('.')) files.push(path);
   }
   return files;
 }
@@ -64,6 +63,12 @@ function readPointer(value:unknown, path:string):unknown {
     value = (value as Record<string,unknown>)[key];
   }
   return value;
+}
+/** Only the named fields of an object, or of each item of an array; other values stay as they are. */
+function pick(value:unknown, fields:string[]):unknown {
+  if (Array.isArray(value)) return value.map(item => pick(item,fields));
+  if (value === null || typeof value !== 'object') return value;
+  return Object.fromEntries(fields.filter(f => Object.hasOwn(value,f)).map(f => [f,(value as Record<string,unknown>)[f]]));
 }
 function canonical(value:unknown):string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
@@ -86,8 +91,9 @@ function filmPath(root:string, path:string):string|null {
 export const revisionId = (hashes:Record<string,string>) => sha256(canonical(hashes)).slice(0,8);
 export const frozenDir = (id:GateId, hashes:Record<string,string>) => `stills/approved/${id}-${revisionId(hashes)}`;
 
+/** An input keyed by film-relative path or storyboard pointer; `file` is the file hashed for it (a frozen copy or the live file). */
 type Resolved = {key:string; file:string|null; value?:unknown; freezeBase?:string};
-async function resolveSource(project:Project, files:string[], source:Source, freeze:boolean):Promise<Resolved[]> {
+function resolveSource(project:Project, files:string[], source:Source, freeze:boolean):Resolved[] {
   const {root,storyboard} = project;
   if ('file' in source) {
     const re = globRegex(source.file);
@@ -96,25 +102,40 @@ async function resolveSource(project:Project, files:string[], source:Source, fre
   }
   if ('storyboard' in source) {
     const value = readPointer(storyboard,source.storyboard);
-    return value === undefined ? [] : [{key:`storyboard.json#${source.storyboard}`, file:null, value}];
+    if (value === undefined) return [];
+    return source.fields
+      ? [{key:`storyboard.json#${source.storyboard}{${source.fields.join(',')}}`, file:null, value:pick(value,source.fields)}]
+      : [{key:`storyboard.json#${source.storyboard}`, file:null, value}];
   }
-  if ('storyboardPath' in source) {
-    const value = readPointer(storyboard,source.storyboardPath);
-    const path = typeof value === 'string' ? filmPath(root,value) : null;
-    return path && files.includes(path) ? [{key:path, file:path}] : [];
-  }
-  const gate = storyboard.gates.find(g => g.id === source.frozen);
-  if (!gate || !Object.keys(gate.inputHashes).length) return [];
-  const dir = `${frozenDir(gate.id,gate.inputHashes)}/`;
-  return files.filter(f => f.startsWith(dir)).map(f => ({key:f, file:f}));
+  const value = readPointer(storyboard,source.storyboardPath);
+  const path = typeof value === 'string' ? filmPath(root,value) : null;
+  return path && files.includes(path) ? [{key:path, file:path}] : [];
 }
-/** Current inputs of a gate: its own sources plus every earlier gate's, keyed by film-relative path or storyboard pointer. */
-async function gateSources(project:Project, id:GateId, files:string[]):Promise<{all:Resolved[]; freeze:Resolved[]}> {
+/**
+ * The frozen copies of one freeze source of an approved gate, keyed by their live paths so the keys match the ones
+ * recorded at approval. A missing copy drops out, which makes the approval stale.
+ */
+function frozenCopies(project:Project, files:string[], id:GateId, source:Source):Resolved[] {
+  const gate = project.storyboard.gates.find(g => g.id === id);
+  if (!gate || !('file' in source)) return [];
+  const re = globRegex(source.file);
+  const base = globBase(source.file);
+  const dir = frozenDir(id,gate.inputHashes);
+  return Object.keys(gate.inputHashes).filter(k => re.test(k))
+    .map(key => ({key, file:`${dir}/${base ? key.slice(base.length+1) : key}`}))
+    .filter(r => files.includes(r.file));
+}
+/**
+ * Current inputs of a gate: its own sources plus every earlier gate's. Freeze inputs of the gate being recorded are
+ * read live; every other freeze input is read from its gate's frozen copy (D43).
+ */
+async function gateSources(project:Project, id:GateId, files:string[], recording?:GateId):Promise<{all:Resolved[]; freeze:Resolved[]}> {
   const inputs = await gateInputs();
   const all = new Map<string,Resolved>();
   const freeze:Resolved[] = [];
   for (const gid of gateIds.slice(0,gateIds.indexOf(id)+1)) for (const input of inputs[gid]) for (const source of input.sources) {
-    for (const r of await resolveSource(project,files,source,gid === id && input.freeze === true)) {
+    const live = input.freeze !== true || gid === recording;
+    for (const r of live ? resolveSource(project,files,source,input.freeze === true) : frozenCopies(project,files,gid,source)) {
       all.set(r.key,r);
       if (r.freezeBase !== undefined) freeze.push(r);
     }
@@ -126,8 +147,9 @@ async function hashAll(root:string, sources:Resolved[]):Promise<Record<string,st
   for (const r of [...sources].sort((a,b) => a.key < b.key ? -1 : 1)) hashes[r.key] = r.file === null ? sha256(canonical(r.value)) : await fileHash(join(root,r.file));
   return hashes;
 }
-export async function currentHashes(project:Project, id:GateId, files?:string[]):Promise<Record<string,string>> {
-  return hashAll(project.root,(await gateSources(project,id,files ?? await filmFiles(project.root))).all);
+/** Hashes of a gate's inputs as they stand now, with every freeze input read from its frozen copy. */
+async function currentHashes(project:Project, id:GateId, files:string[]):Promise<Record<string,string>> {
+  return hashAll(project.root,(await gateSources(project,id,files)).all);
 }
 function changedKeys(recorded:Record<string,string>, current:Record<string,string>):string[] {
   return [...new Set([...Object.keys(recorded),...Object.keys(current)])].filter(k => recorded[k] !== current[k]).sort();
@@ -145,7 +167,8 @@ export async function gateViews(project:Project):Promise<GateView[]> {
   const files = await filmFiles(project.root);
   const views:GateView[] = [];
   let blocker:GateView|undefined;
-  for (const gate of project.storyboard.gates) {
+  // Gates are taken in G1-G5 order by id, whatever their order in storyboard.json; validate reports a wrong order.
+  for (const gate of gateIds.flatMap(id => project.storyboard.gates.find(g => g.id === id) ?? [])) {
     let view:GateView = {gate, state:gate.state, reason:null};
     if (blocker && gate.state !== 'pending' && gate.state !== 'stale') view = {gate, state:'stale', reason:`${blocker.gate.id} not approved`};
     else if (!blocker && gate.state === 'approved') {
@@ -186,22 +209,28 @@ async function freeze(project:Project, id:GateId, hashes:Record<string,string>, 
  */
 export async function recordGate(project:Project, id:GateId, decision:Decision, notes:string[]):Promise<string[]> {
   const views = await gateViews(project);
-  const index = gateIds.indexOf(id);
-  const earlier = views.slice(0,index).find(v => v.state !== 'approved');
+  const order = (g:GateId) => gateIds.indexOf(g);
+  const view = views.find(v => v.gate.id === id);
+  if (!view) throw new CliError(`cannot record ${id}: storyboard.json has no gate ${id}; run motion-studio validate`);
+  const earlier = views.find(v => order(v.gate.id) < order(id) && v.state !== 'approved');
   if (earlier) throw new CliError(`cannot record ${id}: ${earlier.gate.id} is not approved (${earlier.state}${earlier.reason ? `: ${earlier.reason}` : ''}); approve ${earlier.gate.id} first`);
   if (decision !== 'approve' && !notes.length) throw new CliError(`${decision} needs at least one --note`);
-  const gate = views[index].gate;
+  const gate = view.gate;
   if (decision === 'changes' && gate.rounds >= noteRounds) throw new CliError(`${id} used ${gate.rounds} of ${noteRounds} note rounds; approve to accept, rescope or stop`);
   const files = await filmFiles(project.root);
-  const sources = await gateSources(project,id,files);
+  const sources = await gateSources(project,id,files,id);
   const hashes = await hashAll(project.root,sources.all);
   const frozen = decision === 'approve' ? await freeze(project,id,hashes,sources.freeze) : null;
 
-  const gates:Gate[] = views.map(v => ({...v.gate, state:v.state}));
+  // Gate records are selected by id and keep their order in storyboard.json.
+  const effective = new Map(views.map(v => [v.gate,v.state]));
   const state:Record<Decision,GateState> = {approve:'approved', changes:'changes', rescope:'pending'};
-  gates[index] = {...gate, state:state[decision], inputHashes:hashes, decision, notes:[...gate.notes,...notes],
-    rounds:decision === 'changes' ? gate.rounds+1 : decision === 'rescope' ? 0 : gate.rounds};
-  if (decision !== 'approve') for (const g of gates.slice(index+1)) if (g.state !== 'pending') g.state = 'stale';
+  const gates:Gate[] = project.storyboard.gates.map(g => {
+    if (g === gate) return {...g, state:state[decision], inputHashes:hashes, decision, notes:[...g.notes,...notes],
+      rounds:decision === 'changes' ? g.rounds+1 : decision === 'rescope' ? 0 : g.rounds};
+    const current = effective.get(g) ?? g.state;
+    return {...g, state:decision !== 'approve' && order(g.id) > order(id) && current !== 'pending' ? 'stale' : current};
+  });
 
   const path = join(project.root,'storyboard.json');
   const temp = join(project.root,'.storyboard.json.tmp');

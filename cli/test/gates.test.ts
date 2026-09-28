@@ -84,8 +84,13 @@ test('approve binds the gate to its input hashes and freezes the approved stills
     const info = await lstat(frozen);
     expect(info.isSymbolicLink()).toBe(false);
     expect(info.mode & 0o222).toBe(0);
+    // D43: the approval binds the frozen copy, so a later edit of the live still leaves G1 approved.
     await write(dir,'stills/G1/look-a.png','look A v2');
     expect(await readFile(frozen,'utf8')).toBe('look A v1');
+    expect(status(dir)).toBe(lines('G1 approved','G2 pending','G3 pending','G4 pending','G5 pending',
+      'next: board: beat map, keyframe builds and stills, then present G2'));
+    // A lost frozen copy is a lost approval.
+    await rm(join(dir,'stills/approved'),{recursive:true,force:true});
     expect(status(dir)).toBe(lines('G1 stale (changed: stills/G1/look-a.png)','G2 pending','G3 pending','G4 pending','G5 pending',
       'next: G1 is stale: rerun brief, hero assets and look test, then present G1 again'));
   });
@@ -98,19 +103,28 @@ test('resume after an upstream edit: the edited gate and every later approval ar
     await appendFile(join(dir,'BRIEF.md'),'Direction: warmer.\n');
     expect(status(dir)).toBe(lines('G1 stale (changed: BRIEF.md)','G2 stale (G1 not approved)','G3 pending','G4 pending','G5 pending',
       'next: G1 is stale: rerun brief, hero assets and look test, then present G1 again'));
-    // validate reports the stale approvals as warnings; a stale gate is a resumable state, not an invalid project.
+    // D44: validate rejects stale approvals; render commands skip the gate check, so stitch gets past the project
+    // checks and stops only on its own precondition.
     const validate = run(['validate',dir]);
-    expect(validate.status).toBe(0);
-    expect(validate.stderr).toBe('warning: gate G1 approved is stale: changed: BRIEF.md; present G1 again\nwarning: gate G2 approved is stale: G1 not approved; present G2 again\n');
+    expect(validate.status).toBe(1);
+    expect(validate.stderr).toBe('error: gate G1 is stale (changed: BRIEF.md); present G1 again\nerror: gate G2 is stale (G1 not approved); present G2 again\n');
+    const stitch = run(['stitch',dir]);
+    expect(stitch.stderr).toBe('error: successful render required before stitch\n');
+    expect(stitch.status).toBe(1);
     await refused(dir,['G2','approve'],'cannot record G2: G1 is not approved (stale: changed: BRIEF.md); approve G1 first');
     // Approving G1 again does not restore G2: G2 was approved against the old brief.
     ok(['gate',dir,'G1','approve']);
     expect((await storyboard(dir)).gates[0].inputHashes['BRIEF.md']).toBe(sha(await readFile(join(dir,'BRIEF.md'),'utf8')));
     expect(status(dir)).toBe(lines('G1 approved','G2 stale','G3 pending','G4 pending','G5 pending',
       'next: G2 is stale: rerun board: beat map, keyframe builds and stills, then present G2 again'));
+    // A gate recorded as stale stays an error for validate until it is presented again.
+    const recorded = run(['validate',dir]);
+    expect(recorded.status).toBe(1);
+    expect(recorded.stderr).toBe('error: gate G2 is stale; present G2 again\n');
     ok(['gate',dir,'G2','approve']);
     expect(status(dir)).toBe(lines('G1 approved','G2 approved','G3 pending','G4 pending','G5 pending',
       'next: animatic with the entry and exit frame of each shot, then present G3'));
+    expect(ok(['validate',dir])).toBe(`valid ${dir}\n`);
   });
 });
 
@@ -152,34 +166,114 @@ test('resume after an exhausted note budget: accept or rescope, no fourth round'
   });
 });
 
-test('a change made after approval makes only the gates that hash it stale', async () => {
+const g2Grid = 'storyboard.json#/audio{bpm,beatFrames,downbeatFrames,dropFrames}';
+const g2Map = 'storyboard.json#/shots{id,startFrame,endFrame}';
+
+test('G2 binds the beat grid and beat map, not shot descriptions or fill-mode assets', async () => {
   await withFilm(async dir => {
     await write(dir,'animatic.mp4','animatic v1');
+    for (const id of ['G1','G2','G3']) ok(['gate',dir,id,'approve']);
+    const built = await storyboard(dir);
+    const g2 = built.gates[1];
+    expect(g2.inputHashes[g2Grid]).toBe(sha('{"beatFrames":[3,6],"bpm":null,"downbeatFrames":[],"dropFrames":[]}'));
+    expect(g2.inputHashes[g2Map]).toBe(sha('[{"endFrame":6,"id":"remotion","startFrame":0},{"endFrame":12,"id":"hyperframes","startFrame":6}]'));
+    expect(g2.inputHashes['storyboard.json#/meta{fps,durationFrames}']).toBe(sha('{"durationFrames":12,"fps":30}'));
+    const approved = lines('G1 approved','G2 approved','G3 approved','G4 pending','G5 pending','next: fill assets, full build and critique loop A, then present G4');
+
+    // Fill mode, description edits, grid labels, formats and layouts leave G2 and G3 approved.
+    await edit(dir,s => {
+      s.shots[1].description = 'HYPERFRAMES label, warmer';
+      s.shots[1].assets.push('sfx-hit');
+      s.shots[1].soundCues.push({asset:'sfx-hit', eventFrame:9, peakOffsetFrames:0});
+      s.audio.grid = 'corrected'; s.audio.confidence = 'low';
+      s.meta.formats.extra = ['9:16'];
+      s.meta.layouts = {'9:16':{mode:'reframe'}};
+    });
+    expect(status(dir)).toBe(approved);
+
+    // A beat frame change stales G2 and every later approval; restoring it restores the approvals.
+    await edit(dir,s => {s.audio.beatFrames = [3,6,9];});
+    expect(status(dir)).toBe(lines('G1 approved',`G2 stale (changed: ${g2Grid})`,'G3 stale (G2 not approved)','G4 pending','G5 pending',
+      'next: G2 is stale: rerun board: beat map, keyframe builds and stills, then present G2 again'));
+    await edit(dir,s => {s.audio.beatFrames = [3,6];});
+    expect(status(dir)).toBe(approved);
+
+    // So does a cut moved to another frame (which also leaves a still frame outside the shorter shot).
+    await edit(dir,s => {s.shots[0].endFrame = 3; s.shots[1].startFrame = 3;});
+    expect(status(dir)).toBe(lines('G1 approved',`G2 stale (changed: ${g2Map})`,'G3 stale (G2 not approved)','G4 pending','G5 pending',
+      'next: G2 is stale: rerun board: beat map, keyframe builds and stills, then present G2 again',`validation: 1 error; run motion-studio validate ${dir}`));
+  });
+});
+
+test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () => {
+  await withFilm(async dir => {
+    await write(dir,'animatic.mp4','animatic v1');
+    await write(dir,'renders/16x9/master.mkv','master v1');
     for (const id of ['G1','G2','G3','G4']) ok(['gate',dir,id,'approve']);
     const gates = (await storyboard(dir)).gates;
-    // G3 binds to the frozen G2 copy, not the live still.
-    const frozenG2 = (await readdir(join(dir,'stills/approved'))).filter(d => d.startsWith('G2-'));
-    expect(frozenG2).toHaveLength(1);
-    expect(gates[2].inputHashes[`stills/approved/${frozenG2[0]}/b01.png`]).toBe(sha('beat 1 v1'));
+    // G3 and G4 bind the frozen copies of what they showed, recorded under the live paths.
+    expect(gates[2].inputHashes['stills/G2/b01.png']).toBe(sha('beat 1 v1'));
     expect(gates[2].inputHashes['animatic.mp4']).toBe(sha('animatic v1'));
-    expect(gates[3].inputHashes['ledger.json']).toBe(sha(await readFile(join(dir,'ledger.json'),'utf8')));
-    expect(gates[3].inputHashes['shots/hyperframes/index.html']).toBe(sha(await readFile(join(dir,'shots/hyperframes/index.html'),'utf8')));
-    expect(Object.keys(gates[2].inputHashes).some(k => k.startsWith('shots/'))).toBe(false);
+    expect(gates[3].inputHashes['renders/16x9/master.mkv']).toBe(sha('master v1'));
+    expect(Object.keys(gates[3].inputHashes).filter(k => k.startsWith('shots/') || k === 'ledger.json')).toEqual([]);
+    const frozenG4 = (await readdir(join(dir,'stills/approved'))).filter(d => d.startsWith('G4-'));
+    expect(frozenG4).toHaveLength(1);
+    expect(await readFile(join(dir,'stills/approved',frozenG4[0],'16x9/master.mkv'),'utf8')).toBe('master v1');
 
-    // A shot source edit after G4: G1 to G3 stay approved.
-    await appendFile(join(dir,'shots/hyperframes/index.html'),'<!-- tweak -->\n');
-    expect(status(dir)).toBe(lines('G1 approved','G2 approved','G3 approved','G4 stale (changed: shots/hyperframes/index.html)','G5 pending',
-      'next: G4 is stale: rerun fill assets, full build and critique loop A, then present G4 again'));
-    await refused(dir,['G5','approve'],'cannot record G5: G4 is not approved (stale: changed: shots/hyperframes/index.html); approve G4 first');
-
-    // A beat time change stales G2 and everything after it; G1 does not hash the grid.
-    await edit(dir,s => {s.audio.beatFrames = [3,6,9];});
-    expect(status(dir)).toBe(lines('G1 approved','G2 stale (changed: storyboard.json#/audio)','G3 stale (G2 not approved)','G4 stale (G2 not approved)','G5 pending',
-      'next: G2 is stale: rerun board: beat map, keyframe builds and stills, then present G2 again'));
-
-    // Editing the live still leaves the frozen copy intact.
+    // Step 7: polish shot sources and the ledger, re-stitch with the same and with other bytes, add a second format.
+    const before = status(dir);
+    await appendFile(join(dir,'shots/hyperframes/index.html'),'<!-- polish -->\n');
+    await appendFile(join(dir,'ledger.json'),'\n');
+    await write(dir,'renders/16x9/master.mkv','master v1');
+    expect(status(dir)).toBe(before);
+    await write(dir,'renders/16x9/master.mkv','master v1 remuxed');
+    await write(dir,'renders/9x16/master.mkv','master 9x16');
+    await write(dir,'animatic.mp4','animatic v2');
     await write(dir,'stills/G2/b01.png','beat 1 v2');
-    expect(await readFile(join(dir,'stills/approved',frozenG2[0],'b01.png'),'utf8')).toBe('beat 1 v1');
+    expect(status(dir)).toBe(lines('G1 approved','G2 approved','G3 approved','G4 approved','G5 pending',
+      'next: polish, mix, draft renders per format, critique loop B and license check, then present G5'));
+
+    await write(dir,'renders/16x9/safezone.json','{"ok":true}');
+    await write(dir,'renders/16x9/sync.json','{"sync":1}');
+    await write(dir,'renders/16x9/handoff-remotion-hyperframes.json','{"status":"match"}');
+    await write(dir,'renders/16x9/mix.wav','mix v1');
+    await write(dir,'renders/16x9/.staging/scratch.mkv','scratch');
+    await write(dir,'shots/hyperframes/.cache','cache v1');
+    await edit(dir,s => {s.meta.layouts = {'16:9':{mode:'native'}};});
+    ok(['gate',dir,'G5','approve']);
+    const g5 = (await storyboard(dir)).gates[4];
+    expect(g5.inputHashes['shots/hyperframes/index.html']).toBe(sha(await readFile(join(dir,'shots/hyperframes/index.html'),'utf8')));
+    expect(g5.inputHashes['ledger.json']).toBe(sha(await readFile(join(dir,'ledger.json'),'utf8')));
+    expect(g5.inputHashes['storyboard.json#/meta/layouts']).toBe(sha('{"16:9":{"mode":"native"}}'));
+    expect(g5.inputHashes['renders/16x9/safezone.json']).toBe(sha('{"ok":true}'));
+    expect(g5.inputHashes['renders/16x9/handoff-remotion-hyperframes.json']).toBe(sha('{"status":"match"}'));
+    // G5 inherits G4's frozen master, not the re-stitched one, and not a master G4 never showed.
+    expect(g5.inputHashes['renders/16x9/master.mkv']).toBe(sha('master v1'));
+    expect(Object.keys(g5.inputHashes).filter(k => k.startsWith('renders/9x16/') || k.includes('/.'))).toEqual([]);
+
+    // Re-running a delivery check after G5 keeps G5; a shot source edit stales G5 only.
+    await write(dir,'renders/16x9/safezone.json','{"ok":true,"rerun":1}');
+    await write(dir,'shots/hyperframes/.cache','cache v2');
+    expect(status(dir)).toBe(lines('G1 approved','G2 approved','G3 approved','G4 approved','G5 approved',
+      'next: final render, then user acceptance of the files'));
+    await appendFile(join(dir,'shots/hyperframes/index.html'),'<!-- late -->\n');
+    expect(status(dir)).toBe(lines('G1 approved','G2 approved','G3 approved','G4 approved','G5 stale (changed: shots/hyperframes/index.html)',
+      'next: G5 is stale: rerun polish, mix, draft renders per format, critique loop B and license check, then present G5 again'));
+  });
+});
+
+test('gate selects the gate record by id when storyboard.json lists the gates in another order', async () => {
+  await withFilm(async dir => {
+    await edit(dir,s => {s.gates = [s.gates[1],s.gates[0],...s.gates.slice(2)];});
+    ok(['gate',dir,'G1','approve']);
+    let gates = (await storyboard(dir)).gates;
+    expect(gates.map((g:Json) => `${g.id}:${g.state}`)).toEqual(['G2:pending','G1:approved','G3:pending','G4:pending','G5:pending']);
+    expect(gates[1].inputHashes['BRIEF.md']).toBe(sha(await readFile(join(fixture,'BRIEF.md'),'utf8')));
+    expect(gates[0].inputHashes).toEqual({});
+    ok(['gate',dir,'G2','approve']);
+    ok(['gate',dir,'G1','changes','--note','warmer']);
+    gates = (await storyboard(dir)).gates;
+    expect(gates.map((g:Json) => `${g.id}:${g.state}`)).toEqual(['G2:stale','G1:changes','G3:pending','G4:pending','G5:pending']);
   });
 });
 

@@ -26,9 +26,12 @@ function report(errors:string[], warnings:string[]) {
   for (const w of warnings) console.error(`warning: ${w}`);
   for (const e of errors) console.error(`error: ${e}`);
 }
-/** Loads a film folder; any validation error stops the command before it writes anything. */
+/**
+ * Loads a film folder for a render command; any structural error stops the command before it writes anything.
+ * Gate staleness is not checked here (D44); `validate` reports it.
+ */
 async function loadProject(filmRoot:string):Promise<Project> {
-  const {errors,warnings,project} = await validateProject(filmRoot);
+  const {errors,warnings,project} = await validateProject(filmRoot,{gates:false});
   report(errors,warnings);
   if (errors.length || !project) throw new CliError(`invalid project ${resolve(filmRoot)}: ${errors.length} error${errors.length === 1 ? '' : 's'}`);
   return project;
@@ -108,7 +111,8 @@ async function main() {
     // Status must work on an unfinished film: only a schema failure stops it.
     const parsed = await parseProject(target);
     if (!parsed.ok) {report(parsed.errors,[]); process.exitCode = 1; return;}
-    const {errors} = await checkProject(parsed.project);
+    // Stale gates show in the gate lines, so the error count covers only the structural checks.
+    const {errors} = await checkProject(parsed.project,{gates:false});
     for (const line of statusLines(await gateViews(parsed.project))) console.log(line);
     if (errors.length) console.log(`validation: ${errors.length} error${errors.length === 1 ? '' : 's'}; run motion-studio validate ${target}`);
     return;
