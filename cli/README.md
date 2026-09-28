@@ -26,7 +26,7 @@ A handoff compares frames for identity, so the moving element must land on a sti
 
 ## Beat grid
 
-`beats` needs only a schema-valid project, because the grid comes before the shots and a new grid can move existing cuts off it. Every time in seconds becomes a frame with one rule, `round(seconds * fps)` (nearest frame, halves up; `src/frames.ts`). For example, 0.09 s at 30 fps is frame 3.
+`beats` needs only a schema-valid project, because the grid comes before the shots and a new grid can move existing cuts off it. Every time in seconds becomes a frame with one rule, `round(seconds * fps)` (nearest frame, halves up; `src/frames.ts`). The product is first snapped to a millionth of a frame, so float error does not turn a half frame down: 0.58 s at 25 fps is frame 15. For example, 0.09 s at 30 fps is frame 3.
 
 Detection decodes the track to mono 22.05 kHz PCM with ffmpeg and works in TypeScript:
 
@@ -34,7 +34,7 @@ Detection decodes the track to mono 22.05 kHz PCM with ffmpeg and works in TypeS
 2. Onsets: every 2.9 ms, the RMS of the next 11.6 ms against the RMS of the 11.6 ms before it.
 3. Tempo: the autocorrelation peak of the onset envelope between 70 and 180 BPM. Faster music is reported at half tempo and slower music at double tempo.
 4. Beats: each beat is snapped to the strongest onset within 10 % of a period of its prediction, so the grid follows tempo drift. Beats are measured to about 3 ms. A true beat within 3 ms of a frame boundary can land on either frame.
-5. Downbeats: meters 3 and 4 only. In the median bar the first beat must peak 1.25 times above the mean of the other beats. When both meters or neither fit, no downbeats are proposed and confidence is low.
+5. Downbeats: meters 3 and 4 only. In the median bar the first beat must peak 1.25 times above the mean of the other beats. The best bar start must also score 1.2 times every other start in that meter. When both meters or neither fit, or accents repeat every 2 beats (kick on 1 and 3, snare on 2 and 4) so two bar starts fit, no downbeats are proposed and confidence is low.
 6. Drops: a bar whose RMS is at least +6 dB above the two bars before it. The drop starts on a downbeat (on any beat without a meter). No such bar gives `drops: none`, never a guess.
 7. Confidence is `high` only when at least 90 % of beats land on an onset, beat intervals vary by less than 5 % and the meter is clear. Each reason for `low` is printed.
 

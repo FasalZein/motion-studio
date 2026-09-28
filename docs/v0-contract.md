@@ -55,7 +55,7 @@ films/<slug>/
   ledger.json              canonical asset ledger
   style-bible.md           when a reference was given
   taste-snapshot.json      copy of ~/.motion-studio/taste.json at G1
-  beats.json               beat grid
+  beats.json               v0 manual grid; with the CLI the grid is storyboard.json audio
   assets/                  frozen local asset files
   shots/<shot-id>/         one engine project per shot (HyperFrames or Remotion)
   stills/<gate>/           rendered stills; approved copies frozen under stills/approved/<gate>-<hash8>/

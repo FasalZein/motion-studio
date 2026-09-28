@@ -34,6 +34,9 @@ const tracks:Record<string,{expr:string; seconds:number}> = {
   steady:{expr:`0.6*${groove}`, seconds:16.1},
   // Accents on every 3rd and every 4th beat at once: both meters fit, so no downbeats can be chosen.
   polymeter:{expr:`(0.3+0.3*eq(mod(${B},3),0)+0.3*eq(mod(${B},4),0))*${click}`, seconds:16.1},
+  // A backbeat: a 3x accent on every 2nd beat (k odd, as a snare on 2 and 4). Bar starts two beats apart fit
+  // equally, so no bar start can be chosen.
+  backbeat:{expr:`if(eq(mod(${B},2),1),0.9,0.3)*${click}`, seconds:16.1},
   silence:{expr:'0', seconds:8},
 };
 
@@ -138,6 +141,16 @@ test('an ambiguous meter keeps the beats but proposes no downbeats, with low con
   }
 });
 
+test('accents on every 2nd beat keep the beats but propose no downbeats, with low confidence', async () => {
+  for (const runtime of runtimes) {
+    const dir = await film(runtime,'backbeat');
+    const result = run(runtime,['beats',dir]);
+    expect(result.status).toBe(0);
+    expect(await audio(dir)).toEqual({track:'track',grid:'detected',bpm:120,beatFrames,downbeatFrames:[],dropFrames:[],confidence:'low'});
+    expect(result.stdout).toContain('low confidence: ambiguous bar start: accents fit more than one first beat in a 4-beat bar; no downbeats proposed');
+  }
+});
+
 test('a manually corrected grid replaces the proposal with nearest-frame conversion', async () => {
   for (const runtime of runtimes) {
     const dir = await film(runtime,'click');
@@ -160,18 +173,19 @@ test('a manually corrected grid replaces the proposal with nearest-frame convers
   }
 });
 
-test('an imported grid needs no track; seconds on a frame boundary round up', async () => {
+test('an imported grid needs no track; seconds on a half frame round up', async () => {
   for (const runtime of runtimes) {
     const dir = await film(runtime,null);
     const file = join(dir,'grid.json');
-    // At 25 fps: 0.02 s = 0.5 frame -> 1; 0.5 s = 12.5 -> 13; 1.01 s = 25.25 -> 25.
-    await writeFile(file,JSON.stringify({bpm:118.5,beats:[0.02,0.5,1.01],downbeats:[0.02],drops:[]}));
+    // At 25 fps: 0.02 s = 0.5 frame -> 1; 0.5 s = 12.5 -> 13; 0.58 s = 14.5 -> 15 (in floats 0.58*25 is
+    // 14.499999999999998, so a plain round gives 14); 1.01 s = 25.25 -> 25.
+    await writeFile(file,JSON.stringify({bpm:118.5,beats:[0.02,0.5,0.58,1.01],downbeats:[0.02],drops:[]}));
     const storyboard = await readJson(join(dir,'storyboard.json'));
     storyboard.meta.fps = 25;
     await writeFile(join(dir,'storyboard.json'),JSON.stringify(storyboard));
     const result = run(runtime,['beats',dir,'--imported',file]);
     expect(result.status).toBe(0);
-    expect(await audio(dir)).toEqual({track:null,grid:'imported',bpm:118.5,beatFrames:[1,13,25],downbeatFrames:[1],dropFrames:[],confidence:'high'});
+    expect(await audio(dir)).toEqual({track:null,grid:'imported',bpm:118.5,beatFrames:[1,13,15,25],downbeatFrames:[1],dropFrames:[],confidence:'high'});
     expect(run(runtime,['validate',dir]).status).toBe(0);
   }
 });

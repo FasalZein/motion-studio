@@ -27,6 +27,9 @@ const ACCENT_BEFORE_S = 0.01;
 const ACCENT_AFTER_S = 0.06;
 // A meter is clear when, in the median bar, the downbeat peak is at least 1.25 times the mean of the other beats.
 const ACCENT_RATIO = 1.25;
+// A bar start is clear only when its score is at least 1.2 times the score of every other start in that meter.
+// Accents every 2 beats (kick on 1 and 3, snare on 2 and 4) score two starts of a 4-beat bar about equally.
+const PHASE_MARGIN = 1.2;
 // A drop is a rise of at least +6 dB RMS from the two bars before a beat to the bar that starts on it.
 const DROP_RATIO = 2;
 const BEATS_PER_BAR_WITHOUT_METER = 4;
@@ -166,23 +169,26 @@ function trackBeats(samples:Float32Array):{times:number[]; bpm:number; sure:bool
 /**
  * Downbeats from accents. For each meter (3 or 4) and phase, each complete bar gives the ratio of its first
  * beat's peak to the mean peak of its other beats; the score is the median ratio. A meter is chosen only when
- * it reaches ACCENT_RATIO and the other meter does not; otherwise the meter is ambiguous or unaccented.
+ * it reaches ACCENT_RATIO, the other meter does not, and its best phase beats every other phase by PHASE_MARGIN;
+ * otherwise the bar start is ambiguous or unaccented.
  */
 function findMeter(accents:number[]):{meter:Meter; phase:number}|{meter:null; reason:string} {
   const best = ([3,4] as const).map(meter => {
-    let top = {meter, phase:0, score:0};
-    for (let phase=0;phase<meter;phase++) {
+    const scores = Array.from({length:meter},(_,phase) => {
       const ratios:number[] = [];
       for (let start=phase;start+meter<=accents.length;start+=meter) {
         const others = mean(accents.slice(start+1,start+meter));
         if (others > 0) ratios.push(accents[start]/others);
       }
-      const score = ratios.length ? median(ratios) : 0;
-      if (score > top.score) top = {meter, phase, score};
-    }
-    return top;
+      return ratios.length ? median(ratios) : 0;
+    });
+    const phase = scores.indexOf(Math.max(...scores));
+    const runnerUp = Math.max(...scores.filter((_,p) => p !== phase));
+    return {meter, phase, score:scores[phase], runnerUp};
   });
   const clear = best.filter(b => b.score >= ACCENT_RATIO);
+  const unsure = clear.find(b => b.score < PHASE_MARGIN*b.runnerUp);
+  if (unsure) return {meter:null, reason:`ambiguous bar start: accents fit more than one first beat in a ${unsure.meter}-beat bar`};
   if (clear.length === 1) return {meter:clear[0].meter, phase:clear[0].phase};
   return {meter:null, reason:clear.length ? 'ambiguous meter: accents fit both 3 and 4 beats per bar' : 'no accent pattern marks the first beat of a bar'};
 }
