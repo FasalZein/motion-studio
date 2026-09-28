@@ -113,6 +113,77 @@ for (const {kind,change} of offBeatValid) test(`a seam off the beat grid is vali
   });
 });
 
+// Vocabulary (#12, D42): camera, transition, effect terms and critique issue terms must be glossary ids or custom:.
+// Unknown terms warn and do not block. The glossary is the skill's terms/*.md; the CLI reads a copy built into dist.
+const termsDir = resolve(here,'../../skills/motion-vocabulary/terms');
+const withCritique = (s:Json, term:string) => {s.critique = [{loop:1,revisionHash:'a'.repeat(64),filmScores:{},shotScores:{},worstIssues:[{shot:'remotion',frame:3,term,issue:'patch jumps',repair:'hold the patch'}],stillMatches:[]}];};
+
+test('the unknown-vocabulary fixture warns on each unknown term and stays valid', async () => {
+  await withFixture(async dir => {
+    await edit(dir,'storyboard.json',s => {
+      s.shots[0].camera = 'slow-push';
+      s.shots[1].transition = 'swoosh';
+      s.shots[1].effects = [{start:2,frames:1,term:'glitchy'}];
+      withCritique(s,'wobble');
+    });
+    for (const runtime of runtimes) {
+      const result = run(runtime,['validate',dir]);
+      expect(result.stderr.split('\n').filter(Boolean)).toEqual([
+        'warning: shot remotion: camera "slow-push" is not a motion-vocabulary term; use a term id or custom:<description>',
+        'warning: shot hyperframes: transition "swoosh" is not a motion-vocabulary term; use a term id or custom:<description>',
+        'warning: shot hyperframes: effect at frame 2 term "glitchy" is not a motion-vocabulary term; use a term id or custom:<description>',
+        'warning: critique loop 1: worst issue at shot remotion frame 3 term "wobble" is not a motion-vocabulary term; use a term id or custom:<description>',
+      ]);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe(`valid ${dir}\n`);
+    }
+  });
+});
+
+test('the custom: prefix escapes the glossary; a bare custom: warns', async () => {
+  await withFixture(async dir => {
+    await edit(dir,'storyboard.json',s => {
+      s.shots[0].camera = 'custom:slow drift left';
+      s.shots[1].transition = 'custom:ink bleed';
+      s.shots[1].effects = [{start:2,frames:1,term:'custom:blackout'}];
+      withCritique(s,'custom:patch pop');
+    });
+    for (const runtime of runtimes) {
+      const result = run(runtime,['validate',dir]);
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
+    }
+    await edit(dir,'storyboard.json',s => {s.shots[0].camera = 'custom: ';});
+    const bare = run('node',['validate',dir]);
+    expect(bare.stderr).toBe('warning: shot remotion: camera "custom: " has no description after custom:\n');
+    expect(bare.status).toBe(0);
+  });
+});
+
+test('every glossary term in the 9 categories is accepted by validate', async () => {
+  const files = (await readdir(termsDir)).sort();
+  expect(files).toEqual(['audio-sync.md','camera.md','composition.md','editing.md','finishing.md','graphic-transitions.md','interface-in-shot.md','kinetic-type.md','timing-physics.md']);
+  const ids:string[] = [];
+  for (const file of files) {
+    const text = await readFile(join(termsDir,file),'utf8');
+    const entries = text.split('\n').filter(l => l.startsWith('- **'));
+    expect(entries.length).toBeGreaterThan(0);
+    for (const entry of entries) ids.push(entry.match(/\(`([^`]+)`\)/)![1]);
+  }
+  await withFixture(async dir => {
+    await edit(dir,'storyboard.json',s => {
+      s.shots[0].camera = 'push-in';
+      s.shots[1].camera = 'locked-off';
+      s.shots[1].transition = 'straight-cut';
+      s.shots[1].effects = ids.map(term => ({start:0,frames:1,term}));
+      withCritique(s,'cross-dissolve');
+    });
+    const result = run('bun',['validate',dir]);
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+  });
+});
+
 test('the storyboard example in docs/v0-contract.md validates', async () => {
   const doc = await readFile(resolve(here,'../../docs/v0-contract.md'),'utf8');
   const example = doc.split('## storyboard.json')[1].match(/```json\n([\s\S]*?)```/)![1];

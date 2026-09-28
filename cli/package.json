@@ -16,7 +16,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/vocabulary.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run test:prepare && npm run test:node && npm run test:bun",
     "test:prepare": "npm run build && npm pack --silent",
