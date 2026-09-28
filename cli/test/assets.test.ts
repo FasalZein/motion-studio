@@ -58,6 +58,59 @@ case "$FAKE_MODE" in
     echo '{"file":"image.png","sourceUrlOrGenerator":"fake","providerAssetId":null,"license":{"status":"unknown","name":null,"evidence":"x"}}';;
 esac`);
 
+type HeygenAuth = 'ok'|'expired'|'signedout'|'network';
+/**
+ * A local fake heygen CLI. `auth status` answers like the real CLI for FAKE_AUTH (default `auth`): ok prints a live
+ * credential; expired prints one with a negative expiry; signedout exits 3 with an auth_error; network exits 1.
+ * Every reply holds a token and an email that must never be printed. FAKE_HEYGEN_VERSION overrides the version.
+ */
+const fakeHeygen = (bin:string, version:string, auth:HeygenAuth) => script(join(bin,'heygen'),`
+case "$1" in
+  --version) echo "heygen version v\${FAKE_HEYGEN_VERSION:-${version}}";;
+  auth) case "\${FAKE_AUTH:-${auth}}" in
+    ok) echo '{"credential":{"type":"oauth","expires_in_seconds":172805,"access_token":"heygen-secret-token","user":{"email":"someone@example.com"}},"data":{"email":"someone@example.com"}}';;
+    expired) echo '{"credential":{"type":"oauth","expires_in_seconds":-60,"access_token":"heygen-secret-token","user":{"email":"someone@example.com"}}}';;
+    signedout) echo '{"error":{"code":"auth_error","message":"no API key found for someone@example.com"}}'; exit 3;;
+    network) echo '{"error":{"code":"network_error","message":"lookup api.heygen.com for someone@example.com"}}'; exit 1;;
+  esac;;
+  *) exit 64;;
+esac`);
+/**
+ * A local fake of `hyperframes media-use`. It appends its arguments to FAKE_CALLS, freezes `CATALOG:<type>:<intent>`
+ * under <project>/.media/ like media-use, then acts on FAKE_MU: ok prints a record from the forced provider with
+ * catalog id FAKE_ID; miss exits 1 with media-use's JSON error; fallback prints a record from bundled.sfx; noid
+ * leaves out the catalog id; outside names a file beside .media; link replaces the frozen file with a link to FAKE_OUTSIDE.
+ */
+const fakeMediaUse = (dir:string) => script(join(dir,'media-use'),`
+echo "$*" >> "\${FAKE_CALLS:-/dev/null}"
+shift
+while [ $# -gt 0 ]; do
+  case "$1" in --type) type=$2; shift 2;; --intent) intent=$2; shift 2;; --project) project=$2; shift 2;; --provider) provider=$2; shift 2;; *) shift;; esac
+done
+case "$type" in bgm|sfx|voice) sub=audio/$type; ext=mp3;; *) sub=images; ext=jpg;; esac
+case "$type" in bgm|sfx) key=track_id;; image|icon) key=asset_id;; *) key=prompt;; esac
+mkdir -p "$project/.media/$sub"
+rel=".media/$sub/\${type}_001.$ext"
+printf 'CATALOG:%s:%s' "$type" "$intent" > "$project/$rel"
+record() { echo "{\\"ok\\":true,\\"id\\":\\"\${type}_001\\",\\"type\\":\\"$type\\",\\"path\\":\\"$1\\",\\"source\\":\\"search\\",\\"provenance\\":{\\"provider\\":\\"$2\\"$3},\\"_source\\":\\"search\\"}"; }
+case "\${FAKE_MU:-ok}" in
+  ok) record "$rel" "$provider" ",\\"$key\\":\\"$FAKE_ID\\"";;
+  miss) echo "{\\"ok\\":false,\\"error\\":\\"no provider could resolve $type\\"}"; exit 1;;
+  fallback) record "$rel" bundled.sfx ",\\"library_key\\":\\"whoosh\\"";;
+  noid) record "$rel" "$provider" "";;
+  outside) printf 'stray' > "$project/stray.$ext"; record "stray.$ext" "$provider" ",\\"$key\\":\\"$FAKE_ID\\"";;
+  link) rm "$project/$rel"; ln -s "$FAKE_OUTSIDE" "$project/$rel"; record "$rel" "$provider" ",\\"$key\\":\\"$FAKE_ID\\"";;
+esac`);
+/** Environment for a HeyGen import: fake heygen first on PATH, fake media-use, and a file that logs media-use calls. */
+async function heygenEnv(dir:string, auth:HeygenAuth = 'ok'):Promise<{env:NodeJS.ProcessEnv; calls:string}> {
+  const bin = join(dir,'heygen-bin');
+  await mkdir(bin);
+  await fakeHeygen(bin,'0.8.1',auth);
+  const calls = join(dir,'media-use-calls.txt');
+  return {calls, env:{...process.env, PATH:`${bin}:${process.env.PATH}`, MOTION_STUDIO_MEDIA_USE:await fakeMediaUse(dir), FAKE_CALLS:calls, FAKE_ID:'cat-42'}};
+}
+const callLog = (path:string) => readFile(path,'utf8').then(t => t.trim().split('\n'),() => []);
+
 test('assets add records website, code and data files and lists them with rights and file state', async () => {
   for (const runtime of runtimes) await withFilm(async (dir,film) => {
     // A captured screenshot outside the film is copied to assets/<id><ext>.
@@ -170,7 +223,13 @@ test('assets resolve freezes a provider file and records its provenance', async 
   for (const runtime of runtimes) await withFilm(async (dir,film) => {
     const provider = await fakeProvider(dir);
     const env = {...process.env, [PROVIDER_ENV]:provider, FAKE_MODE:'ok'};
-    const result = run(runtime,['assets',film,'resolve','texture-1','--provider','image','--type','texture','--intent','warm paper grain','--shot','intro'],env);
+    const args = ['assets',film,'resolve','texture-1','--provider','image','--type','texture','--intent','warm paper grain','--shot','intro'];
+    // An external generator counts as paid: without the consent flag the provider is never called.
+    const refused = run(runtime,args,{...env, FAKE_MODE:'fail'});
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toBe('error: assets: provider image may start paid generation for type texture; ask the user to agree to the cost, then add --paid-ok\n');
+    expect(await readdir(join(film,'assets'))).toEqual([]);
+    const result = run(runtime,[...args,'--paid-ok'],env);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
     expect(result.stdout).toBe(`added texture-1: texture, ai-image fake-model v1: warm paper grain, provider id gen-7, license known provider terms (evidence: fake terms page), path assets/texture-1.png, sha256 ${sha('PNG:warm paper grain')}, shots intro, file ok\n`);
@@ -187,7 +246,7 @@ test('a provider failure leaves no ledger entry, no asset file and no staging fo
   for (const runtime of runtimes) await withFilm(async (dir,film) => {
     const provider = await fakeProvider(dir);
     const ledger = await readFile(join(film,'ledger.json'),'utf8');
-    const args = ['assets',film,'resolve','texture-1','--provider','image','--type','texture','--intent','grain'];
+    const args = ['assets',film,'resolve','texture-1','--provider','image','--type','texture','--intent','grain','--paid-ok'];
     const failures:[NodeJS.ProcessEnv,string][] = [
       [{[PROVIDER_ENV]:provider, FAKE_MODE:'fail'},'error: image provider failed: exited 1 (quota exceeded)'],
       [{[PROVIDER_ENV]:provider, FAKE_MODE:'badjson'},'error: image provider printed invalid JSON'],
@@ -196,7 +255,7 @@ test('a provider failure leaves no ledger entry, no asset file and no staging fo
       [{[PROVIDER_ENV]:provider, FAKE_MODE:'escape'},'error: image provider: "file" must be a file name inside the output folder, got ../ledger.json'],
       [{[PROVIDER_ENV]:provider, FAKE_MODE:'link'},'error: image provider: file image.png is a symbolic link, not a regular file'],
       [{[PROVIDER_ENV]:join(dir,'no-such-provider')},'error: image provider failed: not found'],
-      [{[PROVIDER_ENV]:''},'error: assets: provider image is not configured (configured: none); run motion-studio doctor'],
+      [{[PROVIDER_ENV]:''},'error: assets: provider image is not configured (configured: heygen); run motion-studio doctor'],
     ];
     for (const [extra,message] of failures) {
       const result = run(runtime,args,{...process.env, ...extra});
@@ -210,15 +269,11 @@ test('a provider failure leaves no ledger entry, no asset file and no staging fo
 });
 
 /** A bin folder with the real node, ffmpeg and ffprobe (unless left out) and an optional fake heygen. */
-async function toolDir(dir:string, {ffmpeg = true, heygen}:{ffmpeg?:boolean; heygen?:{version:string; authCode:number}}) {
+async function toolDir(dir:string, {ffmpeg = true, heygen}:{ffmpeg?:boolean; heygen?:{version:string; auth:HeygenAuth}}) {
   const bin = join(dir,'bin');
   await mkdir(bin);
   for (const tool of ffmpeg ? ['node','ffmpeg','ffprobe'] : ['node','ffprobe']) await symlink(which(tool),join(bin,tool));
-  if (heygen) await script(join(bin,'heygen'),`
-case "$1" in
-  --version) echo "heygen version v${heygen.version}";;
-  auth) echo '{"credential":{"type":"oauth","expires_in_seconds":172805,"access_token":"heygen-secret-token"},"data":{"email":"someone@example.com"}}'; exit ${heygen.authCode};;
-esac`);
+  if (heygen) await fakeHeygen(bin,heygen.version,heygen.auth);
   return bin;
 }
 
@@ -227,12 +282,16 @@ test('doctor reports tools, heygen and the image provider without printing secre
   try {
     const provider = await fakeProvider(dir);
     const cases:{name:string; tools:Parameters<typeof toolDir>[1]; env:NodeJS.ProcessEnv; status:number; expected:string[]}[] = [
-      {name:'ready', tools:{heygen:{version:'0.8.1', authCode:0}}, env:{[PROVIDER_ENV]:provider}, status:0,
+      {name:'ready', tools:{heygen:{version:'0.8.1', auth:'ok'}}, env:{[PROVIDER_ENV]:provider}, status:0,
         expected:['heygen: ok, v0.8.1, signed in (oauth, expires in 2 days)','image provider: ok, ready']},
-      {name:'old heygen', tools:{heygen:{version:'0.2.9', authCode:0}}, env:{}, status:0,
-        expected:['heygen: unavailable (optional), version 0.2.9 is older than 0.3.0',`image provider: unavailable (optional), not configured (set ${PROVIDER_ENV} to a provider command)`]},
-      {name:'signed out', tools:{heygen:{version:'0.3.0', authCode:1}}, env:{[PROVIDER_ENV]:provider, FAKE_READY:'3'}, status:0,
-        expected:['heygen: unavailable (optional), v0.3.0, not signed in ("heygen auth status" exited 1); run heygen auth login',`image provider: unavailable (optional), "${provider} ready" exited 3`]},
+      {name:'old heygen', tools:{heygen:{version:'0.2.9', auth:'ok'}}, env:{}, status:0,
+        expected:['heygen: unavailable (optional), version 0.2.9 is older than 0.3.0; run heygen update',`image provider: unavailable (optional), not configured (set ${PROVIDER_ENV} to a provider command)`]},
+      {name:'signed out', tools:{heygen:{version:'0.3.0', auth:'signedout'}}, env:{[PROVIDER_ENV]:provider, FAKE_READY:'3'}, status:0,
+        expected:['heygen: unavailable (optional), v0.3.0, not signed in, or the sign-in expired or was refused ("heygen auth status" exited 3: auth_error); run heygen auth login',`image provider: unavailable (optional), "${provider} ready" exited 3`]},
+      {name:'expired', tools:{heygen:{version:'0.8.1', auth:'expired'}}, env:{}, status:0,
+        expected:['heygen: unavailable (optional), v0.8.1, sign-in expired (oauth); run heygen auth login']},
+      {name:'no network', tools:{heygen:{version:'0.8.1', auth:'network'}}, env:{}, status:0,
+        expected:['heygen: unavailable (optional), v0.8.1, sign-in could not be checked ("heygen auth status" exited 1)']},
       {name:'missing tools', tools:{ffmpeg:false}, env:{}, status:1,
         expected:['ffmpeg: missing, not found','heygen: unavailable (optional), not found; HeyGen catalog assets are unavailable']},
     ];
@@ -256,4 +315,86 @@ test('doctor reports tools, heygen and the image provider without printing secre
       }
     }
   } finally {await rm(dir,{recursive:true,force:true});}
+});
+
+test('assets resolve imports HeyGen catalog assets with catalog id, license evidence, hash and shot use', async () => {
+  for (const runtime of runtimes) await withFilm(async (dir,film) => {
+    const {env,calls} = await heygenEnv(dir);
+    const music = run(runtime,['assets',film,'resolve','music','--provider','heygen','--type','bgm','--intent','upbeat launch','--shot','intro'],env);
+    expect(music.stderr).toBe('');
+    expect(music.status).toBe(0);
+    const hero = run(runtime,['assets',film,'resolve','hero','--provider','heygen','--type','image','--intent','gradient sky','--shot','intro','--shot','outro'],env);
+    expect(hero.status).toBe(0);
+    const evidence = (provider:string, key:string) => `HeyGen ${provider} ${key} cat-42; the HeyGen reply states no license, so HeyGen's terms apply`;
+    expect(JSON.parse(await readFile(join(film,'ledger.json'),'utf8')).assets).toEqual([
+      {id:'music', type:'bgm', sourceKind:'heygen', sourceUrlOrGenerator:'HeyGen heygen.audio.sounds track_id cat-42 via hyperframes media-use', providerAssetId:'cat-42', license:{status:'unknown', name:null, evidence:evidence('heygen.audio.sounds','track_id')}, localPath:'assets/music.mp3', sha256:sha('CATALOG:bgm:upbeat launch'), shots:['intro']},
+      {id:'hero', type:'image', sourceKind:'heygen', sourceUrlOrGenerator:'HeyGen heygen.asset.search asset_id cat-42 via hyperframes media-use', providerAssetId:'cat-42', license:{status:'unknown', name:null, evidence:evidence('heygen.asset.search','asset_id')}, localPath:'assets/hero.jpg', sha256:sha('CATALOG:image:gradient sky'), shots:['intro','outro']},
+    ]);
+    expect(await readFile(join(film,'assets','music.mp3'),'utf8')).toBe('CATALOG:bgm:upbeat launch');
+    expect(await readFile(join(film,'assets','hero.jpg'),'utf8')).toBe('CATALOG:image:gradient sky');
+    // media-use ran with the HeyGen provider forced, so no cache, adoption or fallback source could answer.
+    const log = await callLog(calls);
+    expect(log.length).toBe(2);
+    expect(log[0]).toMatch(/^resolve --type bgm --intent upbeat launch --project \S+ --provider heygen\.audio\.sounds --json$/);
+    expect(log[1]).toMatch(/^resolve --type image --intent gradient sky --project \S+ --provider heygen\.asset\.search --json$/);
+    expect((await readdir(film)).filter(f => f.startsWith('.'))).toEqual([]);
+    expect(run(runtime,['validate',film]).status).toBe(0);
+    expect(run(runtime,['assets',film,'list']).stdout.split('\n').at(-2)).toBe('unresolved rights: music (unknown), hero (unknown)');
+  });
+});
+
+test('missing or expired HeyGen sign-in and bad media-use records fail without a partial entry', async () => {
+  for (const runtime of runtimes) await withFilm(async (dir,film) => {
+    const {env,calls} = await heygenEnv(dir);
+    const outsideFile = join(dir,'cache.mp3');
+    await writeFile(outsideFile,'cached');
+    const ledger = await readFile(join(film,'ledger.json'),'utf8');
+    const args = ['assets',film,'resolve','music','--provider','heygen','--type','bgm','--intent','upbeat'];
+    const login = 'run heygen auth login';
+    // Sign-in failures stop before media-use runs; record failures stop after it.
+    const failures:[NodeJS.ProcessEnv,string,boolean][] = [
+      [{FAKE_AUTH:'signedout'},`error: heygen provider: v0.8.1, not signed in, or the sign-in expired or was refused ("heygen auth status" exited 3: auth_error); ${login}`,false],
+      [{FAKE_AUTH:'expired'},`error: heygen provider: v0.8.1, sign-in expired (oauth); ${login}`,false],
+      [{FAKE_AUTH:'network'},'error: heygen provider: v0.8.1, sign-in could not be checked ("heygen auth status" exited 1)',false],
+      [{FAKE_HEYGEN_VERSION:'0.2.9'},'error: heygen provider: version 0.2.9 is older than 0.3.0; run heygen update',false],
+      [{PATH:process.env.PATH?.split(':').filter(p => !which('heygen') || p !== dirname(which('heygen'))).join(':')},'error: heygen provider: not found; HeyGen catalog assets are unavailable',false],
+      [{FAKE_MU:'miss'},'error: heygen provider: media-use could not resolve bgm: no provider could resolve bgm',true],
+      [{FAKE_MU:'fallback'},'error: heygen provider: media-use resolved bgm from bundled.sfx, not heygen.audio.sounds; nothing recorded',true],
+      [{FAKE_MU:'noid'},'error: heygen provider: media-use record has no track_id',true],
+      [{FAKE_MU:'outside'},'error: heygen provider: media-use record path stray.mp3 is not a file in its .media folder',true],
+      [{FAKE_MU:'link', FAKE_OUTSIDE:outsideFile},'error: heygen provider: media-use record path .media/audio/bgm/bgm_001.mp3 is not a file in its .media folder',true],
+      [{},'error: heygen provider: --type must be one of bgm, sfx, image, icon, voice',false],
+    ];
+    for (const [i,[extra,message,called]] of failures.entries()) {
+      await rm(calls,{force:true});
+      const result = run(runtime,i === failures.length-1 ? [...args.slice(0,-3),'video','--intent','x'] : args,{...env, ...extra});
+      expect([i,result.status]).toEqual([i,1]);
+      expect(result.stderr).toBe(`${message}\n`);
+      expect(result.stderr).not.toContain('heygen-secret-token');
+      expect(result.stderr).not.toContain('someone@example.com');
+      expect((await callLog(calls)).length).toBe(called ? 1 : 0);
+      expect(await readFile(join(film,'ledger.json'),'utf8')).toBe(ledger);
+      expect(await readdir(join(film,'assets'))).toEqual([]);
+      expect((await readdir(film)).filter(f => f.startsWith('.'))).toEqual([]);
+    }
+  });
+});
+
+test('HeyGen voice is paid generation and runs only with the consent flag', async () => {
+  for (const runtime of runtimes) await withFilm(async (dir,film) => {
+    const {env,calls} = await heygenEnv(dir);
+    const args = ['assets',film,'resolve','narration','--provider','heygen','--type','voice','--intent','Meet the new app.','--shot','intro'];
+    const refused = run(runtime,args,env);
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toBe('error: assets: provider heygen may start paid generation for type voice; ask the user to agree to the cost, then add --paid-ok\n');
+    expect(await callLog(calls)).toEqual([]);
+    expect(JSON.parse(await readFile(join(film,'ledger.json'),'utf8')).assets).toEqual([]);
+    const agreed = run(runtime,[...args,'--paid-ok'],env);
+    expect(agreed.stderr).toBe('');
+    expect(agreed.status).toBe(0);
+    expect((await callLog(calls))[0]).toMatch(/ --provider heygen\.tts --json$/);
+    expect(JSON.parse(await readFile(join(film,'ledger.json'),'utf8')).assets).toEqual([
+      {id:'narration', type:'voice', sourceKind:'heygen', sourceUrlOrGenerator:'HeyGen heygen.tts via hyperframes media-use', providerAssetId:null, license:{status:'unknown', name:null, evidence:"HeyGen heygen.tts; the HeyGen reply states no license, so HeyGen's terms apply"}, localPath:'assets/narration.mp3', sha256:sha('CATALOG:voice:Meet the new app.'), shots:['intro']},
+    ]);
+  });
 });

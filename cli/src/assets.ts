@@ -5,7 +5,7 @@ import {CliError, licenseStatuses, schemaErrors, sourceKinds, type Ledger, type 
 import type {AssetProvider} from './providers.js';
 import {ledgerFileState, realInside, type LedgerFileState} from './validate.js';
 
-export const assetsUsage = 'usage: motion-studio assets <film-dir> list | assets <film-dir> add <id> --file <path> --type <type> --source-kind <kind> --source <url-or-generator> --license <known|unknown|restricted> [--license-name <name>] --evidence <text> [--provider-asset-id <id>] [--shot <shot-id>]... | assets <film-dir> resolve <id> --provider <name> --type <type> --intent <text> [--shot <shot-id>]...';
+export const assetsUsage = 'usage: motion-studio assets <film-dir> list | assets <film-dir> add <id> --file <path> --type <type> --source-kind <kind> --source <url-or-generator> --license <known|unknown|restricted> [--license-name <name>] --evidence <text> [--provider-asset-id <id>] [--shot <shot-id>]... | assets <film-dir> resolve <id> --provider <name> --type <type> --intent <text> [--shot <shot-id>]... [--paid-ok]';
 
 const sha256 = async (path:string) => createHash('sha256').update(await readFile(path)).digest('hex');
 /** The film-relative path with `/` separators, or null when `full` is not inside the film folder. */
@@ -125,13 +125,17 @@ async function add(project:Project, [idArg,...rest]:string[]):Promise<string[]> 
 
 async function resolveAsset(project:Project, [idArg,...rest]:string[], providers:Map<string,AssetProvider>):Promise<string[]> {
   const id = requireNewId(project,idArg);
-  const flags = parseFlags(rest,['provider','type','intent']);
+  // --paid-ok is the user's consent to paid generation; the agent passes it only after the user agrees to the cost.
+  const paidOk = rest.includes('--paid-ok');
+  const flags = parseFlags(rest.filter(a => a !== '--paid-ok'),['provider','type','intent']);
   const name = required(flags,'provider');
   const provider = providers.get(name);
   // A missing provider is reported, never replaced by another source (spec story 36).
   if (!provider) throw new CliError(`assets: provider ${name} is not configured (configured: ${[...providers.keys()].join(', ') || 'none'}); run motion-studio doctor`);
   const type = required(flags,'type');
   const intent = required(flags,'intent');
+  // Spec story 36: paid generation never starts without consent. This check runs before the provider is called.
+  if (provider.paid(type) && !paidOk) throw new CliError(`assets: provider ${name} may start paid generation for type ${type}; ask the user to agree to the cost, then add --paid-ok`);
   // The provider writes into a hidden folder of the film, so the frozen file is a rename away and gates never hash it.
   const staging = await mkdtemp(join(project.root,'.motion-assets-'));
   try {

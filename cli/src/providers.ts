@@ -1,4 +1,5 @@
 import {spawn} from 'node:child_process';
+import {heygenProvider} from './heygen.js';
 import {CliError, licenseStatuses, type LedgerAsset, type SourceKind} from './project.js';
 
 /** Result of one child process: it ran to an exit code, or it could not run or did not finish in time. */
@@ -37,11 +38,14 @@ export type ResolveRequest = {type:string; intent:string; outDir:string};
 export type ProvidedAsset = {file:string; sourceUrlOrGenerator:string; providerAssetId:string|null; license:LedgerAsset['license']};
 /**
  * A source that fetches or generates assets. `ready` must be free: `doctor` calls it, so it must not start paid work.
+ * `paid(type)` is true when resolving that type can start paid generation; the CLI then refuses to call `resolve`
+ * without the user's consent flag (spec story 36).
  * `resolve` throws a CliError on failure; the caller then adds no ledger entry and keeps no file.
  */
 export type AssetProvider = {
   name:string; sourceKind:SourceKind;
   ready():Promise<Readiness>;
+  paid(type:string):boolean;
   resolve(request:ResolveRequest):Promise<ProvidedAsset>;
 };
 
@@ -77,6 +81,8 @@ const outcome = (r:RunResult) => r.kind === 'failed' ? r.reason : `exited ${r.co
 export function commandProvider(name:string, sourceKind:SourceKind, bin:string, timeoutMs:number):AssetProvider {
   return {
     name, sourceKind,
+    // The CLI cannot see what an external command charges, so every call counts as paid.
+    paid:() => true,
     async ready() {
       const r = await run(bin,['ready'],{timeoutMs:READY_TIMEOUT_MS});
       return r.kind === 'exited' && r.code === 0 ? {ready:true, detail:'ready'} : {ready:false, detail:`"${bin} ready" ${outcome(r)}`};
@@ -97,9 +103,9 @@ export function commandProvider(name:string, sourceKind:SourceKind, bin:string, 
   };
 }
 
-/** The providers this environment configures, by name. HeyGen catalog import (#11) adds its provider here. */
+/** The providers this environment configures, by name. HeyGen is always present; its readiness is checked on use. */
 export function configuredProviders(env:NodeJS.ProcessEnv, timeoutMs:number):Map<string,AssetProvider> {
-  const providers = new Map<string,AssetProvider>();
+  const providers = new Map<string,AssetProvider>([['heygen',heygenProvider(timeoutMs,env)]]);
   const image = env[IMAGE_PROVIDER_ENV];
   if (image) providers.set('image',commandProvider('image','ai-image',image,timeoutMs));
   return providers;
