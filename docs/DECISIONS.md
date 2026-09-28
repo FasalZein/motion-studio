@@ -51,6 +51,7 @@ Environment facts (2026-09-28): no heygen CLI, no video-model keys (FAL/REPLICAT
 | D37 | Unknown license | Final render blocks until user acknowledges each unresolved asset or swaps it |
 | D38 | Runtime (fact-driven refinement of D34) | HyperFrames CLI requires Node 22+, so Node 22+ is required; CLI authored in TS, developed with Bun, npm package Node-compatible; Bun runtime supported where the packed-CLI render smoke test passes |
 
+| D39 | Delivery order change (user, 2026-09-28) | Ship v0 skills now (guidance-level, calling hyperframes/remotion/ffmpeg directly; contract in docs/v0-contract.md) and start ticket #2 in parallel. Refines D36. heygen v0.8.1 installed and signed in (free plan); media-use doctor passes |
 
 Assumptions (low-risk, reversible): storyboard stills are static key frames rendered by the shot's engine and reused as the build start; CLI in Bun + TypeScript inside the repo.
 
