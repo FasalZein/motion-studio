@@ -2,11 +2,12 @@ import {readFile, stat} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {isAbsolute, join, relative, resolve} from 'node:path';
 import {chosenFormats, gateIds, parseProject, type Format, type Project, type Shot} from './project.js';
+import {gateViews} from './gates.js';
 
 export type Report = {errors:string[]; warnings:string[]};
 /**
  * One project check. Each returns its own findings; `validateProject` concatenates them.
- * Later checks plug in here: vocabulary-term warnings (#12) and stale gate hashes (#5).
+ * Later checks plug in here, for example vocabulary-term warnings (#12).
  */
 type Check = (project:Project) => Promise<Report>|Report;
 
@@ -140,17 +141,32 @@ const checkLedgerFiles:Check = async ({root,ledger}) => {
   return errorsOnly(errors);
 };
 
-const checks:Check[] = [checkMeta, checkGates, checkTimeline, checkHandoffs, checkSoundCues, checkEntrypoints, checkAssetIds, checkLedgerFiles];
+// D44: a stale gate, whether recorded as stale or stale by its hashes now, is an error for validate.
+const checkGateHashes:Check = async project => {
+  if (project.storyboard.gates.map(g => g.id).join() !== gateIds.join()) return errorsOnly([]);
+  const views = await gateViews(project);
+  return errorsOnly(views.filter(v => v.state === 'stale')
+    .map(v => `gate ${v.gate.id} is stale${v.reason ? ` (${v.reason})` : ''}; present ${v.gate.id} again`));
+};
+
+const structuralChecks:Check[] = [checkMeta, checkGates, checkTimeline, checkHandoffs, checkSoundCues, checkEntrypoints, checkAssetIds, checkLedgerFiles];
+
+/**
+ * Which checks run. `validate` runs all of them. Render commands pass `{gates:false}` (D44): re-rendering after an
+ * edit is how a film resumes, so a stale approval must not stop it.
+ */
+export type CheckScope = {gates:boolean};
 
 /** Cross-reference checks on a project that already passed the schema. */
-export async function checkProject(project:Project):Promise<Report> {
+export async function checkProject(project:Project, scope:CheckScope = {gates:true}):Promise<Report> {
+  const checks = scope.gates ? [...structuralChecks, checkGateHashes] : structuralChecks;
   const reports = await Promise.all(checks.map(check => check(project)));
   return {errors:reports.flatMap(r => r.errors), warnings:reports.flatMap(r => r.warnings)};
 }
 
 /** Schema check first; cross-reference checks run only on a schema-valid project. */
-export async function validateProject(filmRoot:string):Promise<Report & {project:Project|null}> {
+export async function validateProject(filmRoot:string, scope:CheckScope = {gates:true}):Promise<Report & {project:Project|null}> {
   const parsed = await parseProject(filmRoot);
   if (!parsed.ok) return {errors:parsed.errors, warnings:[], project:null};
-  return {...await checkProject(parsed.project), project:parsed.project};
+  return {...await checkProject(parsed.project,scope), project:parsed.project};
 }

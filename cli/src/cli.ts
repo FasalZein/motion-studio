@@ -4,11 +4,12 @@ import {spawn} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 
-import {chosenFormats, CliError, formatDir, initProject, layoutOf, parseProject, type Format, type Project, type Shot} from './project.js';
+import {chosenFormats, CliError, formatDir, gateIds, initProject, layoutOf, parseProject, type Format, type Project, type Shot} from './project.js';
 import {checkProject, validateProject} from './validate.js';
 import {framePngs, remotionBundle, renderHyperframesFrames, renderRemotionFrames} from './engines.js';
 import {safezone} from './safezone.js';
 import {statusLines} from './status.js';
+import {decisions, gateViews, recordGate} from './gates.js';
 import {handoff} from './handoff.js';
 import {mix} from './mix.js';
 import {beats} from './beats.js';
@@ -23,9 +24,12 @@ function report(errors:string[], warnings:string[]) {
   for (const w of warnings) console.error(`warning: ${w}`);
   for (const e of errors) console.error(`error: ${e}`);
 }
-/** Loads a film folder; any validation error stops the command before it writes anything. */
+/**
+ * Loads a film folder for a render command; any structural error stops the command before it writes anything.
+ * Gate staleness is not checked here (D44); `validate` reports it.
+ */
 async function loadProject(filmRoot:string):Promise<Project> {
-  const {errors,warnings,project} = await validateProject(filmRoot);
+  const {errors,warnings,project} = await validateProject(filmRoot,{gates:false});
   report(errors,warnings);
   if (errors.length || !project) throw new CliError(`invalid project ${resolve(filmRoot)}: ${errors.length} error${errors.length === 1 ? '' : 's'}`);
   return project;
@@ -79,7 +83,7 @@ async function renderShot(shot:Shot, project:Project, format:Format, output:stri
     await verify(output,frameCount,fps,width,height);
   } finally {await rm(temp,{recursive:true,force:true});}
 }
-const usage = 'usage: motion-studio init <slug> | validate <film-dir> | status <film-dir> | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | handoff <film-dir> [<shot-a> <shot-b>] | mix <film-dir> | safezone <film-dir> [format] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>]';
+const usage = 'usage: motion-studio init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | handoff <film-dir> [<shot-a> <shot-b>] | mix <film-dir> | safezone <film-dir> [format] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>]';
 /** The formats a command works on: one named chosen format, or every chosen format when none is named. */
 function selectFormats(project:Project, named:string|undefined):Format[] {
   const formats = chosenFormats(project.storyboard.meta);
@@ -127,7 +131,7 @@ async function stitchFormat(project:Project, format:Format, output:string) {
 }
 async function main() {
   const [action,target] = process.argv.slice(2);
-  if (!['init','validate','status','render','stitch','still','handoff','mix','safezone','beats'].includes(action) || !target) throw new CliError(usage);
+  if (!['init','validate','status','gate','render','stitch','still','handoff','mix','safezone','beats'].includes(action) || !target) throw new CliError(usage);
   if (action === 'init') {
     console.log(`created ${await initProject(process.cwd(),target)}`);
     return;
@@ -143,9 +147,28 @@ async function main() {
     // Status must work on an unfinished film: only a schema failure stops it.
     const parsed = await parseProject(target);
     if (!parsed.ok) {report(parsed.errors,[]); process.exitCode = 1; return;}
-    const {errors} = await checkProject(parsed.project);
-    for (const line of statusLines(parsed.project.storyboard.gates)) console.log(line);
+    // Stale gates show in the gate lines, so the error count covers only the structural checks.
+    const {errors} = await checkProject(parsed.project,{gates:false});
+    for (const line of statusLines(await gateViews(parsed.project))) console.log(line);
     if (errors.length) console.log(`validation: ${errors.length} error${errors.length === 1 ? '' : 's'}; run motion-studio validate ${target}`);
+    return;
+  }
+  if (action === 'gate') {
+    // A gate records state on an unfinished film, so only the schema must pass; validate and render check the rest.
+    const [id,decision,...rest] = process.argv.slice(4);
+    const notes:string[] = [];
+    for (let i=0;i<rest.length;i+=2) {
+      if (rest[i] !== '--note' || !rest[i+1]) throw new CliError(usage);
+      notes.push(rest[i+1]);
+    }
+    const gate = gateIds.find(g => g === id);
+    const choice = decisions.find(d => d === decision);
+    if (!gate || !choice) throw new CliError(usage);
+    const parsed = await parseProject(target);
+    if (!parsed.ok) {report(parsed.errors,[]); process.exitCode = 1; return;}
+    for (const line of await recordGate(parsed.project,gate,choice,notes)) console.log(line);
+    const updated = await parseProject(target);
+    if (updated.ok) for (const line of statusLines(await gateViews(updated.project))) console.log(line);
     return;
   }
   if (action === 'beats') {

@@ -167,11 +167,14 @@ test('init creates the fixed layout and an empty valid project; status shows pen
 
 test('status reports gate states and the next step', async () => {
   await withFixture(async dir => {
+    // Approved gates must carry the hashes of their current inputs (#5), so G1's hashes come from a real approval.
+    expect(run('node',['gate',dir,'G1','approve']).status).toBe(0);
+    const g1Hashes = JSON.parse(await readFile(join(dir,'storyboard.json'),'utf8')).gates[0].inputHashes;
     const cases:[(gates:Json[])=>void,string][] = [
-      [g => {g[0].state = 'approved'; g[1].state = 'stale';}, 'G1 approved\nG2 stale\nG3 pending\nG4 pending\nG5 pending\nnext: G2 is stale: rerun board: beat map, keyframe builds and stills, then present G2 again\n'],
+      [g => {g[0].state = 'approved'; g[0].inputHashes = g1Hashes; g[1].state = 'stale';}, 'G1 approved\nG2 stale\nG3 pending\nG4 pending\nG5 pending\nnext: G2 is stale: rerun board: beat map, keyframe builds and stills, then present G2 again\n'],
+      [g => {g[0].state = 'approved'; g[0].inputHashes = {};}, 'G1 stale (approval has no input hashes)\nG2 pending\nG3 pending\nG4 pending\nG5 pending\nnext: G1 is stale: rerun brief, hero assets and look test, then present G1 again\n'],
       [g => {g[0].state = 'changes'; g[0].rounds = 1;}, 'G1 changes (rounds 1/3)\nG2 pending\nG3 pending\nG4 pending\nG5 pending\nnext: apply the G1 notes (round 1 of 3), then present G1 again\n'],
       [g => {g[0].state = 'changes'; g[0].rounds = 3;}, 'G1 changes (rounds 3/3)\nG2 pending\nG3 pending\nG4 pending\nG5 pending\nnext: G1 used 3 of 3 note rounds: ask the user to accept, rescope or stop\n'],
-      [g => {for (const gate of g) gate.state = 'approved';}, 'G1 approved\nG2 approved\nG3 approved\nG4 approved\nG5 approved\nnext: final render, then user acceptance of the files\n'],
     ];
     for (const [i,[change,expected]] of cases.entries()) {
       await edit(dir,'storyboard.json',s => {for (const g of s.gates) {g.state = 'pending'; g.rounds = 0;} change(s.gates);});
@@ -180,6 +183,10 @@ test('status reports gate states and the next step', async () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toBe(expected);
     }
+    await edit(dir,'storyboard.json',s => {for (const g of s.gates) {g.state = 'pending'; g.rounds = 0;}});
+    for (const id of ['G1','G2','G3','G4','G5']) expect(run('bun',['gate',dir,id,'approve']).status).toBe(0);
+    const approved = run('node',['status',dir]);
+    expect(approved.stdout).toBe('G1 approved\nG2 approved\nG3 approved\nG4 approved\nG5 approved\nnext: final render, then user acceptance of the files\n');
     // An unfinished film with cross-reference errors still gets its status. Expected errors: gap [6, 7), still frame 5
     // outside the shortened shot, coverage [0, 12) vs 900 frames, the cut at frame 7 off the beat grid, and the
     // sound cue at frame 6, now outside its shot.
