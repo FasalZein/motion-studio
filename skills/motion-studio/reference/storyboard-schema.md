@@ -1,11 +1,11 @@
 # Storyboard v0
 
-`storyboard.json` is the machine source of truth. Version `0` uses the field names below; CLI #4 will formalize validation. Frames are integers; shot ranges are half-open and cover `[0, meta.durationFrames)` without gaps or overlap. `stillFrames` are **shot-local**. Convert seconds by `round(seconds * fps)`. `entry`/`exit` are `cut` or `handoff`; a handoff requires a matching adjoining shot. `camera` uses a `motion-vocabulary` term, or `custom:<description>`. `protected` entries name elements whose held bounds must fit each layout's safe rectangle. `inputHashes` map project-relative gate input paths to SHA-256 hex strings. Gate `decision` records the user's actual words or structured choice, not an inferred approval.
+`storyboard.json` is the machine source of truth. Version `0` uses the field names below. The CLI JSON Schemas `cli/schema/storyboard.schema.json` and `cli/schema/ledger.schema.json` define every field; `motion-studio validate films/<slug>` checks them (CLI #4). Frames are integers; shot ranges are half-open and cover `[0, meta.durationFrames)` without gaps or overlap. `stillFrames` are **shot-local**. Convert seconds by `round(seconds * fps)`. `entry`/`exit` are `cut` or `handoff`; a handoff requires a matching adjoining shot. `camera` uses a `motion-vocabulary` term, or `custom:<description>`. `protected` entries name elements whose held bounds must fit each layout's safe rectangle. `inputHashes` map project-relative gate input paths to SHA-256 hex strings. Gate `decision` records the user's actual words or structured choice, not an inferred approval.
 
 ```json
 {
   "version": "0",
-  "meta": {"title":"Atlas launch", "logline":"Find the answer in one search.", "genre":"product-launch", "formats":{"primary":"16:9", "extra":["9:16"]}, "fps":30, "durationFrames":120},
+  "meta": {"title":"Atlas launch", "logline":"Find the answer in one search.", "genre":"product-launch", "formats":{"primary":"16:9", "extra":["9:16"]}, "fps":30, "durationFrames":120, "canvas":{"width":1920, "height":1080}},
   "look": {"id":"keynote-minimal", "styleBible":"style-bible.md", "axes":{"contrast":"high", "density":"spare"}, "tasteSnapshot":"taste-snapshot.json"},
   "audio": {"track":"music-01", "grid":"corrected", "bpm":120, "beatFrames":[0,15,30,45,60,75,90,105], "downbeatFrames":[0,60], "dropFrames":[], "confidence":"high"},
   "voice": {"script":"audio/voice-script.txt", "tts":"voice-01", "wordTimings":"audio/word-times.json"},
@@ -25,5 +25,16 @@
 ```
 
 The example is illustrative: replace hash placeholders with real hashes before any approval; add ledger entries for every named asset. `voice` may be `null`; `audio.track` may be `null` when voice drives the film. `dropFrames` is empty when no drop exists. `confidence` can be `low`. Genres: `product-launch`, `ui-morph-loop`, `explainer`, `showreel`, `social-kinetic-type`. Gates use `pending`, `approved`, `changes`, or `stale`. Only record scores backed by reviewer evidence; mark other dimensions unverified.
+
+## Changes from the first v0 draft (CLI #4)
+
+- `meta.canvas` `{width,height}` is required. It is the master canvas of the primary format in pixels and must match the primary aspect ratio. Add it to older files; `init` writes 1920x1080 for 16:9.
+- An empty project uses `null` for `meta.genre`, `look.id`, `audio.track`, `audio.grid`, `audio.bpm` and `audio.confidence` until the brief and beat phases set them.
+- HyperFrames `entrypoint` is an HTML file under `shots/<id>/`. Remotion `entrypoint` is the composition id; its project entry file is `shots/<id>/src/index.ts` or `src/index.tsx`, and its public files live in `shots/<id>/public/`.
+- `gates` lists `G1` to `G5` in this order. `critique[].worstIssues` holds at most 3 items.
+- When `audio.beatFrames` is not empty, every cut (each shot start after frame 0) must be a beat frame.
+- `ledger.json` is `{"version":"0","assets":[...]}`; each entry has the fields in the assets brief. A `known` license needs a name and evidence. `localPath` is film-relative and `sha256` must match the file.
+
+`validate` rejects a missing or unknown engine, a missing entrypoint, an asset id not in the ledger, a missing ledger file or wrong hash, a gap or overlap in the half-open ranges, shots that do not cover `durationFrames`, an off-grid cut, a still frame outside its shot and an fps other than 24, 25, 30 or 60. `status films/<slug>` prints each gate state and the next step.
 
 Completion: all shots cover the timeline, every path and asset id resolves, and gate approvals carry real hashes.

@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/FasalZein/motion-studio/cli/schema/ledger.schema.json",
+  "title": "motion-studio ledger.json, version 0",
+  "type": "object",
+  "required": ["version", "assets"],
+  "properties": {
+    "version": {"const": "0"},
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "sourceKind", "sourceUrlOrGenerator", "providerAssetId", "license", "localPath", "sha256", "shots"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+          "type": {"type": "string", "minLength": 1},
+          "sourceKind": {"enum": ["heygen", "website", "stock", "code", "ai-image", "data", "video-model"]},
+          "sourceUrlOrGenerator": {"type": "string", "minLength": 1},
+          "providerAssetId": {"type": ["string", "null"]},
+          "license": {
+            "type": "object",
+            "required": ["status", "name", "evidence"],
+            "properties": {
+              "status": {"enum": ["known", "unknown", "restricted"]},
+              "name": {"type": ["string", "null"]},
+              "evidence": {"type": "string"}
+            },
+            "if": {"properties": {"status": {"const": "known"}}},
+            "then": {"properties": {"name": {"type": "string", "minLength": 1}, "evidence": {"type": "string", "minLength": 1}}}
+          },
+          "localPath": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "shots": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"}}
+        }
+      }
+    }
+  }
+}
