@@ -102,9 +102,10 @@ const checkSoundCues:Check = ({storyboard:{shots}}) => errorsOnly(shots.flatMap(
   .filter(cue => cue.eventFrame < shot.startFrame || cue.eventFrame >= shot.endFrame)
   .map(cue => `shot ${shot.id}: sound cue ${cue.asset} eventFrame ${cue.eventFrame} is outside the shot [${shot.startFrame}, ${shot.endFrame}) (event frames are film frames)`)));
 
-const checkEntrypoints:Check = async ({root,storyboard}) => {
+/** Entrypoint check over the scope's shots: every shot, or only the named ones for a builder's own check. */
+const checkEntrypoints = (only?:readonly string[]):Check => async ({root,storyboard}) => {
   const errors:string[] = [];
-  for (const shot of storyboard.shots) {
+  for (const shot of storyboard.shots.filter(s => !only || only.includes(s.id))) {
     if (shot.engine === 'remotion') {
       if (!await remotionEntry(root,shot)) errors.push(`shot ${shot.id}: Remotion project entry not found (expected shots/${shot.id}/${remotionEntryFiles.join(' or ')} registering composition "${shot.entrypoint}")`);
     } else {
@@ -176,17 +177,18 @@ const checkGateHashes:Check = async project => {
     .map(v => `gate ${v.gate.id} is stale${v.reason ? ` (${v.reason})` : ''}; present ${v.gate.id} again`));
 };
 
-const structuralChecks:Check[] = [checkMeta, checkGates, checkTimeline, checkHandoffs, checkSoundCues, checkEntrypoints, checkAssetIds, checkLedgerFiles, checkScanContext];
+const structuralChecks = (only?:readonly string[]):Check[] => [checkMeta, checkGates, checkTimeline, checkHandoffs, checkSoundCues, checkEntrypoints(only), checkAssetIds, checkLedgerFiles, checkScanContext];
 
 /**
  * Which checks run. `validate` runs all of them. Render commands pass `{gates:false}` (D44): re-rendering after an
- * edit is how a film resumes, so a stale approval must not stop it.
+ * edit is how a film resumes, so a stale approval must not stop it. `shots` limits the entrypoint check to the named
+ * shots: an engine builder checks its own shots while the other engine's shots do not exist yet.
  */
-export type CheckScope = {gates:boolean};
+export type CheckScope = {gates:boolean; shots?:readonly string[]};
 
 /** Cross-reference checks on a project that already passed the schema. */
 export async function checkProject(project:Project, scope:CheckScope = {gates:true}):Promise<Report> {
-  const checks = scope.gates ? [...structuralChecks, checkGateHashes] : structuralChecks;
+  const checks = scope.gates ? [...structuralChecks(scope.shots), checkGateHashes] : structuralChecks(scope.shots);
   const reports = await Promise.all(checks.map(check => check(project)));
   return {errors:reports.flatMap(r => r.errors), warnings:reports.flatMap(r => r.warnings)};
 }

@@ -7,7 +7,8 @@ This contract owns the shot. Work only inside `shots/<id>/`, or `shots/_look/<lo
 - **Entrypoint:** the shot's `index.html`, named by `entrypoint` in `storyboard.json` (for example `shots/s02/index.html`). Its root element carries `data-composition-id`, `data-width` and `data-height` (the primary canvas) and `data-duration` (the shot length in seconds), and is sized `width:100%; height:100%`.
 - **Timeline:** register one paused GSAP timeline as `window.__timelines["<composition id>"]`, at the end of the `document.fonts.ready` callback, after every tween is added.
 - **Time determinism:** each frame is a pure function of shot-local time. Use finite, seek-safe tweens and one closed-form spring per target change. Take randomness from a fixed seed. Read time only from the timeline, never from a clock or a frame loop.
-- **Files:** write `index.html` by hand from this contract. Keep every asset local and linked to a ledger id. The layout comes from the look, the board and the approved stills; `hyperframes init`, `hyperframes add` and registry blocks bring template layouts, so keep them out of the shot.
+- **Files:** write `index.html` by hand from this contract. Keep every asset local and linked to a ledger id. The layout comes from the look, the board and the approved stills; `hyperframes init` templates bring a template layout, so keep them out of the shot.
+- **Catalog motion (D55):** a registry block or component (`npx hyperframes catalog`, `hyperframes add`) may supply motion code: timing, easing and effects. Copy that code into the shot's own elements and layout. The block's layout, placeholder content and sub-composition wiring stay out of the shot; delete the installed block files once their motion is copied.
 
 ## Frame
 
@@ -30,7 +31,7 @@ Mark each protected element with `data-protected="<id>"` (the `protected[].id` i
 
 Build the poses on the codebase that full mode will extend. Each pose is a local frame: entry (frame 0), each beat, and exit (the last frame). At each pose frame the element positions are final values, not mid-tween values. Put the pose frames in the shot's `stillFrames` and the held pose frames in `heldFrames`.
 
-Completion for a film shot: `motion-studio stills films/<slug> <shot-id>` and `motion-studio safezone films/<slug>` both exit 0, which proves engine-rendered, opaque stills in every chosen format and protected bounds inside each safe rectangle. A look test is not in the storyboard: render it with `npx hyperframes check <shot-folder> --at <shot-local-seconds> --snapshots`, inspect the overview frames, and save the chosen frame as `stills/G1/<look-id>.png`. `snapshot --at` is not documented in the installed skill; verify it before use.
+Completion for a film shot: `motion-studio stills films/<slug> <shot-ids>` and `motion-studio safezone films/<slug> --shots <shot-ids>` both exit 0 for your assigned shots, which proves engine-rendered, opaque stills in every chosen format and protected bounds inside each safe rectangle. Both commands check only the named shots, so they pass while the other engine's shots are unbuilt; the board phase runs the film-wide checks after every builder finishes. A look test is not in the storyboard: render it with `npx hyperframes check <shot-folder> --at <shot-local-seconds> --snapshots`, inspect the overview frames, and save the chosen frame as `stills/G1/<look-id>.png`. `snapshot --at` is not documented in the installed skill; verify it before use.
 
 ## Full mode
 
@@ -38,7 +39,7 @@ Open the approved keyframe source and add motion between its poses. Keep its fil
 
 ## Render
 
-Render all formats with `motion-studio render films/<slug>` and check them with `motion-studio safezone films/<slug>`. For a manual check, run `npx hyperframes check <shot-folder> --snapshots` and inspect the resulting frames. Do not use `--resolution` for another format: it scales and keeps the aspect ratio; it does not reframe. Strip audio and normalize with the [media contract](media-contract.md). The installed render reference supports 24, 30 or 60 fps, not 25: for a 25 fps project, verify a sequence route or change the project fps before G1.
+The render phase renders every format with `motion-studio render films/<slug>` once every shot exists. For a manual check, run `npx hyperframes check <shot-folder> --snapshots` and inspect the resulting frames. Do not use `--resolution` for another format: it scales and keeps the aspect ratio; it does not reframe. Strip audio and normalize with the [media contract](media-contract.md). The installed render reference supports 24, 30 or 60 fps, not 25: for a 25 fps project, verify a sequence route or change the project fps before G1.
 
 ## API depth allow-list
 
@@ -52,7 +53,6 @@ Read only these installed files, and only the ones the shot needs. `<skills>` is
 - `<skills>/hyperframes-cli/references/lint-validate-inspect.md`
 - `<skills>/hyperframes-cli/references/preview-render.md`
 - `<skills>/hyperframes-animation/rules-index.md` and `<skills>/hyperframes-animation/adapters/gsap.md`
+- `<skills>/hyperframes-registry/SKILL.md` and `<skills>/hyperframes-registry/references/discovery.md` (catalog motion only, as above)
 
 Every other skill is outside the build. In particular, the `hyperframes` router skill re-plans the film and scaffolds a new project; never invoke it for a shot.
-
-Completion: check passes, required keyframes render, `motion-studio safezone` passes for every format, and output passes the media contract.

@@ -7,7 +7,7 @@ import {join, resolve} from 'node:path';
 import {chosenFormats, CliError, gateIds, initProject, layoutOf, parseProject, type Format, type Project, type Shot} from './project.js';
 import {checkProject, validateProject} from './validate.js';
 import {framePngs, remotionBundle, renderHyperframesFrames, renderRemotionFrames} from './engines.js';
-import {safezone} from './safezone.js';
+import {safezone, safezoneArgs} from './safezone.js';
 import {statusLines} from './status.js';
 import {decisions, gateViews, recordGate} from './gates.js';
 import {handoff} from './handoff.js';
@@ -17,7 +17,7 @@ import {clearSeamOutputs} from './seam.js';
 import {assets} from './assets.js';
 import {doctor} from './doctor.js';
 import {configuredProviders} from './providers.js';
-import {boardStills, captureStills} from './stills.js';
+import {boardStills, captureStills, stillsArgs} from './stills.js';
 import {animatic} from './animatic.js';
 import {clearSheetOutputs, sheet} from './sheet.js';
 import {outputsOf, type Outputs} from './outputs.js';
@@ -37,8 +37,8 @@ function report(errors:string[], warnings:string[]) {
  * Loads a film folder for a render command; any structural error stops the command before it writes anything.
  * Gate staleness is not checked here (D44); `validate` reports it.
  */
-async function loadProject(filmRoot:string):Promise<Project> {
-  const {errors,warnings,project} = await validateProject(filmRoot,{gates:false});
+async function loadProject(filmRoot:string, shots?:string[]):Promise<Project> {
+  const {errors,warnings,project} = await validateProject(filmRoot,{gates:false, shots});
   report(errors,warnings);
   if (errors.length || !project) throw new CliError(`invalid project ${resolve(filmRoot)}: ${errors.length} error${errors.length === 1 ? '' : 's'}`);
   return project;
@@ -93,7 +93,7 @@ async function renderShot(shot:Shot, project:Project, format:Format, output:stri
     await verify(output,frameCount,fps,width,height);
   } finally {await rm(temp,{recursive:true,force:true});}
 }
-const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>] | animatic <film-dir> | sheet <film-dir> [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | assets <film-dir> <list|add|resolve> ... | scan <film-dir> [format] | scan <video-file> [--report <file.json>]';
+const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>] | animatic <film-dir> | sheet <film-dir> [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] [--shots <id,...>] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | assets <film-dir> <list|add|resolve> ... | scan <film-dir> [format] | scan <video-file> [--report <file.json>]';
 /** The formats a command works on: one named chosen format, or every chosen format when none is named. */
 function selectFormats(project:Project, named:string|undefined):Format[] {
   const formats = chosenFormats(project.storyboard.meta);
@@ -210,7 +210,11 @@ async function main() {
     for (const line of await assets(parsed.project,process.argv.slice(4),configuredProviders(process.env,timeoutMs))) console.log(line);
     return;
   }
-  const project = await loadProject(target);
+  // stills and safezone named to some shots check only those shots' entrypoints: an engine builder checks its own
+  // shots while the other engine's shots do not exist yet.
+  const zone = action === 'safezone' ? safezoneArgs(process.argv.slice(4)) : undefined;
+  const named = action === 'stills' ? stillsArgs(process.argv.slice(4)).ids : zone?.shots;
+  const project = await loadProject(target,named?.length ? named : undefined);
   const {root:base, storyboard:{shots, meta}} = project;
   if (!shots.length) throw new CliError('project has no shots');
   const outputs = (format:Format) => outputsOf(base,format);
@@ -251,7 +255,7 @@ async function main() {
     return;
   }
   if (action === 'safezone') {
-    const failures = await safezone(project,selectFormats(project,process.argv[4]),f => outputs(f).dir,{command,verify});
+    const failures = await safezone(project,selectFormats(project,zone!.format),f => outputs(f).dir,{command,verify},zone!.shots);
     if (failures) process.exitCode = 1;
     return;
   }

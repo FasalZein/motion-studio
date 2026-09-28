@@ -5,7 +5,7 @@ This contract owns the shot. Work only inside `shots/<id>/`, or `shots/_look/<lo
 ## Entrypoint and time
 
 - **Entrypoint:** `shots/<id>/src/index.tsx` (or `index.ts`) calls `registerRoot()` with a root that registers one `<Composition>`. Its `id` is the shot's `entrypoint` in `storyboard.json`. Its `durationInFrames` is `endFrame-startFrame`, its `fps` is the project fps, and frame zero is the shot entry. Static files live in `shots/<id>/public/` and load with `staticFile()`.
-- **Imports:** import only `react` and `remotion`; the CLI bundles the shot with its own copies of both.
+- **Imports:** import only `react`, `remotion` and `@remotion/transitions` (with its subpaths, for example `@remotion/transitions/fade`); the CLI bundles the shot with its own copies of these (D54).
 - **Time determinism:** drive every pose from `useCurrentFrame()` and props. Use `interpolate()` and closed-form springs, one per target change, and `random(<seed>)` for randomness. Keep no state between frames, and read time only from the frame.
 - **Files:** write the component by hand from this contract. The layout comes from the look, the board and the approved stills; `npx create-video` and template projects bring a template layout, so keep them out of the shot.
 
@@ -30,7 +30,7 @@ Mark each protected element with `data-protected="<id>"` (the `protected[].id` i
 
 Build the poses in the component that full mode will extend. Each pose is a local frame: entry (frame 0), each beat, and exit (the last frame). At each pose frame the element positions are final values, not mid-motion values. Put the pose frames in the shot's `stillFrames` and the held pose frames in `heldFrames`.
 
-Completion for a film shot: `motion-studio stills films/<slug> <shot-id>` and `motion-studio safezone films/<slug>` both exit 0, which proves engine-rendered, opaque stills in every chosen format and protected bounds inside each safe rectangle. A look test is not in the storyboard: from its folder run `npx remotion still src/index.tsx <composition-id> <output.png> --frame=<local-frame>` and save the chosen frame as `stills/G1/<look-id>.png`. This command form is unverified; check `npx remotion still --help` before use.
+Completion for a film shot: `motion-studio stills films/<slug> <shot-ids>` and `motion-studio safezone films/<slug> --shots <shot-ids>` both exit 0 for your assigned shots, which proves engine-rendered, opaque stills in every chosen format and protected bounds inside each safe rectangle. Both commands check only the named shots, so they pass while the other engine's shots are unbuilt; the board phase runs the film-wide checks after every builder finishes. A look test is not in the storyboard: from its folder run `npx remotion still src/index.tsx <composition-id> <output.png> --frame=<local-frame>` and save the chosen frame as `stills/G1/<look-id>.png`. This command form is unverified; check `npx remotion still --help` before use.
 
 ## Full mode
 
@@ -38,7 +38,7 @@ Open the approved keyframe component and add motion between its poses. Keep its 
 
 ## Render
 
-Render all formats with `motion-studio render films/<slug>` and check them with `motion-studio safezone films/<slug>`. The CLI renders silent frames at each format's canvas; strip audio and normalize with the [media contract](media-contract.md) for any manual render.
+The render phase renders every format with `motion-studio render films/<slug>` once every shot exists. The CLI renders silent frames at each format's canvas; strip audio and normalize with the [media contract](media-contract.md) for any manual render.
 
 ## API depth allow-list
 
@@ -53,5 +53,3 @@ Read only these installed files, and only the ones the shot needs. `<skills>` is
 - `<skills>/remotion-render/SKILL.md` (manual renders only)
 
 Every other skill is outside the build. In particular, the `remotion-best-practices` router skill re-plans the video and scaffolds a new project; never invoke it for a shot, and read `remotion-markup` files from the standalone `remotion-markup` folder, not from inside the router.
-
-Completion: each requested local frame renders, `motion-studio safezone` passes for every format, and normalized video passes the media contract.

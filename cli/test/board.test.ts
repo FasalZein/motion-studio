@@ -264,19 +264,46 @@ test('stills and render refuse transparent frames in both engines; a full-bleed 
     await refuse('hyperframes',0);
     await writeFile(html,page.replace(child,'').replace('#root {','#root {background:#172b46;'));
     await refuse('hyperframes',0);
-    const render = run('bun','render',dir);
-    expect(render.stderr).toBe('error: transparent pixels in remotion frame 0 (16:9): paint an opaque full-bleed background inside the composition root\n');
-    expect(render.status).toBe(1);
+    // render renders the Remotion shot first; with it fixed, the HyperFrames shot (root background) is refused too.
+    for (const shot of ['remotion','hyperframes']) {
+      if (shot === 'hyperframes') await writeFile(tsx,component);
+      const render = run('bun','render',dir);
+      expect(render.stderr).toBe(`error: transparent pixels in ${shot} frame 0 (16:9): paint an opaque full-bleed background inside the composition root\n`);
+      expect(render.status).toBe(1);
+    }
     expect(await readdir(join(dir,'stills')).catch(() => [])).toEqual([]);
     expect(await readdir(join(dir,'renders')).catch(() => [])).toEqual([]);
 
     // The contract's form: a full-bleed background child inside the composition root (HyperFrames), and the
     // component's outer element (Remotion).
     await writeFile(html,page);
-    await writeFile(tsx,component);
     expect(ok('node','stills',dir,'--frames','0')).toBe('stills 16:9: remotion 0; hyperframes 0 -> stills/G2/16x9/\n');
     // A background pixel away from the patch and the text keeps the painted color.
     for (const shot of ['remotion','hyperframes']) expect(diff(rgb(join(dir,'stills','G2','16x9',`${shot}-f000.png`),0,'1:1:300:170'),new Uint8Array([0x17,0x2b,0x46]))).toBeLessThanOrEqual(1);
     ok('bun','render',dir);
+  } finally {await rm(dir,{recursive:true,force:true});}
+});
+
+// D54: a Remotion shot may import @remotion/transitions. The film lives outside the CLI, so this proves the bundler
+// finds the CLI's copy. Two 4-frame scenes with a 2-frame fade make a 6-frame shot: frame 0 shows only the first
+// scene and frame 5 only the second.
+test('a Remotion shot that imports TransitionSeries from @remotion/transitions bundles and renders', async () => {
+  const dir = await copyFilm();
+  try {
+    await writeFile(join(dir,'shots','remotion','src','index.tsx'),`import React from 'react';
+import {AbsoluteFill, Composition, registerRoot} from 'remotion';
+import {linearTiming, TransitionSeries} from '@remotion/transitions';
+import {fade} from '@remotion/transitions/fade';
+const Shot = () => <TransitionSeries>
+  <TransitionSeries.Sequence durationInFrames={4}><AbsoluteFill style={{backgroundColor: '#aa2200'}} /></TransitionSeries.Sequence>
+  <TransitionSeries.Transition presentation={fade()} timing={linearTiming({durationInFrames: 2})} />
+  <TransitionSeries.Sequence durationInFrames={4}><AbsoluteFill style={{backgroundColor: '#0022aa'}} /></TransitionSeries.Sequence>
+</TransitionSeries>;
+registerRoot(() => <Composition id="Shot" component={Shot} durationInFrames={6} fps={30} width={320} height={180} />);
+`);
+    expect(ok('node','stills',dir,'remotion','--frames','0,5')).toBe('stills 16:9: remotion 0,5 -> stills/G2/16x9/\n');
+    const still = (frame:string) => rgb(join(dir,'stills','G2','16x9',`remotion-f${frame}.png`),0,'1:1:160:90');
+    expect(diff(still('000'),new Uint8Array([0xaa,0x22,0x00]))).toBeLessThanOrEqual(1);
+    expect(diff(still('005'),new Uint8Array([0x00,0x22,0xaa]))).toBeLessThanOrEqual(1);
   } finally {await rm(dir,{recursive:true,force:true});}
 });

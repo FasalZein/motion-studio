@@ -66,14 +66,8 @@ export async function captureStills(project:Project, shot:Shot, format:Format, r
   } finally {await rm(temp,{recursive:true,force:true});}
 }
 
-/**
- * `stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>]`: renders board stills into `stills/G2/`.
- * Without shot ids it renders every shot; without `--frames` it renders each shot's `stillFrames`; without
- * `--format` it renders every chosen format. A shot's earlier board stills in that format are replaced, and a run
- * over every shot also removes stills of shots no longer in the storyboard, so G2 never hashes a stale still.
- */
-export async function boardStills(project:Project, args:string[], tools:Tools):Promise<string[]> {
-  const {shots} = project.storyboard;
+/** Parses `stills` arguments after the film folder: shot ids, `--frames <n,...>` and `--format <format>`. */
+export function stillsArgs(args:string[]):{ids:string[]; frames:number[]|undefined; named:string|undefined} {
   const ids:string[] = [];
   let frames:number[]|undefined, named:string|undefined;
   for (let i=0;i<args.length;i++) {
@@ -85,6 +79,18 @@ export async function boardStills(project:Project, args:string[], tools:Tools):P
     } else ids.push(args[i]);
   }
   if (frames?.some(f => Number.isNaN(f))) throw new CliError('--frames takes comma-separated shot-local frame numbers, for example 0,12,59');
+  return {ids,frames,named};
+}
+
+/**
+ * `stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>]`: renders board stills into `stills/G2/`.
+ * Without shot ids it renders every shot; without `--frames` it renders each shot's `stillFrames`; without
+ * `--format` it renders every chosen format. A shot's earlier board stills in that format are replaced, and a run
+ * over every shot also removes stills of shots no longer in the storyboard, so G2 never hashes a stale still.
+ */
+export async function boardStills(project:Project, args:string[], tools:Tools):Promise<string[]> {
+  const {shots} = project.storyboard;
+  const {ids,frames,named} = stillsArgs(args);
   const selected = ids.length ? ids.map(id => shots.find(s => s.id === id) ?? (() => {throw new CliError(`unknown shot ${id}`);})()) : shots;
   const formats = chosenFormats(project.storyboard.meta);
   if (named !== undefined && !(formats as string[]).includes(named)) throw new CliError(`format ${named} is not a chosen format (${formats.join(', ')})`);
