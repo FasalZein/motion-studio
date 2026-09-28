@@ -2,7 +2,7 @@ import {cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile} from 'node:fs/prom
 import {dirname, join, relative, resolve} from 'node:path';
 import {createRequire} from 'node:module';
 import {bundle} from '@remotion/bundler';
-import {renderFrames, selectComposition} from '@remotion/renderer';
+import {renderFrames, renderStill, selectComposition} from '@remotion/renderer';
 
 import {CliError, layoutOf, type Format, type Layout, type Project, type Shot} from './project.js';
 import {remotionEntry} from './validate.js';
@@ -53,7 +53,8 @@ export async function remotionBundle(project:Project, shot:Shot, withHide:boolea
   } finally {if (wrapperDir) await rm(wrapperDir,{recursive:true,force:true});}
 }
 
-export async function renderRemotionFrames(project:Project, shot:Shot, serveUrl:string, {format,framesDir,hide}:FrameRender) {
+/** Selects the shot's composition for one format and checks its size, fps and length against the storyboard. */
+async function shotComposition(project:Project, shot:Shot, serveUrl:string, format:Format, hide?:string) {
   const {fps} = project.storyboard.meta;
   const layout = layoutOf(project.storyboard,format);
   const inputProps = {...remotionProps(format,layout), ...(hide ? {motionStudioHide:hide} : {})};
@@ -61,7 +62,18 @@ export async function renderRemotionFrames(project:Project, shot:Shot, serveUrl:
   if (composition.durationInFrames !== shot.endFrame-shot.startFrame || composition.fps !== fps || composition.width !== layout.canvas.width || composition.height !== layout.canvas.height) {
     throw new CliError(`composition metadata mismatch: ${shot.id} ${format} is ${composition.width}x${composition.height} ${composition.fps} fps ${composition.durationInFrames} frames`);
   }
+  return {composition,inputProps};
+}
+
+export async function renderRemotionFrames(project:Project, shot:Shot, serveUrl:string, {format,framesDir,hide}:FrameRender) {
+  const {composition,inputProps} = await shotComposition(project,shot,serveUrl,format,hide);
   await renderFrames({serveUrl,composition,inputProps,outputDir:framesDir,imageFormat:'png',muted:true,onStart:()=>{},onFrameUpdate:()=>{},concurrency:1});
+}
+
+/** Renders single shot-local frames of a Remotion shot as PNG files, without rendering the rest of the shot. */
+export async function renderRemotionStills(project:Project, shot:Shot, serveUrl:string, format:Format, frames:{frame:number; output:string}[]) {
+  const {composition,inputProps} = await shotComposition(project,shot,serveUrl,format);
+  for (const {frame,output} of frames) await renderStill({serveUrl,composition,inputProps,frame,output,imageFormat:'png'});
 }
 
 /**
