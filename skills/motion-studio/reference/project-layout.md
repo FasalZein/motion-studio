@@ -17,7 +17,8 @@ films/<slug>/
   stills/G2/sheet.png       G2 contact sheet built from the stills/G2/ frames; hashed with them
   stills/approved/<gate>-<hash8>/   immutable approval copies
   animatic.mp4
-  renders/<format>/         shot clips, master picture, safezone.json, delivery files (16x9, 9x16, 1x1)
+  renders/<format>/         render.json, master picture, safezone.json, handoff reports, delivery files (16x9, 9x16, 1x1)
+  renders/<format>/shots/   one clip (and still) per shot id, apart from pipeline outputs
   audio/                    track, voice and SFX sources; master mix; beats.detected.json (CLI grid proposal, seconds)
   critique/loop-<n>.md      each reviewer output and evidence references
 ```

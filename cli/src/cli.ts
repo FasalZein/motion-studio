@@ -1,22 +1,23 @@
 #!/usr/bin/env node
-import {readFile, mkdir, mkdtemp, readdir, rename, rm, writeFile} from 'node:fs/promises';
+import {readFile, mkdir, mkdtemp, rename, rm, writeFile} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 
-import {chosenFormats, CliError, formatDir, gateIds, initProject, layoutOf, parseProject, type Format, type Project, type Shot} from './project.js';
+import {chosenFormats, CliError, gateIds, initProject, layoutOf, parseProject, type Format, type Project, type Shot} from './project.js';
 import {checkProject, validateProject} from './validate.js';
 import {framePngs, remotionBundle, renderHyperframesFrames, renderRemotionFrames} from './engines.js';
 import {safezone} from './safezone.js';
 import {statusLines} from './status.js';
 import {decisions, gateViews, recordGate} from './gates.js';
 import {handoff} from './handoff.js';
-import {mix} from './mix.js';
+import {mix, prepareMix} from './mix.js';
 import {beats} from './beats.js';
 import {clearSeamOutputs} from './seam.js';
 import {assets} from './assets.js';
 import {doctor} from './doctor.js';
 import {configuredProviders} from './providers.js';
+import {outputsOf, type Outputs} from './outputs.js';
 
 const configuredTimeout = process.env.MOTION_STUDIO_CHILD_TIMEOUT_MS;
 const timeoutMs = configuredTimeout === undefined ? 120_000 : Number(configuredTimeout);
@@ -86,7 +87,7 @@ async function renderShot(shot:Shot, project:Project, format:Format, output:stri
     await verify(output,frameCount,fps,width,height);
   } finally {await rm(temp,{recursive:true,force:true});}
 }
-const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | handoff <film-dir> [<shot-a> <shot-b>] | mix <film-dir> | safezone <film-dir> [format] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | assets <film-dir> <list|add|resolve> ...';
+const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | assets <film-dir> <list|add|resolve> ...';
 /** The formats a command works on: one named chosen format, or every chosen format when none is named. */
 function selectFormats(project:Project, named:string|undefined):Format[] {
   const formats = chosenFormats(project.storyboard.meta);
@@ -94,8 +95,9 @@ function selectFormats(project:Project, named:string|undefined):Format[] {
   if (!(formats as string[]).includes(named)) throw new CliError(`format ${named} is not a chosen format (${formats.join(', ')})`);
   return [named as Format];
 }
-/** Renders every shot (or one still) of one format into renders/<format>/. */
-async function renderFormat(action:'render'|'still', project:Project, format:Format, output:string) {
+/** Renders every shot clip (or one still) of one format into renders/<format>/shots/. */
+async function renderFormat(action:'render'|'still', project:Project, out:Outputs) {
+  const {format} = out;
   const {root:base, storyboard:{shots}} = project;
   const selected = action === 'still' ? shots.filter(s => s.id === process.argv[4]) : shots;
   if (!selected.length) throw new CliError('unknown shot');
@@ -103,8 +105,8 @@ async function renderFormat(action:'render'|'still', project:Project, format:For
   if (!Number.isInteger(stillFrame) || stillFrame < 0 || (action === 'still' && stillFrame >= selected[0].endFrame-selected[0].startFrame)) throw new CliError('still frame outside shot');
   // The success marker must be absent throughout a rerender, even if old clips remain.
   if (action === 'render') {
-    await rm(join(output,'render.json'),{force:true});
-    await rm(join(output,'master.mkv'),{force:true});
+    await rm(out.marker,{force:true});
+    await rm(out.master,{force:true});
   }
   const staging = await mkdtemp(join(base,'.motion-render-'));
   try {
@@ -114,22 +116,30 @@ async function renderFormat(action:'render'|'still', project:Project, format:For
       await command('ffmpeg',['-hide_banner','-loglevel','error','-y','-i',join(staging,`${shot.id}.mkv`),'-vf',`select=eq(n\\,${stillFrame})`,'-vsync','0','-frames:v','1',join(staging,`${shot.id}.png`)]);
       await rm(join(staging,`${shot.id}.mkv`));
     }
-    await mkdir(output,{recursive:true});
-    for (const file of await readdir(staging)) await rename(join(staging,file),join(output,file));
-    if (action === 'render') await writeFile(join(output,'render.json'), JSON.stringify({format, shots:shots.map(s => ({id:s.id, startFrame:s.startFrame, endFrame:s.endFrame}))}));
+    await mkdir(out.shots,{recursive:true});
+    for (const shot of selected) {
+      const [staged,target] = action === 'still' ? [`${shot.id}.png`,out.still(shot.id)] : [`${shot.id}.mkv`,out.clip(shot.id)];
+      await rename(join(staging,staged),target);
+    }
+    if (action === 'render') await writeFile(out.marker, JSON.stringify({format, shots:shots.map(s => ({id:s.id, startFrame:s.startFrame, endFrame:s.endFrame}))}));
   } finally {await rm(staging,{recursive:true,force:true});}
 }
-async function stitchFormat(project:Project, format:Format, output:string) {
+async function stitchFormat(project:Project, out:Outputs) {
   const {storyboard:{shots, meta:{fps}}} = project;
+  const {format} = out;
   const {width,height} = layoutOf(project.storyboard,format).canvas;
-  try {await readFile(join(output,'render.json'),'utf8');}
+  try {await readFile(out.marker,'utf8');}
   catch {throw new CliError(`successful render required before stitch: ${format}`);}
-  for (const shot of shots) await verify(join(output,`${shot.id}.mkv`),shot.endFrame-shot.startFrame,fps,width,height);
-  const list = join(output,'clips.txt');
-  await writeFile(list,shots.map(s=>`file '${join(output,`${s.id}.mkv`).replaceAll("'", "'\\''")}'`).join('\n')+'\n');
+  for (const shot of shots) await verify(out.clip(shot.id),shot.endFrame-shot.startFrame,fps,width,height);
+  const list = join(out.dir,'clips.txt');
+  await writeFile(list,shots.map(s=>`file '${out.clip(s.id).replaceAll("'", "'\\''")}'`).join('\n')+'\n');
   try {
-    await command('ffmpeg',['-hide_banner','-loglevel','error','-y','-f','concat','-safe','0','-i',list,'-map','0:v:0','-an','-c','copy',join(output,'master.mkv')]);
-    await verify(join(output,'master.mkv'),shots.at(-1)!.endFrame,fps,width,height);
+    // Matroska stores millisecond timestamps. Concat adds each clip's rounded duration, so errors add up across
+    // clips whose length is not a whole number of milliseconds. setts sets every packet's time from its one global
+    // frame index N at the master fps (TB is the stream time base), so each frame is at most half a millisecond off.
+    // It only rewrites timestamps: every packet is copied, none dropped or duplicated.
+    await command('ffmpeg',['-hide_banner','-loglevel','error','-y','-f','concat','-safe','0','-i',list,'-map','0:v:0','-an','-c','copy','-bsf:v',`setts=ts=N/(${fps}*TB):duration=1/(${fps}*TB)`,out.master]);
+    await verify(out.master,shots.at(-1)!.endFrame,fps,width,height);
   } finally {await rm(list,{force:true});}
 }
 async function main() {
@@ -198,22 +208,38 @@ async function main() {
   const project = await loadProject(target);
   const {root:base, storyboard:{shots, meta}} = project;
   if (!shots.length) throw new CliError('project has no shots');
-  const renders = (format:Format) => join(base,'renders',formatDir(format));
-  // Handoff and mix run on the primary format's master.
-  if (action === 'handoff') return handoff(project,renders(meta.formats.primary),process.argv.slice(4),{command,verify});
-  if (action === 'mix') return console.log(await mix(project,renders(meta.formats.primary),{command,verify}));
+  const outputs = (format:Format) => outputsOf(base,format);
+  if (action === 'handoff') {
+    // A trailing argument that is not a shot id names the format: handoff <dir> [<a> <b>] [format].
+    const args = process.argv.slice(4);
+    const named = args.length % 2 === 1 && !shots.some(s => s.id === args.at(-1)) ? args.pop() : undefined;
+    // Each format renders at its own canvas, so a seam can pass in one format and fail in another: check every format.
+    const failures:string[] = [];
+    for (const format of selectFormats(project,named)) {
+      try {await handoff(project,outputs(format),args,{command,verify});}
+      catch (e) {if (!(e instanceof CliError)) throw e; failures.push(e.message);}
+    }
+    if (failures.length) throw new CliError(failures.join('\nerror: '));
+    return;
+  }
+  if (action === 'mix') {
+    const outs = selectFormats(project,process.argv[4]).map(outputs);
+    await prepareMix(project,outs);
+    for (const out of outs) console.log(await mix(project,out,{command,verify}));
+    return;
+  }
   if (action === 'safezone') {
-    const failures = await safezone(project,selectFormats(project,process.argv[4]),renders,{command,verify});
+    const failures = await safezone(project,selectFormats(project,process.argv[4]),f => outputs(f).dir,{command,verify});
     if (failures) process.exitCode = 1;
     return;
   }
   const formats = selectFormats(project,action === 'still' ? process.argv[6] ?? meta.formats.primary : process.argv[4]);
   for (const format of formats) {
-    const output = renders(format);
+    const out = outputs(format);
     // Handoff and mix evidence describes one master; a new render or stitch makes it stale.
-    if (action === 'render' || action === 'stitch') await clearSeamOutputs(output);
-    if (action === 'render' || action === 'still') await renderFormat(action,project,format,output);
-    else await stitchFormat(project,format,output);
+    if (action === 'render' || action === 'stitch') await clearSeamOutputs(out.dir);
+    if (action === 'render' || action === 'still') await renderFormat(action,project,out);
+    else await stitchFormat(project,out);
     console.log(`${action} ${format} verified ${action === 'stitch' ? shots.at(-1)!.endFrame : shots.map(s=>s.endFrame-s.startFrame).join('+')} frames`);
   }
 }
