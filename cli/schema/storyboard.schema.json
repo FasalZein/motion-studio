@@ -8,7 +8,7 @@
     "version": {"const": "0"},
     "meta": {
       "type": "object",
-      "required": ["title", "logline", "genre", "formats", "fps", "durationFrames", "canvas"],
+      "required": ["title", "logline", "genre", "formats", "fps", "durationFrames", "layouts"],
       "properties": {
         "title": {"type": "string"},
         "logline": {"type": "string"},
@@ -23,11 +23,11 @@
         },
         "fps": {"enum": [24, 25, 30, 60]},
         "durationFrames": {"$ref": "#/definitions/frame"},
-        "canvas": {
-          "description": "Master canvas of the primary format in pixels.",
+        "layouts": {
+          "description": "Layout inputs per chosen format: canvas, safe rectangle and optional platform-overlay preset. Keys are exactly the primary and extra formats; validate checks this.",
           "type": "object",
-          "required": ["width", "height"],
-          "properties": {"width": {"type": "integer", "minimum": 1}, "height": {"type": "integer", "minimum": 1}}
+          "propertyNames": {"$ref": "#/definitions/format"},
+          "additionalProperties": {"$ref": "#/definitions/layout"}
         }
       }
     },
@@ -77,6 +77,20 @@
     "frame": {"type": "integer", "minimum": 0},
     "frames": {"type": "array", "items": {"$ref": "#/definitions/frame"}},
     "id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+    "rect": {
+      "type": "object",
+      "required": ["x", "y", "width", "height"],
+      "properties": {"x": {"type": "integer", "minimum": 0}, "y": {"type": "integer", "minimum": 0}, "width": {"type": "integer", "minimum": 1}, "height": {"type": "integer", "minimum": 1}}
+    },
+    "layout": {
+      "type": "object",
+      "required": ["canvas", "safe", "overlay"],
+      "properties": {
+        "canvas": {"type": "object", "required": ["width", "height"], "properties": {"width": {"type": "integer", "minimum": 1}, "height": {"type": "integer", "minimum": 1}}, "description": "Render size of this format in pixels."},
+        "safe": {"$ref": "#/definitions/rect", "description": "Rectangle in canvas pixels that held protected content must stay inside."},
+        "overlay": {"type": ["string", "null"], "minLength": 1, "description": "Optional platform-overlay preset name (for example tiktok). Engines receive it; the CLI does not interpret it."}
+      }
+    },
     "path": {"type": "string", "minLength": 1},
     "pathOrNull": {"anyOf": [{"$ref": "#/definitions/path"}, {"type": "null"}]},
     "assetIdOrNull": {"anyOf": [{"$ref": "#/definitions/id"}, {"type": "null"}]},
@@ -117,7 +131,7 @@
           "items": {
             "type": "object",
             "required": ["id", "bounds", "heldFrames"],
-            "properties": {"id": {"type": "string", "minLength": 1}, "bounds": {"$ref": "#/definitions/path"}, "heldFrames": {"$ref": "#/definitions/frames"}}
+            "properties": {"id": {"$ref": "#/definitions/id", "description": "Matches the element's data-protected attribute in both engines."}, "bounds": {"$ref": "#/definitions/path", "description": "\"measured\": safezone measures the rendered element marked data-protected. Otherwise a film-relative JSON file of declared geometry for canvas or SVG content: {\"<format>\": {x, y, width, height}}."}, "heldFrames": {"$ref": "#/definitions/frames", "description": "Shot-local frames where the element is held; entrance and exit travel frames are not listed."}}
           }
         }
       }

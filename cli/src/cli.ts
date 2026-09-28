@@ -2,21 +2,18 @@
 import {readFile, mkdir, mkdtemp, readdir, rename, rm, writeFile} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {tmpdir} from 'node:os';
-import {dirname, join, resolve} from 'node:path';
-import {createRequire} from 'node:module';
-import {bundle} from '@remotion/bundler';
-import {renderFrames, selectComposition} from '@remotion/renderer';
+import {join, resolve} from 'node:path';
 
-import {CliError, initProject, parseProject, type Project, type Shot} from './project.js';
-import {checkProject, remotionEntry, validateProject} from './validate.js';
+import {chosenFormats, CliError, formatDir, initProject, layoutOf, parseProject, type Format, type Project, type Shot} from './project.js';
+import {checkProject, validateProject} from './validate.js';
+import {framePngs, remotionBundle, renderHyperframesFrames, renderRemotionFrames} from './engines.js';
+import {safezone} from './safezone.js';
 import {statusLines} from './status.js';
 import {handoff} from './handoff.js';
 import {mix} from './mix.js';
 import {beats} from './beats.js';
 import {clearSeamOutputs} from './seam.js';
 
-const require = createRequire(import.meta.url);
-const hfBin = resolve(dirname(require.resolve('hyperframes/package.json')), 'bin/hyperframes.mjs');
 const configuredTimeout = process.env.MOTION_STUDIO_CHILD_TIMEOUT_MS;
 const timeoutMs = configuredTimeout === undefined ? 120_000 : Number(configuredTimeout);
 if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw Error('invalid child timeout');
@@ -60,39 +57,77 @@ async function verify(path:string, expected:number, fps:number, width:number, he
     if (timestamp === undefined || timestamp === null || timestamp === '' || !Number.isFinite(Number(timestamp)) || Math.abs(Number(timestamp) - i/fps) > .0006) throw new CliError(`timestamp mismatch: ${path} frame ${i}`);
   }
 }
-async function renderShot(shot:Shot, project:Project, output:string) {
-  const {root:base, storyboard:{meta:{fps,canvas:{width,height}}}} = project;
+async function renderShot(shot:Shot, project:Project, format:Format, output:string) {
+  const {storyboard} = project;
+  const {fps} = storyboard.meta;
+  const {width,height} = layoutOf(storyboard,format).canvas;
   const frameCount = shot.endFrame-shot.startFrame;
   const temp = await mkdtemp(join(tmpdir(),'motion-shot-'));
   try {
     const frames = join(temp,'frames');
     await mkdir(frames);
     if (shot.engine === 'remotion') {
-      const entry = await remotionEntry(base,shot);
-      if (!entry) throw new CliError(`Remotion project entry missing: ${shot.id}`);
-      const serveUrl = await bundle({entryPoint:entry, publicDir:join(base,'shots',shot.id,'public')});
-      try {
-        const composition = await selectComposition({serveUrl,id:shot.entrypoint});
-        if (composition.durationInFrames !== frameCount || composition.fps !== fps || composition.width !== width || composition.height !== height) throw new CliError(`composition metadata mismatch: ${shot.id}`);
-        await renderFrames({serveUrl,composition,inputProps:{},outputDir:frames,imageFormat:'png',muted:true,onStart:()=>{},onFrameUpdate:()=>{},concurrency:1});
-      } finally {await rm(serveUrl,{recursive:true,force:true});}
-    } else {
-      const entry = resolve(base,shot.entrypoint);
-      await command('node',[hfBin,'render',dirname(entry),'--composition',shot.entrypoint.split('/').at(-1)!,'--output',frames,'--format','png-sequence','--fps',String(fps),'--workers','1','--sdr','--quiet'],base);
-    }
-    const pngs = (await readdir(frames)).filter(f => f.endsWith('.png')).sort();
-    if (pngs.length !== frameCount) throw new CliError(`rendered frame count mismatch: ${shot.id} got ${pngs.length}`);
+      const {serveUrl,dispose} = await remotionBundle(project,shot,false);
+      try {await renderRemotionFrames(project,shot,serveUrl,{format,framesDir:frames});}
+      finally {await dispose();}
+    } else await renderHyperframesFrames(project,shot,{command,verify},{format,framesDir:frames});
+    const pngs = await framePngs(shot,frames);
     // Both renderers write numbered PNGs. Concat demuxer accepts their different numbering schemes.
     const list = join(temp,'frames.txt');
-    await writeFile(list,pngs.map(p => `file '${join(frames,p).replaceAll("'", "'\\''")}'`).join('\n')+'\n');
+    await writeFile(list,pngs.map(p => `file '${p.replaceAll("'", "'\\''")}'`).join('\n')+'\n');
     await command('ffmpeg',['-hide_banner','-loglevel','error','-y','-r',String(fps),'-f','concat','-safe','0','-i',list,'-an','-vf','setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709','-c:v','ffv1','-level','3','-pix_fmt','yuv444p','-colorspace','bt709','-color_trc','bt709','-color_primaries','bt709',output]);
     await verify(output,frameCount,fps,width,height);
   } finally {await rm(temp,{recursive:true,force:true});}
 }
-const usage = 'usage: motion-studio init <slug> | validate <film-dir> | status <film-dir> | render <film-dir> | stitch <film-dir> | still <film-dir> <shot-id> [local-frame] | handoff <film-dir> [<shot-a> <shot-b>] | mix <film-dir> | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>]';
+const usage = 'usage: motion-studio init <slug> | validate <film-dir> | status <film-dir> | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | handoff <film-dir> [<shot-a> <shot-b>] | mix <film-dir> | safezone <film-dir> [format] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>]';
+/** The formats a command works on: one named chosen format, or every chosen format when none is named. */
+function selectFormats(project:Project, named:string|undefined):Format[] {
+  const formats = chosenFormats(project.storyboard.meta);
+  if (named === undefined) return formats;
+  if (!(formats as string[]).includes(named)) throw new CliError(`format ${named} is not a chosen format (${formats.join(', ')})`);
+  return [named as Format];
+}
+/** Renders every shot (or one still) of one format into renders/<format>/. */
+async function renderFormat(action:'render'|'still', project:Project, format:Format, output:string) {
+  const {root:base, storyboard:{shots}} = project;
+  const selected = action === 'still' ? shots.filter(s => s.id === process.argv[4]) : shots;
+  if (!selected.length) throw new CliError('unknown shot');
+  const stillFrame = action === 'still' ? Number(process.argv[5] ?? '0') : 0;
+  if (!Number.isInteger(stillFrame) || stillFrame < 0 || (action === 'still' && stillFrame >= selected[0].endFrame-selected[0].startFrame)) throw new CliError('still frame outside shot');
+  // The success marker must be absent throughout a rerender, even if old clips remain.
+  if (action === 'render') {
+    await rm(join(output,'render.json'),{force:true});
+    await rm(join(output,'master.mkv'),{force:true});
+  }
+  const staging = await mkdtemp(join(base,'.motion-render-'));
+  try {
+    for (const shot of selected) await renderShot(shot,project,format,join(staging,`${shot.id}.mkv`));
+    if (action === 'still') {
+      const shot = selected[0];
+      await command('ffmpeg',['-hide_banner','-loglevel','error','-y','-i',join(staging,`${shot.id}.mkv`),'-vf',`select=eq(n\\,${stillFrame})`,'-vsync','0','-frames:v','1',join(staging,`${shot.id}.png`)]);
+      await rm(join(staging,`${shot.id}.mkv`));
+    }
+    await mkdir(output,{recursive:true});
+    for (const file of await readdir(staging)) await rename(join(staging,file),join(output,file));
+    if (action === 'render') await writeFile(join(output,'render.json'), JSON.stringify({format, shots:shots.map(s => ({id:s.id, startFrame:s.startFrame, endFrame:s.endFrame}))}));
+  } finally {await rm(staging,{recursive:true,force:true});}
+}
+async function stitchFormat(project:Project, format:Format, output:string) {
+  const {storyboard:{shots, meta:{fps}}} = project;
+  const {width,height} = layoutOf(project.storyboard,format).canvas;
+  try {await readFile(join(output,'render.json'),'utf8');}
+  catch {throw new CliError(`successful render required before stitch: ${format}`);}
+  for (const shot of shots) await verify(join(output,`${shot.id}.mkv`),shot.endFrame-shot.startFrame,fps,width,height);
+  const list = join(output,'clips.txt');
+  await writeFile(list,shots.map(s=>`file '${join(output,`${s.id}.mkv`).replaceAll("'", "'\\''")}'`).join('\n')+'\n');
+  try {
+    await command('ffmpeg',['-hide_banner','-loglevel','error','-y','-f','concat','-safe','0','-i',list,'-map','0:v:0','-an','-c','copy',join(output,'master.mkv')]);
+    await verify(join(output,'master.mkv'),shots.at(-1)!.endFrame,fps,width,height);
+  } finally {await rm(list,{force:true});}
+}
 async function main() {
   const [action,target] = process.argv.slice(2);
-  if (!['init','validate','status','render','stitch','still','handoff','mix','beats'].includes(action) || !target) throw new CliError(usage);
+  if (!['init','validate','status','render','stitch','still','handoff','mix','safezone','beats'].includes(action) || !target) throw new CliError(usage);
   if (action === 'init') {
     console.log(`created ${await initProject(process.cwd(),target)}`);
     return;
@@ -122,46 +157,25 @@ async function main() {
     return;
   }
   const project = await loadProject(target);
-  const {root:base, storyboard:{shots, meta:{fps, canvas:{width,height}}}} = project;
+  const {root:base, storyboard:{shots, meta}} = project;
   if (!shots.length) throw new CliError('project has no shots');
-  const output = join(base,'output');
-  if (action === 'handoff') return handoff(project,output,process.argv.slice(4),{command,verify});
-  if (action === 'mix') return console.log(await mix(project,output,{command,verify}));
-  // Handoff and mix evidence describes one master; a new render or stitch makes it stale.
-  if (action === 'render' || action === 'stitch') await clearSeamOutputs(output);
-  if (action === 'render' || action === 'still') {
-    const selected = action === 'still' ? shots.filter(s => s.id === process.argv[4]) : shots;
-    if (!selected.length) throw new CliError('unknown shot');
-    const stillFrame = action === 'still' ? Number(process.argv[5] ?? '0') : 0;
-    if (!Number.isInteger(stillFrame) || stillFrame < 0 || (action === 'still' && stillFrame >= selected[0].endFrame-selected[0].startFrame)) throw new CliError('still frame outside shot');
-    // The success marker must be absent throughout a rerender, even if old clips remain.
-    if (action === 'render') {
-      await rm(join(output,'render.json'),{force:true});
-      await rm(join(output,'master.mkv'),{force:true});
-    }
-    const staging = await mkdtemp(join(base,'.motion-render-'));
-    try {
-      for (const shot of selected) await renderShot(shot,project,join(staging,`${shot.id}.mkv`));
-      if (action === 'still') {
-        const shot = selected[0];
-        await command('ffmpeg',['-hide_banner','-loglevel','error','-y','-i',join(staging,`${shot.id}.mkv`),'-vf',`select=eq(n\\,${stillFrame})`,'-vsync','0','-frames:v','1',join(staging,`${shot.id}.png`)]);
-        await rm(join(staging,`${shot.id}.mkv`));
-      }
-      await mkdir(output,{recursive:true});
-      for (const file of await readdir(staging)) await rename(join(staging,file),join(output,file));
-      if (action === 'render') await writeFile(join(output,'render.json'), JSON.stringify({shots:shots.map(s => ({id:s.id, startFrame:s.startFrame, endFrame:s.endFrame}))}));
-    } finally {await rm(staging,{recursive:true,force:true});}
-  } else {
-    try {await readFile(join(output,'render.json'),'utf8');}
-    catch {throw new CliError('successful render required before stitch');}
-    for (const shot of shots) await verify(join(output,`${shot.id}.mkv`),shot.endFrame-shot.startFrame,fps,width,height);
-    const list = join(output,'clips.txt');
-    await writeFile(list,shots.map(s=>`file '${join(output,`${s.id}.mkv`).replaceAll("'", "'\\''")}'`).join('\n')+'\n');
-    try {
-      await command('ffmpeg',['-hide_banner','-loglevel','error','-y','-f','concat','-safe','0','-i',list,'-map','0:v:0','-an','-c','copy',join(output,'master.mkv')]);
-      await verify(join(output,'master.mkv'),shots.at(-1)!.endFrame,fps,width,height);
-    } finally {await rm(list,{force:true});}
+  const renders = (format:Format) => join(base,'renders',formatDir(format));
+  // Handoff and mix run on the primary format's master.
+  if (action === 'handoff') return handoff(project,renders(meta.formats.primary),process.argv.slice(4),{command,verify});
+  if (action === 'mix') return console.log(await mix(project,renders(meta.formats.primary),{command,verify}));
+  if (action === 'safezone') {
+    const failures = await safezone(project,selectFormats(project,process.argv[4]),renders,{command,verify});
+    if (failures) process.exitCode = 1;
+    return;
   }
-  console.log(`${action} verified ${action === 'stitch' ? shots.at(-1)!.endFrame : shots.map(s=>s.endFrame-s.startFrame).join('+')} frames`);
+  const formats = selectFormats(project,action === 'still' ? process.argv[6] ?? meta.formats.primary : process.argv[4]);
+  for (const format of formats) {
+    const output = renders(format);
+    // Handoff and mix evidence describes one master; a new render or stitch makes it stale.
+    if (action === 'render' || action === 'stitch') await clearSeamOutputs(output);
+    if (action === 'render' || action === 'still') await renderFormat(action,project,format,output);
+    else await stitchFormat(project,format,output);
+    console.log(`${action} ${format} verified ${action === 'stitch' ? shots.at(-1)!.endFrame : shots.map(s=>s.endFrame-s.startFrame).join('+')} frames`);
+  }
 }
 main().catch(e => {console.error(e instanceof CliError ? `error: ${e.message}` : e);process.exitCode=1;});

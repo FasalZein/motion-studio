@@ -1,6 +1,6 @@
 import {mkdtemp, readdir, readFile, rm, writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
-import {CliError, type Project, type Shot} from './project.js';
+import {CliError, layoutOf, type Project, type Shot} from './project.js';
 import {isHandoffOutput, requireMaster, round3, type Tools} from './seam.js';
 
 // A handoff compares shot A's last frame with shot B's first frame for identity, so the moving
@@ -65,7 +65,8 @@ function seams(shots:Shot[], pair:string[]):[Shot,Shot][] {
  * and fails with one line per failing seam.
  */
 export async function handoff(project:Project, output:string, pair:string[], tools:Tools):Promise<void> {
-  const {shots,meta:{fps,canvas:{width,height}}} = project.storyboard;
+  const {shots,meta:{fps,formats}} = project.storyboard;
+  const {width,height} = layoutOf(project.storyboard,formats.primary).canvas;
   const selected = seams(shots,pair);
   // Old reports must never survive a failed run: checking every seam clears every report.
   const stale = pair.length ? selected.map(([a,b]) => `handoff-${a.id}-${b.id}`).flatMap(n => [`${n}.json`,`${n}.png`]) : (await readdir(output).catch(() => [] as string[])).filter(isHandoffOutput);

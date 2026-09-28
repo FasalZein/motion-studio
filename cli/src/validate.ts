@@ -1,7 +1,7 @@
 import {readFile, stat} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {isAbsolute, join, relative, resolve} from 'node:path';
-import {gateIds, parseProject, type Project, type Shot} from './project.js';
+import {chosenFormats, gateIds, parseProject, type Format, type Project, type Shot} from './project.js';
 
 export type Report = {errors:string[]; warnings:string[]};
 /**
@@ -34,9 +34,18 @@ const errorsOnly = (errors:string[]):Report => ({errors, warnings:[]});
 const duplicates = (values:string[]) => [...new Set(values.filter((v,i) => values.indexOf(v) !== i))];
 
 const checkMeta:Check = ({storyboard:{meta}}) => {
-  const [w,h] = formatRatio[meta.formats.primary];
-  return errorsOnly(meta.canvas.width * h === meta.canvas.height * w ? [] :
-    [`meta.canvas ${meta.canvas.width}x${meta.canvas.height} does not match primary format ${meta.formats.primary}`]);
+  const errors:string[] = [];
+  const formats = chosenFormats(meta);
+  for (const format of Object.keys(meta.layouts) as Format[]) if (!formats.includes(format)) errors.push(`meta.layouts has a layout for ${format}, which is not a chosen format`);
+  for (const format of formats) {
+    const layout = meta.layouts[format];
+    if (!layout) {errors.push(`meta.layouts has no layout for chosen format ${format}`); continue;}
+    const {canvas,safe} = layout;
+    const [w,h] = formatRatio[format];
+    if (canvas.width * h !== canvas.height * w) errors.push(`meta.layouts ${format}: canvas ${canvas.width}x${canvas.height} does not match the format`);
+    if (safe.x + safe.width > canvas.width || safe.y + safe.height > canvas.height) errors.push(`meta.layouts ${format}: safe rectangle ${safe.x},${safe.y} ${safe.width}x${safe.height} is outside the canvas ${canvas.width}x${canvas.height}`);
+  }
+  return errorsOnly(errors);
 };
 
 const checkGates:Check = ({storyboard:{gates}}) => {
@@ -55,6 +64,7 @@ const checkTimeline:Check = ({storyboard:{shots,meta,audio}}) => {
     if (shot.startFrame > expected) errors.push(`gap: ${after} but shot ${shot.id} starts at frame ${shot.startFrame}; frames [${expected}, ${shot.startFrame}) have no shot`);
     if (shot.startFrame < expected) errors.push(`overlap: ${after} but shot ${shot.id} starts at frame ${shot.startFrame}; frames [${shot.startFrame}, ${expected}) are covered twice`);
     for (const frame of shot.stillFrames) if (frame >= shot.endFrame - shot.startFrame) errors.push(`shot ${shot.id}: still frame ${frame} is outside the shot (still frames are shot-local, 0 to ${shot.endFrame - shot.startFrame - 1})`);
+    for (const p of shot.protected) for (const frame of p.heldFrames) if (frame >= shot.endFrame - shot.startFrame) errors.push(`shot ${shot.id}: protected ${p.id} held frame ${frame} is outside the shot (held frames are shot-local, 0 to ${shot.endFrame - shot.startFrame - 1})`);
     previous = shot;
   }
   const end = previous?.endFrame ?? 0;

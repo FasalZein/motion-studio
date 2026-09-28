@@ -14,12 +14,15 @@ export type Shot = {
   id:string; startFrame:number; endFrame:number; engine:Engine; entrypoint:string; description:string; camera:string;
   entry:'cut'|'handoff'; exit:'cut'|'handoff'; transition?:string; offBeatCut?:string; assets:string[];
   soundCues:{asset:string; eventFrame:number; peakOffsetFrames:number; gainDb?:number}[];
-  stillFrames:number[]; protected:{id:string; bounds:string; heldFrames:number[]}[];
+  stillFrames:number[]; protected:{id:string; bounds:string; heldFrames:number[]}[]; // bounds: 'measured' or a declared-geometry file
 };
+export type Rect = {x:number; y:number; width:number; height:number};
+/** Layout inputs of one format. Both engines receive the same values (Remotion as props, HyperFrames as variables). */
+export type Layout = {canvas:{width:number; height:number}; safe:Rect; overlay:string|null};
 export type Gate = {id:GateId; state:GateState; inputHashes:Record<string,string>; decision:string|null; notes:string[]; rounds:number};
 export type Storyboard = {
   version:'0';
-  meta:{title:string; logline:string; genre:string|null; formats:{primary:Format; extra:Format[]}; fps:Fps; durationFrames:number; canvas:{width:number; height:number}};
+  meta:{title:string; logline:string; genre:string|null; formats:{primary:Format; extra:Format[]}; fps:Fps; durationFrames:number; layouts:Partial<Record<Format,Layout>>};
   look:{id:string|null; styleBible:string|null; axes:Record<string,string>; tasteSnapshot:string|null};
   audio:{track:string|null; grid:'detected'|'corrected'|'imported'|null; bpm:number|null; beatFrames:number[]; downbeatFrames:number[]; dropFrames:number[]; confidence:'high'|'low'|null};
   voice:{script:string; tts:string|null; wordTimings:string}|null;
@@ -96,7 +99,7 @@ export async function parseProject(filmRoot:string):Promise<ParseResult> {
 export function emptyStoryboard():Storyboard {
   return {
     version:'0',
-    meta:{title:'', logline:'', genre:null, formats:{primary:'16:9', extra:[]}, fps:30, durationFrames:0, canvas:{width:1920, height:1080}},
+    meta:{title:'', logline:'', genre:null, formats:{primary:'16:9', extra:[]}, fps:30, durationFrames:0, layouts:{'16:9':{canvas:{width:1920, height:1080}, safe:{x:96, y:54, width:1728, height:972}, overlay:null}}},
     look:{id:null, styleBible:null, axes:{}, tasteSnapshot:null},
     audio:{track:null, grid:null, bpm:null, beatFrames:[], downbeatFrames:[], dropFrames:[], confidence:null},
     voice:null,
@@ -117,4 +120,15 @@ export async function initProject(cwd:string, slug:string):Promise<string> {
   await writeFile(join(root,'ledger.json'),JSON.stringify({version:'0', assets:[]} satisfies Ledger,null,2)+'\n');
   await writeFile(join(root,'BRIEF.md'),`# Brief\n\n${briefSections.map(s => `<${s}>\n</${s}>`).join('\n\n')}\n`);
   return root;
+}
+
+/** Folder name of a format under renders/: `16x9`, `9x16` or `1x1`. A colon is not portable in file names. */
+export const formatDir = (format:Format) => format.replace(':','x');
+/** Primary format first, then the extra formats in their declared order. */
+export const chosenFormats = ({formats}:Storyboard['meta']):Format[] => [formats.primary, ...formats.extra];
+/** The layout of a chosen format. `validate` guarantees every chosen format has one. */
+export function layoutOf(storyboard:Storyboard, format:Format):Layout {
+  const layout = storyboard.meta.layouts[format];
+  if (!layout) throw new CliError(`meta.layouts has no layout for format ${format}`);
+  return layout;
 }

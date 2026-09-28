@@ -1,6 +1,6 @@
 import {access, readdir, rm} from 'node:fs/promises';
 import {join} from 'node:path';
-import {CliError, type Project} from './project.js';
+import {CliError, layoutOf, type Project} from './project.js';
 
 /** Process and media helpers owned by cli.ts, passed in so the seam modules do not import the entry point. */
 export type Tools = {
@@ -22,11 +22,13 @@ export async function clearMixOutputs(output:string) {
 }
 
 /** Requires a successful render and a stitched master that still meets the media contract. */
-export async function requireMaster({storyboard:{shots,meta}}:Project, output:string, tools:Tools):Promise<string> {
+export async function requireMaster({storyboard}:Project, output:string, tools:Tools):Promise<string> {
+  const {shots,meta} = storyboard;
+  const {width,height} = layoutOf(storyboard,meta.formats.primary).canvas;
   const master = join(output,'master.mkv');
   try {await access(join(output,'render.json')); await access(master);}
   catch {throw new CliError('successful render and stitch required');}
-  await tools.verify(master,shots.at(-1)!.endFrame,meta.fps,meta.canvas.width,meta.canvas.height);
+  await tools.verify(master,shots.at(-1)!.endFrame,meta.fps,width,height);
   return master;
 }
 
