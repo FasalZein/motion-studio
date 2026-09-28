@@ -1,0 +1,6 @@
+{
+  "version": "0",
+  "assets": [
+    {"id": "font-plex", "type": "font", "sourceKind": "stock", "sourceUrlOrGenerator": "https://github.com/IBM/plex", "providerAssetId": null, "license": {"status": "known", "name": "OFL-1.1", "evidence": "assets/OFL.txt"}, "localPath": "shots/slide/public/IBMPlexSans.ttf", "sha256": "3b031aa4216174205bd8471f88a49b91f093169e9e87bd5262242bc5967fe2e3", "shots": ["slide", "title", "drift"]}
+  ]
+}

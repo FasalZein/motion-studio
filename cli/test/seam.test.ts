@@ -2,9 +2,10 @@ import {test as nodeTest} from 'node:test';
 const {expect} = await import('bun' in process.versions ? 'bun:test' : 'expect');
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {cp, mkdir, mkdtemp, readFile, rm, stat, writeFile} from 'node:fs/promises';
+import {cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 
 const test = (name:string, fn:()=>Promise<void>, timeout=600000) => nodeTest(name,{timeout},fn);
 const here = dirname(fileURLToPath(import.meta.url));
@@ -17,9 +18,10 @@ const ffmpeg = (...args:string[]) => {
   expect(result.status).toBe(0);
 };
 const exists = (file:string) => stat(file).then(() => true,() => false);
-const copyFixtures = async (prefix:string) => {
-  const dir = await mkdtemp(join(tmpdir(),prefix));
-  await cp(fixtures,dir,{recursive:true,filter: src => !src.endsWith('/output')});
+const json = async (file:string) => JSON.parse(await readFile(file,'utf8'));
+const copyFilm = async (name:string) => {
+  const dir = await mkdtemp(join(tmpdir(),`motion-studio-${name}-`));
+  await cp(join(fixtures,name),dir,{recursive:true,filter: src => !src.endsWith('/output')});
   return dir;
 };
 /** Decodes the audio of a file to interleaved 48 kHz stereo float samples, independently of the CLI. */
@@ -37,32 +39,32 @@ const peakAt = (samples:Float32Array, from:number, to:number) => {
 const lufs = (file:string) => Number(JSON.parse(/\{[^{}]*"input_i"[^{}]*\}/.exec(spawnSync('ffmpeg',['-hide_banner','-nostats','-i',file,'-map','0:a:0','-af','loudnorm=print_format=json','-f','null','-'],{encoding:'utf8',timeout:30000}).stderr)![0]).input_i);
 const streams = (file:string) => JSON.parse(spawnSync('ffprobe',['-v','error','-count_frames','-show_entries','stream=codec_type,sample_rate,channels,nb_read_frames','-of','json',file],{encoding:'utf8'}).stdout).streams;
 const frame = (file:string, n:number) => spawnSync('ffmpeg',['-v','error','-i',file,'-map','0:v:0','-vf',`select=eq(n\\,${n})`,'-fps_mode','passthrough','-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'],{encoding:null,timeout:15000}).stdout;
+const ffv1 = ['-c:v','ffv1','-level','3','-pix_fmt','yuv444p','-colorspace','bt709','-color_trc','bt709','-color_primaries','bt709'];
+/** Re-encodes a lossless clip with the red channel raised by `levels` from frame `from` on. */
+const redShift = async (file:string, levels:number, from:number, scratch:string) => {
+  ffmpeg('-i',file,'-vf',`lutrgb=r='val+${levels}':enable='gte(n,${from})',format=yuv444p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709`,...ffv1,scratch);
+  await cp(scratch,file);
+};
 
-for (const runtime of ['bun','node']) test(`${runtime}: real two-engine fixture reports the cut as a handoff mismatch and mixes an SFX peak at the seam`, async () => {
-  const dir = await copyFixtures('motion-studio-seam-');
+for (const runtime of ['bun','node']) test(`${runtime}: real two-engine fixture mixes an SFX peak at the cut seam`, async () => {
+  const dir = await copyFilm('two-engine');
   try {
-    const project = join(dir,'two-engine','project.json');
-    const output = join(dir,'two-engine','output');
-    expect(run(runtime,'render',project).status).toBe(0);
-    expect(run(runtime,'stitch',project).status).toBe(0);
-    // The fixture's shots meet at a deliberate text cut, so a handoff check must report the mismatch.
-    const checked = run(runtime,'handoff',project,'remotion','hyperframes');
-    expect(checked.status).not.toBe(0);
-    expect(checked.stderr).toContain('handoff mismatch remotion -> hyperframes');
-    const handoffReport = JSON.parse(await readFile(join(output,'handoff-remotion-hyperframes.json'),'utf8'));
-    expect(handoffReport.status).toBe('mismatch');
-    expect(handoffReport.cutFrame).toBe(6);
-    expect(handoffReport.pair.structure).toBeGreaterThan(handoffReport.thresholds.structure);
-    expect(await exists(join(output,'handoff-remotion-hyperframes.png'))).toBe(true);
+    const output = join(dir,'output');
+    expect(run(runtime,'render',dir).status).toBe(0);
+    expect(run(runtime,'stitch',dir).status).toBe(0);
+    // This film declares only a cut, so there is no handoff to check.
+    const none = run(runtime,'handoff',dir);
+    expect(none.status).toBe(1);
+    expect(none.stderr).toContain('no handoff seams declared');
 
-    const mixed = run(runtime,'mix',project);
+    const mixed = run(runtime,'mix',dir);
     expect(mixed.stderr).toBe('');
     expect(mixed.status).toBe(0);
-    const sync = JSON.parse(await readFile(join(output,'sync.json'),'utf8'));
-    // By construction: hit.wav peaks at 0.05 s, the event is frame 6 (0.2 s at 30 fps), and the cut at frame 6 is on the 0.2 s beat.
+    const sync = await json(join(output,'sync.json'));
+    // By construction: hit.wav peaks at 0.05 s, the cue event is frame 6 (0.2 s at 30 fps), and the cut at frame 6 is on beat frame 6.
     expect(sync).toMatchObject({fps:30,sampleRate:48000,channels:2,targetLufs:-14});
-    expect(sync.sfx).toEqual([{id:'seam-hit',eventFrame:6,sourcePeakSeconds:0.05,peakFrame:6,offsetFrames:0}]);
-    expect(sync.cuts).toEqual([{frame:6,beatFrame:6,offsetFrames:0}]);
+    expect(sync.sfx).toEqual([{asset:'sfx-hit',eventFrame:6,plannedOffsetFrames:0,gainDb:0,sourcePeakSeconds:0.05,peakFrame:6,offsetFrames:0}]);
+    expect(sync.cuts).toEqual([{shot:'hyperframes',frame:6,beatFrame:6,offsetFrames:0}]);
     const final = join(output,'final.mkv');
     const kinds = streams(final);
     expect(kinds.map((s:{codec_type:string}) => s.codec_type).sort()).toEqual(['audio','video']);
@@ -77,110 +79,162 @@ for (const runtime of ['bun','node']) test(`${runtime}: real two-engine fixture 
     expect(Math.abs(peakAt(samples,0,samples.length/2)-9600)).toBeLessThanOrEqual(1);
     expect(Math.abs(lufs(final)+14)).toBeLessThanOrEqual(0.5);
     expect(Math.abs(sync.integratedLufs-lufs(final))).toBeLessThanOrEqual(0.2);
+
+    // A new stitch makes the mix evidence stale, so it is removed.
+    expect(run(runtime,'stitch',dir).status).toBe(0);
+    for (const name of ['final.mkv','mix.wav','sync.json']) expect(await exists(join(output,name))).toBe(false);
   } finally {await rm(dir,{recursive:true,force:true});}
 }, 360000);
 
-for (const runtime of ['bun','node']) test(`${runtime}: matching two-engine handoff passes and an encoded color jump in the master strip fails`, async () => {
-  const dir = await copyFixtures('motion-studio-handoff-');
+for (const runtime of ['bun','node']) test(`${runtime}: declared handoffs: the matching one passes, the intentional mismatch fails, and master and color defects are caught`, async () => {
+  const dir = await copyFilm('handoff');
   try {
-    const project = join(dir,'handoff','project.json');
-    const output = join(dir,'handoff','output');
-    expect(run(runtime,'render',project).status).toBe(0);
-    expect(run(runtime,'stitch',project).status).toBe(0);
-    const matched = run(runtime,'handoff',project,'remotion','hyperframes');
-    expect(matched.stderr).toBe('');
-    expect(matched.status).toBe(0);
-    expect(matched.stdout).toContain('handoff verified remotion -> hyperframes');
-    const report = JSON.parse(await readFile(join(output,'handoff-remotion-hyperframes.json'),'utf8'));
-    expect(report.status).toBe('match');
-    expect(report.strip.frames).toEqual([5,6]);
-    expect(report.strip.deviationFromShots).toEqual([{structure:0,color:0},{structure:0,color:0}]);
+    const output = join(dir,'output');
+    expect(run(runtime,'render',dir).status).toBe(0);
+    expect(run(runtime,'stitch',dir).status).toBe(0);
+    const all = run(runtime,'handoff',dir);
+    expect(all.status).toBe(1);
+    expect(all.stdout).toContain('handoff verified slide -> title');
+    expect(all.stderr).toContain('handoff mismatch title -> drift');
+    const matched = await json(join(output,'handoff-slide-title.json'));
+    expect(matched).toMatchObject({cutFrame:6,declared:true,status:'match',strip:{frames:[5,6],identicalToShots:[true,true]}});
+    const mismatched = await json(join(output,'handoff-title-drift.json'));
+    expect(mismatched).toMatchObject({cutFrame:12,declared:true,status:'mismatch',strip:{identicalToShots:[true,true]}});
+    expect(mismatched.pair.structure).toBeGreaterThan(mismatched.thresholds.structure);
+    expect(await exists(join(output,'handoff-title-drift.png'))).toBe(true);
+    const pair = run(runtime,'handoff',dir,'slide','title');
+    expect(pair.stderr).toBe('');
+    expect(pair.status).toBe(0);
 
-    // Re-encode the master with a red shift of 24 levels from the cut on. Each shot clip is unchanged.
-    const master = join(output,'master.mkv');
-    const jumped = join(dir,'jump.mkv');
-    ffmpeg('-i',master,'-vf',"lutrgb=r='val+24':enable='gte(n,6)',format=yuv444p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709",'-c:v','ffv1','-level','3','-pix_fmt','yuv444p','-colorspace','bt709','-color_trc','bt709','-color_primaries','bt709',jumped);
-    await cp(jumped,master);
-    const broken = run(runtime,'handoff',project,'remotion','hyperframes');
-    expect(broken.status).not.toBe(0);
-    expect(broken.stderr).toContain('encoded color jump in master strip at frame 6');
-    const jumpReport = JSON.parse(await readFile(join(output,'handoff-remotion-hyperframes.json'),'utf8'));
+    // Encoded color jump: re-encode the master with a red shift of 3 levels from the seam on. The shot clips are unchanged.
+    // The shift is below both pair limits, so only the exact master-to-shot comparison catches it.
+    await redShift(join(output,'master.mkv'),3,6,join(dir,'jump.mkv'));
+    const jumped = run(runtime,'handoff',dir,'slide','title');
+    expect(jumped.status).toBe(1);
+    expect(jumped.stderr).toContain('encoded color jump in master strip at frame 6');
+    const jumpReport = await json(join(output,'handoff-slide-title.json'));
     expect(jumpReport.status).toBe('encoded-color-jump');
-    expect(jumpReport.pair).toEqual(report.pair);
+    expect(jumpReport.pair).toEqual(matched.pair);
+    expect(jumpReport.strip.identicalToShots).toEqual([true,false]);
+    expect(jumpReport.strip.acrossCut.structure).toBeLessThanOrEqual(jumpReport.thresholds.structure);
+    expect(jumpReport.strip.acrossCut.color).toBeLessThanOrEqual(jumpReport.thresholds.color);
+
+    // A run that fails before measuring leaves no report from the earlier runs.
+    const marker = await readFile(join(output,'render.json'));
+    await rm(join(output,'render.json'));
+    const unrendered = run(runtime,'handoff',dir);
+    expect(unrendered.status).toBe(1);
+    expect(unrendered.stderr).toContain('successful render and stitch required');
+    expect((await readdir(output)).filter(f => f.startsWith('handoff-'))).toEqual([]);
+
+    // Color-only mismatch: the title shot's red channel is 24 levels higher; layout is unchanged.
+    await writeFile(join(output,'render.json'),marker);
+    await redShift(join(output,'title.mkv'),24,0,join(dir,'red.mkv'));
+    expect(run(runtime,'stitch',dir).status).toBe(0);
+    const recolored = run(runtime,'handoff',dir,'slide','title');
+    expect(recolored.status).toBe(1);
+    expect(recolored.stderr).toContain('handoff mismatch slide -> title');
+    const colorReport = await json(join(output,'handoff-slide-title.json'));
+    expect(colorReport.pair.structure).toBeLessThanOrEqual(colorReport.thresholds.structure);
     // 24 of 255 levels in one channel is a mean color change of about 0.094.
-    expect(Math.abs(jumpReport.strip.deviationFromShots[1].color-24/255)).toBeLessThan(0.01);
+    expect(Math.abs(colorReport.pair.color-24/255)).toBeLessThan(0.01);
   } finally {await rm(dir,{recursive:true,force:true});}
 }, 360000);
 
-/** A project with a synthetic stitched master (no engine render): 25 fps, 75 frames, a cut at frame 50. */
-async function synthetic(runtime:string) {
+const sha256 = async (file:string) => createHash('sha256').update(await readFile(file)).digest('hex');
+type Cue = {asset:string; eventFrame:number; peakOffsetFrames:number; gainDb?:number};
+/** A film with a synthetic stitched master (no engine render): 25 fps, 75 frames, an off-beat cut at frame 50. */
+async function syntheticFilm(runtime:string) {
   const dir = await mkdtemp(join(tmpdir(),'motion-studio-mix-'));
   const output = join(dir,'output');
-  await mkdir(output);
-  await mkdir(join(dir,'audio'));
-  const project = {fps:25,width:64,height:36,beatsSeconds:[0.5,1.98],wordsSeconds:[],shots:[{id:'a',engine:'hyperframes',start:0,end:50,entry:'a.html'},{id:'b',engine:'hyperframes',start:50,end:75,entry:'b.html'}],
-    mix:{track:'audio/track.wav',sfx:[{id:'early',file:'audio/early.wav',frame:0},{id:'cut',file:'audio/cut.wav',frame:50}]}};
-  await writeFile(join(dir,'project.json'),JSON.stringify(project));
-  ffmpeg('-f','lavfi','-i','color=c=0x172b46:s=64x36:r=25:d=3','-vf','setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709','-c:v','ffv1','-level','3','-pix_fmt','yuv444p','-colorspace','bt709','-color_trc','bt709','-color_primaries','bt709',join(output,'master.mkv'));
+  for (const sub of ['output','audio','shots/a','shots/b']) await mkdir(join(dir,sub),{recursive:true});
+  for (const id of ['a','b']) await writeFile(join(dir,'shots',id,'index.html'),'<!doctype html>');
+  ffmpeg('-f','lavfi','-i','color=c=0x172b46:s=64x36:r=25:d=3','-vf','setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709',...ffv1,join(output,'master.mkv'));
   await writeFile(join(output,'render.json'),'{}');
   // Track: 44.1 kHz stereo 997 Hz sine, amplitude 0.05, 5 s (longer than the 3 s film).
   ffmpeg('-f','lavfi','-i','aevalsrc=0.05*sin(2*PI*997*t)|0.05*sin(2*PI*997*t):s=44100:d=5','-c:a','pcm_s16le',join(dir,'audio','track.wav'));
-  // Pulses with one known peak: 0.05 s into early.wav (so its lead-in is trimmed at frame 0) and 0.2 s into cut.wav.
+  // Pulses with one known peak: 0.05 s into early.wav (its lead-in is trimmed at frame 0) and 0.2 s into cut.wav.
   ffmpeg('-f','lavfi','-i','aevalsrc=0.15*exp(-abs(t-0.05)*20000):s=48000:d=0.1','-c:a','pcm_s16le',join(dir,'audio','early.wav'));
   ffmpeg('-f','lavfi','-i','aevalsrc=0.15*exp(-abs(t-0.2)*20000):s=48000:d=0.3','-c:a','pcm_s16le',join(dir,'audio','cut.wav'));
-  return {dir,output,project:join(dir,'project.json'),mix:(...args:string[]) => run(runtime,'mix',join(dir,'project.json'),...args)};
+  const write = async (cues:{a:Cue[]; b:Cue[]}, track:string|null = 'track') => {
+    const shot = (id:string, start:number, end:number, soundCues:Cue[], extra = {}) => ({id,startFrame:start,endFrame:end,engine:'hyperframes',entrypoint:`shots/${id}/index.html`,description:'',camera:'custom:locked',entry:'cut',exit:'cut',assets:[],soundCues,stillFrames:[],protected:[],...extra});
+    const storyboard = {version:'0',meta:{title:'mix',logline:'',genre:null,formats:{primary:'16:9',extra:[]},fps:25,durationFrames:75,canvas:{width:64,height:36}},look:{id:null,styleBible:null,axes:{},tasteSnapshot:null},
+      audio:{track,grid:'imported',bpm:null,beatFrames:[12,49],downbeatFrames:[],dropFrames:[],confidence:'high'},voice:null,
+      shots:[shot('a',0,50,cues.a),shot('b',50,75,cues.b,{offBeatCut:'word-timed reveal'})],
+      gates:['G1','G2','G3','G4','G5'].map(id => ({id,state:'pending',inputHashes:{},decision:null,notes:[],rounds:0})),critique:[]};
+    const assets = [];
+    for (const id of ['track','early','cut']) assets.push({id,type:id === 'track' ? 'music' : 'sfx',sourceKind:'code',sourceUrlOrGenerator:'ffmpeg aevalsrc',providerAssetId:null,license:{status:'known',name:'CC0-1.0',evidence:'generated in test'},localPath:`audio/${id}.wav`,sha256:await sha256(join(dir,'audio',`${id}.wav`)),shots:['a','b']});
+    await writeFile(join(dir,'storyboard.json'),JSON.stringify(storyboard));
+    await writeFile(join(dir,'ledger.json'),JSON.stringify({version:'0',assets}));
+  };
+  const defaultCues = {a:[{asset:'early',eventFrame:0,peakOffsetFrames:0}],b:[{asset:'cut',eventFrame:50,peakOffsetFrames:-2}]};
+  await write(defaultCues);
+  return {dir,output,write,defaultCues,mix:() => run(runtime,'mix',dir)};
 }
 
-for (const runtime of ['bun','node']) test(`${runtime}: mix normalizes to -14 LUFS, trims an early SFX lead-in and reports fractional cut-to-beat offsets`, async () => {
-  const {dir,output,project,mix} = await synthetic(runtime);
+for (const runtime of ['bun','node']) test(`${runtime}: mix places planned peak offsets, normalizes to -14 LUFS, reports off-beat cuts, and a per-SFX gain prevents clipping`, async () => {
+  const {dir,output,write,defaultCues,mix} = await syntheticFilm(runtime);
   try {
     const result = mix();
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
-    const sync = JSON.parse(await readFile(join(output,'sync.json'),'utf8'));
+    const sync = await json(join(output,'sync.json'));
     expect(sync.fps).toBe(25);
+    // The cut cue plans its peak 2 frames before the event: frame 48 = 1.92 s = sample 92160.
     expect(sync.sfx).toEqual([
-      {id:'early',eventFrame:0,sourcePeakSeconds:0.05,peakFrame:0,offsetFrames:0},
-      {id:'cut',eventFrame:50,sourcePeakSeconds:0.2,peakFrame:50,offsetFrames:0},
+      {asset:'early',eventFrame:0,plannedOffsetFrames:0,gainDb:0,sourcePeakSeconds:0.05,peakFrame:0,offsetFrames:0},
+      {asset:'cut',eventFrame:50,plannedOffsetFrames:-2,gainDb:0,sourcePeakSeconds:0.2,peakFrame:48,offsetFrames:-2},
     ]);
-    // The 1.98 s beat is frame 49.5 at 25 fps; the cut at frame 50 is half a frame late.
-    expect(sync.cuts).toEqual([{frame:50,beatFrame:49.5,offsetFrames:0.5}]);
+    // The cut at frame 50 is one frame after beat 49 and declares an off-beat reason.
+    expect(sync.cuts).toEqual([{shot:'b',frame:50,beatFrame:49,offsetFrames:1,offBeatCut:'word-timed reveal'}]);
     // The track alone is about -26 LUFS before normalization.
     expect(sync.gainDb).toBeGreaterThan(10);
     const final = join(output,'final.mkv');
     expect(Math.abs(lufs(final)+14)).toBeLessThanOrEqual(0.5);
     const samples = audio(final);
     expect(samples.length).toBe(3*48000*2);
-    expect(Math.abs(peakAt(samples,0,2400)-0)).toBeLessThanOrEqual(2);
-    expect(Math.abs(peakAt(samples,96000-2400,96000+2400)-96000)).toBeLessThanOrEqual(2);
+    expect(peakAt(samples,0,2400)).toBeLessThanOrEqual(2);
+    expect(Math.abs(peakAt(samples,92160-2400,92160+2400)-92160)).toBeLessThanOrEqual(2);
     expect(Math.abs(lufs(join(output,'mix.wav'))+14)).toBeLessThanOrEqual(0.5);
 
-    // A louder SFX would clip after normalization: the mix fails and removes the earlier deliverables.
-    ffmpeg('-f','lavfi','-i','aevalsrc=0.9*exp(-abs(t-0.2)*3000):s=48000:d=0.3','-c:a','pcm_s16le',join(dir,'audio','cut.wav'));
+    // A loud SFX (peak 0.9) over the quiet track clips after normalization: the mix fails and removes the earlier outputs.
+    ffmpeg('-f','lavfi','-i','aevalsrc=0.9*exp(-abs(t-0.2)*20000):s=48000:d=0.3','-c:a','pcm_s16le',join(dir,'audio','cut.wav'));
+    await write(defaultCues);
     const clipped = mix();
-    expect(clipped.status).not.toBe(0);
+    expect(clipped.status).toBe(1);
     expect(clipped.stderr).toContain('mix would clip');
     for (const name of ['final.mkv','mix.wav','sync.json']) expect(await exists(join(output,name))).toBe(false);
-    expect(await exists(project)).toBe(true);
+
+    // The same SFX 20 dB down (peak 0.09) mixes without clipping.
+    await write({a:defaultCues.a,b:[{...defaultCues.b[0],gainDb:-20}]});
+    const lowered = mix();
+    expect(lowered.stderr).toBe('');
+    expect(lowered.status).toBe(0);
+    const loweredSync = await json(join(output,'sync.json'));
+    expect(loweredSync.sfx[1]).toMatchObject({gainDb:-20,peakFrame:48,offsetFrames:-2});
+    const loweredSamples = audio(join(output,'final.mkv'));
+    expect(Math.abs(peakAt(loweredSamples,92160-2400,92160+2400)-92160)).toBeLessThanOrEqual(2);
+    expect(loweredSamples.reduce((m,v) => Math.max(m,Math.abs(v)),0)).toBeLessThan(1);
+    expect(Math.abs(lufs(join(output,'final.mkv'))+14)).toBeLessThanOrEqual(0.5);
   } finally {await rm(dir,{recursive:true,force:true});}
 }, 120000);
 
 test('mix and handoff reject invalid requests', async () => {
-  const {dir,output,project,mix} = await synthetic('node');
+  const {dir,output,write,defaultCues,mix} = await syntheticFilm('node');
   try {
-    const data = JSON.parse(await readFile(project,'utf8'));
-    const expectFailure = async (change:(d:any)=>void, message:string, ...args:string[]) => {
-      const copy = structuredClone(data);
-      change(copy);
-      await writeFile(project,JSON.stringify(copy));
-      const result = args.length ? run('node',...args) : mix();
-      expect(result.status).not.toBe(0);
+    const expectFailure = (result:ReturnType<typeof mix>, message:string) => {
+      expect(result.status).toBe(1);
       expect(result.stderr).toContain(message);
     };
-    await expectFailure(d => {delete d.mix;},'project has no mix section');
-    await expectFailure(d => {d.mix.sfx[1].frame = 75;},'sfx cut event frame outside the timeline');
-    await expectFailure(() => {},'does not directly follow shot b','handoff',project,'b','a');
+    await write({a:[],b:[]},null);
+    expectFailure(mix(),'nothing to mix: audio.track is null and no shot has sound cues');
+    await write({a:[{asset:'early',eventFrame:50,peakOffsetFrames:0}],b:[]});
+    expectFailure(mix(),'shot a: sound cue early eventFrame 50 is outside the shot [0, 50)');
+    await write(defaultCues);
+    expectFailure(run('node','handoff',dir,'b','a'),'shot a does not directly follow shot b');
+    expectFailure(run('node','handoff',dir,'a'),'usage: motion-studio handoff');
     await rm(join(output,'render.json'));
-    await expectFailure(() => {},'successful render and stitch required');
+    expectFailure(mix(),'successful render and stitch required');
+    expectFailure(run('node','handoff',dir,'a','b'),'successful render and stitch required');
   } finally {await rm(dir,{recursive:true,force:true});}
 }, 60000);

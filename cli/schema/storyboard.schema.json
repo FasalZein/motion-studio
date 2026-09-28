@@ -1,0 +1,171 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/FasalZein/motion-studio/cli/schema/storyboard.schema.json",
+  "title": "motion-studio storyboard.json, version 0",
+  "type": "object",
+  "required": ["version", "meta", "look", "audio", "voice", "shots", "gates", "critique"],
+  "properties": {
+    "version": {"const": "0"},
+    "meta": {
+      "type": "object",
+      "required": ["title", "logline", "genre", "formats", "fps", "durationFrames", "canvas"],
+      "properties": {
+        "title": {"type": "string"},
+        "logline": {"type": "string"},
+        "genre": {"enum": ["product-launch", "ui-morph-loop", "explainer", "showreel", "social-kinetic-type", null]},
+        "formats": {
+          "type": "object",
+          "required": ["primary", "extra"],
+          "properties": {
+            "primary": {"$ref": "#/definitions/format"},
+            "extra": {"type": "array", "items": {"$ref": "#/definitions/format"}, "uniqueItems": true}
+          }
+        },
+        "fps": {"enum": [24, 25, 30, 60]},
+        "durationFrames": {"$ref": "#/definitions/frame"},
+        "canvas": {
+          "description": "Master canvas of the primary format in pixels.",
+          "type": "object",
+          "required": ["width", "height"],
+          "properties": {"width": {"type": "integer", "minimum": 1}, "height": {"type": "integer", "minimum": 1}}
+        }
+      }
+    },
+    "look": {
+      "type": "object",
+      "required": ["id", "styleBible", "axes", "tasteSnapshot"],
+      "properties": {
+        "id": {"type": ["string", "null"]},
+        "styleBible": {"$ref": "#/definitions/pathOrNull"},
+        "axes": {"type": "object", "additionalProperties": {"type": "string"}},
+        "tasteSnapshot": {"$ref": "#/definitions/pathOrNull"}
+      }
+    },
+    "audio": {
+      "type": "object",
+      "required": ["track", "grid", "bpm", "beatFrames", "downbeatFrames", "dropFrames", "confidence"],
+      "properties": {
+        "track": {"$ref": "#/definitions/assetIdOrNull"},
+        "grid": {"enum": ["detected", "corrected", "imported", null]},
+        "bpm": {"anyOf": [{"type": "number", "exclusiveMinimum": 0}, {"type": "null"}]},
+        "beatFrames": {"$ref": "#/definitions/frames"},
+        "downbeatFrames": {"$ref": "#/definitions/frames"},
+        "dropFrames": {"$ref": "#/definitions/frames"},
+        "confidence": {"enum": ["high", "low", null]}
+      }
+    },
+    "voice": {
+      "anyOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "required": ["script", "tts", "wordTimings"],
+          "properties": {
+            "script": {"$ref": "#/definitions/path"},
+            "tts": {"$ref": "#/definitions/assetIdOrNull"},
+            "wordTimings": {"$ref": "#/definitions/path"}
+          }
+        }
+      ]
+    },
+    "shots": {"type": "array", "items": {"$ref": "#/definitions/shot"}},
+    "gates": {"type": "array", "items": {"$ref": "#/definitions/gate"}},
+    "critique": {"type": "array", "items": {"$ref": "#/definitions/critique"}}
+  },
+  "definitions": {
+    "format": {"enum": ["16:9", "9:16", "1:1"]},
+    "frame": {"type": "integer", "minimum": 0},
+    "frames": {"type": "array", "items": {"$ref": "#/definitions/frame"}},
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+    "path": {"type": "string", "minLength": 1},
+    "pathOrNull": {"anyOf": [{"$ref": "#/definitions/path"}, {"type": "null"}]},
+    "assetIdOrNull": {"anyOf": [{"$ref": "#/definitions/id"}, {"type": "null"}]},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "score": {"type": "number", "minimum": 1, "maximum": 10},
+    "shot": {
+      "type": "object",
+      "required": ["id", "startFrame", "endFrame", "engine", "entrypoint", "description", "camera", "entry", "exit", "assets", "soundCues", "stillFrames", "protected"],
+      "properties": {
+        "id": {"$ref": "#/definitions/id"},
+        "startFrame": {"$ref": "#/definitions/frame"},
+        "endFrame": {"$ref": "#/definitions/frame"},
+        "engine": {"enum": ["hyperframes", "remotion"]},
+        "entrypoint": {"type": "string", "minLength": 1, "description": "HyperFrames: project-relative HTML file under shots/<id>/. Remotion: the registered composition id; the project entry file is shots/<id>/src/index.ts or index.tsx."},
+        "description": {"type": "string"},
+        "camera": {"type": "string"},
+        "entry": {"enum": ["cut", "handoff"], "description": "How the shot starts: a cut, or a handoff from the previous shot (D42)."},
+        "exit": {"enum": ["cut", "handoff"], "description": "How the shot ends: a cut, or a handoff to the next shot (D42)."},
+        "transition": {"type": "string", "minLength": 1, "description": "Optional motion-vocabulary term (or custom:<description>) for the named move at this shot's entry (D42)."},
+        "offBeatCut": {"type": "string", "minLength": 1, "description": "Optional reason why the cut at this shot's startFrame is intentionally off the beat grid, for example a word-timed reveal (D41)."},
+        "assets": {"type": "array", "items": {"$ref": "#/definitions/id"}},
+        "soundCues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["asset", "eventFrame", "peakOffsetFrames"],
+            "properties": {
+              "asset": {"$ref": "#/definitions/id"},
+              "eventFrame": {"$ref": "#/definitions/frame", "description": "Film frame of the visual event; it must lie inside the owning shot."},
+              "peakOffsetFrames": {"type": "integer", "description": "Planned distance in frames from the event to the SFX peak; negative places the peak before the event. mix places the measured peak at eventFrame + peakOffsetFrames."},
+              "gainDb": {"type": "number", "minimum": -60, "maximum": 24, "description": "Optional level change in dB applied to this SFX before the mix is normalized. Default 0."}
+            }
+          }
+        },
+        "stillFrames": {"$ref": "#/definitions/frames"},
+        "protected": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "bounds", "heldFrames"],
+            "properties": {"id": {"type": "string", "minLength": 1}, "bounds": {"$ref": "#/definitions/path"}, "heldFrames": {"$ref": "#/definitions/frames"}}
+          }
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "required": ["id", "state", "inputHashes", "decision", "notes", "rounds"],
+      "properties": {
+        "id": {"enum": ["G1", "G2", "G3", "G4", "G5"]},
+        "state": {"enum": ["pending", "approved", "changes", "stale"]},
+        "inputHashes": {"type": "object", "additionalProperties": {"$ref": "#/definitions/sha256"}},
+        "decision": {"type": ["string", "null"]},
+        "notes": {"type": "array", "items": {"type": "string"}},
+        "rounds": {"type": "integer", "minimum": 0}
+      }
+    },
+    "critique": {
+      "type": "object",
+      "required": ["loop", "revisionHash", "filmScores", "shotScores", "worstIssues", "stillMatches"],
+      "properties": {
+        "loop": {"type": "integer", "minimum": 1},
+        "revisionHash": {"$ref": "#/definitions/sha256"},
+        "filmScores": {"type": "object", "additionalProperties": {"$ref": "#/definitions/score"}},
+        "shotScores": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": {"$ref": "#/definitions/score"}}},
+        "worstIssues": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "required": ["shot", "frame", "term", "issue", "repair"],
+            "properties": {
+              "shot": {"$ref": "#/definitions/id"},
+              "frame": {"$ref": "#/definitions/frame"},
+              "term": {"type": "string", "minLength": 1},
+              "issue": {"type": "string", "minLength": 1},
+              "repair": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "stillMatches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["shot", "frame", "status", "reason"],
+            "properties": {"shot": {"$ref": "#/definitions/id"}, "frame": {"$ref": "#/definitions/frame"}, "status": {"enum": ["match", "drift", "departure"]}, "reason": {"type": "string"}}
+          }
+        }
+      }
+    }
+  }
+}
