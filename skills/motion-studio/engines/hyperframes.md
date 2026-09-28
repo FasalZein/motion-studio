@@ -1,0 +1,11 @@
+# HyperFrames shot contract
+
+Work only inside `shots/<id>/`. Entrypoint: its `index.html` composition (or an explicitly named composition file). Size the root at 100%; set `data-width`, `data-height` and `data-duration` for the current layout and shot length. Register one paused GSAP timeline under the root composition id. Calculate each frame from local time: finite seek-safe animation, no render-time clock or unseeded randomness. Use one closed-form spring per target change. Local layout data include format dimensions, safe rectangle, overlay and asset ids. Keep each asset local and linked to `ledger.json`.
+
+In keyframe mode, create named local-frame poses on the **same codebase** that full mode will extend. Expose entry, beat and exit frames and measured protected DOM boxes (or declared canvas/SVG geometry). In full mode, animate between those poses and verify arbitrary seek order. Load local pinned fonts via `@font-face`, then register the timeline only after `document.fonts.ready`. Check font family and actual rendered glyphs in the still.
+
+For exact still times, use `npx hyperframes check --at <shot-local-seconds> --snapshots` and inspect its overview frames. `snapshot --at` is not documented in the installed skill; verify it before use. Run `npx hyperframes check --snapshots` and inspect the resulting frames. Render via `npx hyperframes render --quality draft --fps <24|30|60> --output <shot>.mp4`; use `--quality delivery` after approval. Strip audio and normalize with [media contract](media-contract.md). `--fps 25` is not supported in the installed render reference. Use a verified sequence route or change the project fps before G1.
+
+**API depth allow-list (installed paths only):** `~/.agents/skills/hyperframes-core/SKILL.md`, its `references/minimal-composition.md`, `references/data-attributes.md`, `references/determinism-rules.md`; `~/.agents/skills/hyperframes-cli/SKILL.md`, its `references/lint-validate-inspect.md`, `references/preview-render.md`; `~/.agents/skills/hyperframes-animation/rules-index.md` and `adapters/gsap.md` when needed. Paths resolve from each named skill root. Read only the relevant files. The `hyperframes` router is not a build input; this contract owns the shot.
+
+Completion: check passes, required keyframes render, exported held bounds fit each format, and output passes the media contract.

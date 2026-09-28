@@ -1,0 +1,8 @@
+# Product launch | worked
+
+<inputs>Ask: Which product URL, true core claim, audience and action? Which authentic UI state and logo? Default: source URL supplied by user, one claim proven by page, real UI capture, one clear action. Ask for track or voice; default: licensed 120 BPM track with an explicit drop, if available.</inputs>
+<direction>Default: choose 2–3 `motion-look` candidates fitted to brand. Let the product UI carry the film. Reframe rather than crop every requested format.</direction>
+<structure>Template for ~15 seconds at 30 fps: 0–2 s problem/hook; 2–6 s authentic input; 6–10 s result on a verified drop or downbeat; 10–13 s proof; 13–15 s claim plus action. Use a 0.5–1.5 s readable hold on the core result; size other holds to actual reading time. Require an intentional event or hold per beat, not decoration per beat.</structure>
+<build>Prefer a morph within one engine; use a cut on the beat for engine switches unless a matching handoff is measured. Record logo, screenshots, fonts and SFX rights in the ledger.</build>
+<gotchas>Message truth needs authentic UI with a capture URL/date, and a source for every displayed product claim. A stylized mock needs a clear label. Avoid inventing product capabilities from stock assets.</gotchas>
+<start>Worked beat example: at 120 BPM, 30 fps, frames 0–59 show a real search input; 60–119 show the real result with a held claim; 120–179 show a sourced feature; 180–239 finish on the claim and action. Present the beat table and one engine still per beat before full motion. This is an illustrative structure, not an approved claim.</start>

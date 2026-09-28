@@ -1,0 +1,8 @@
+# Explainer or data story | worked
+
+<inputs>Ask: Which question does the viewer leave able to answer? Who is the audience, what are the sources and script? Default: one question, one answer, narrated 30 seconds, voice-led with a quiet licensed bed if available.</inputs>
+<direction>Use precise diagrams and readable type. Treat narration as the source of reveal timing; use beat positions for cuts. Choose `motion-look` candidates against the topic, not a default tech palette.</direction>
+<structure>Template for ~30 s at 30 fps: 0–3 s question, 3–9 s context, 9–20 s mechanism or data, 20–27 s implication, 27–30 s answer. Hold each data label at least the spoken phrase duration and allow at least ~1 s after its reveal for short labels; extend for dense labels. A meaningful new visual event can occur between cuts.</structure>
+<build>Record word timings and beat grid separately. Protect labels in every format; prefer vector redraws of sourced charts over blurry screenshots.</build>
+<gotchas>Message truth requires a source URL, retrieval date and field for every number, truthful scale and units, and a clear distinction between observation and interpretation. Do not time a data reveal to a music beat if it precedes its spoken explanation.</gotchas>
+<start>Worked beat example: at 30 fps, word “why” begins frame 30, so reveal the question at frame 30; a music downbeat at frame 90 carries a cut to context. A value spoken at frame 150 is revealed there, then held through its full spoken phrase and reading hold. Confirm actual word times and source values for the project before board approval.</start>

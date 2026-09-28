@@ -1,0 +1,34 @@
+# Camera
+
+For code-drawn films, a camera often means one transformed world wrapper rather than a physical lens.
+
+- **Push-in** (`push-in`) - The viewpoint moves closer to one subject without changing the target mid-move.
+  - HF: `coordinate-target-zoom` scales and counter-translates the subject's world wrapper.
+  - Remotion: `interpolate()` wrapper scale and translation toward the subject over a fixed frame range.
+- **Pull-out** (`pull-out`) - The viewpoint retreats to reveal the subject's surrounding context.
+  - HF: Reverse the scale and framing trajectory with `multi-phase-camera` or `viewport-change`.
+  - Remotion: Decrease wrapper scale and translate toward the wide composition using `interpolate()`.
+- **Pan** (`pan`) - The viewpoint turns horizontally to show another part of one scene.
+  - HF: Translate one `.world` wrapper horizontally with `viewport-change` to simulate the turn.
+  - Remotion: Interpolate horizontal translation of the scene wrapper while the subject stays in the same world.
+- **Tilt** (`tilt`) - The viewpoint turns vertically to reveal space above or below.
+  - HF: Translate the `.world` wrapper vertically with `viewport-change`.
+  - Remotion: Interpolate the wrapper's vertical translation without changing its scale.
+- **Truck** (`truck`) - The viewpoint travels sideways while the scene's depth relationships remain visible.
+  - HF: Tween a lateral camera state over layered content with `3d-camera-flight`.
+  - Remotion: Translate a 3D or layered scene laterally with depth-specific offsets.
+- **Orbit** (`orbit`) - The viewpoint circles a subject while keeping it in view.
+  - HF: Tween rotation around a subject on a perspective world using `3d-camera-flight`.
+  - Remotion: Derive a camera pose from frame-based angle and radius around a 3D subject.
+- **Parallax** (`parallax`) - Near and far layers shift by different amounts to suggest depth.
+  - HF: Tween separate foreground and background layers at depth-scaled rates on one paused timeline.
+  - Remotion: Compute each layer's transform from the same frame progress with different depth multipliers.
+- **Rack focus** (`rack-focus`) - Sharpness shifts from one depth plane to another while framing stays fixed.
+  - HF: `depth-of-field-blur` trades blur between two layers without moving the camera.
+  - Remotion: Interpolate opposite CSS blur values on the near and far layers over one frame range.
+- **Zoom-through** (`zoom-through`) - The viewpoint passes through an object to enter another scene.
+  - HF: `coordinate-target-zoom` scales past the target until it fills the frame; align the next entry pose.
+  - Remotion: Increase wrapper scale beyond full-screen coverage and match the next shot's first pose.
+- **One camera move per beat** (`one-camera-move-per-beat`) - A beat uses one clear camera trajectory before another camera direction begins.
+  - HF: Give the world wrapper one directed tween per beat with `viewport-change`; let elements move independently.
+  - Remotion: Use one monotonic wrapper transform segment per beat in `interpolate()`; hold its final pose.

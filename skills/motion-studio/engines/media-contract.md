@@ -1,0 +1,11 @@
+# Mixed-engine media contract
+
+Use one master timeline at 24, 25, 30 or 60 fps. HyperFrames render supports 24, 30 or 60 fps; a 25 fps project requires an independently verified image-sequence route for HyperFrames shots before committing to that fps. Convert beat and word seconds with `round(seconds * fps)` (nearest integer frame). Store `[startFrame,endFrame)` ranges; their length is `endFrame-startFrame`. Require first start `0`, adjacent boundaries equal, and final end `durationFrames`.
+
+Render **video only** for each shot at the selected format's actual width and height. Normalize the engine output with ffmpeg to a lossless FFV1 Matroska intermediate, `yuv422p`, BT.709 SDR primaries/transfer/matrix, square pixels, constant master fps and exact shot frame count. Treat decoded color visually as well as by tags. Exclude all engine audio and metadata audio streams. The master `mix` alone owns 48 kHz stereo audio; align SFX event frames by their measured waveform peaks, then normalize to -14 LUFS and verify the integrated result. Use source media with rights recorded in the ledger.
+
+For each format, supply canvas width/height, safe rectangle and optional platform overlay to both engines. Export the held bounds of text, logos and key UI at still/check frames: DOM measurement for HTML/React, declared geometry for canvas/SVG. Permit declared full-bleed art and entry/exit travel; fail held protected content outside the safe rectangle. Reframe per format rather than crop the landscape render.
+
+An engine change is a hard cut unless the boundary is declared `handoff`. For a handoff, normalize and compare the last decoded frame of A and the first decoded frame of B against a documented fixed pixel threshold; then inspect a full-frame-rate transition strip from the **encoded stitched master** for a color jump. Record metric, threshold, source paths and result. v0 has no automatic handoff judge: request user review of both frames and strip if no reproducible comparison exists (CLI: `motion-studio handoff`, #3).
+
+Completion: every normalized clip has the required count, dimensions, fps, pixel format and tags; picture has no audio; the 48 kHz mix has one owner; each handoff has a recorded boundary check.
