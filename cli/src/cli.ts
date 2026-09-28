@@ -24,6 +24,8 @@ import {outputsOf, type Outputs} from './outputs.js';
 import {scanFile, scanFilm} from './scan.js';
 import {requireOpaque} from './opaque.js';
 import {beatMap} from './voice.js';
+import {filmPacket, videoPacket} from './packet.js';
+import {calibrate} from './bands.js';
 
 const configuredTimeout = process.env.MOTION_STUDIO_CHILD_TIMEOUT_MS;
 const timeoutMs = configuredTimeout === undefined ? 120_000 : Number(configuredTimeout);
@@ -94,7 +96,7 @@ async function renderShot(shot:Shot, project:Project, format:Format, output:stri
     await verify(output,frameCount,fps,width,height);
   } finally {await rm(temp,{recursive:true,force:true});}
 }
-const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>] | animatic <film-dir> | sheet <film-dir> [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] [--shots <id,...>] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | beatmap <film-dir> | assets <film-dir> <list|add|resolve> ... | scan <film-dir> [format] | scan <video-file> [--report <file.json>]';
+const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>] | animatic <film-dir> | sheet <film-dir> [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] [--shots <id,...>] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | beatmap <film-dir> | assets <film-dir> <list|add|resolve> ... | scan <film-dir> [format] | scan <video-file> [--report <file.json>] | packet <film-dir> [format] | packet <video-file> --out <dir> | calibrate <scores.json> <bands.json>';
 /** The formats a command works on: one named chosen format, or every chosen format when none is named. */
 function selectFormats(project:Project, named:string|undefined):Format[] {
   const formats = chosenFormats(project.storyboard.meta);
@@ -151,7 +153,7 @@ async function main() {
     if (missingRequired) throw new CliError(`doctor: ${missingRequired} required tool${missingRequired === 1 ? '' : 's'} missing`);
     return;
   }
-  if (!['init','validate','status','gate','render','stitch','still','stills','animatic','sheet','handoff','mix','safezone','beats','beatmap','assets','scan'].includes(action) || !target) throw new CliError(usage);
+  if (!['init','validate','status','gate','render','stitch','still','stills','animatic','sheet','handoff','mix','safezone','beats','beatmap','assets','scan','packet','calibrate'].includes(action) || !target) throw new CliError(usage);
   if (action === 'init') {
     console.log(`created ${await initProject(process.cwd(),target)}`);
     return;
@@ -212,6 +214,19 @@ async function main() {
     if (await scanFile(target,process.argv.slice(4),{command,verify})) process.exitCode = 1;
     return;
   }
+  // packet also reads a lone video file for standalone critique.
+  if (action === 'packet' && await stat(target).then(s => s.isFile(),() => false)) {
+    console.log(await videoPacket(target,process.argv.slice(4),{command,verify}));
+    return;
+  }
+  if (action === 'calibrate') {
+    if (process.argv.length !== 5) throw new CliError(usage);
+    const {lines,misses} = await calibrate(target,process.argv[4]);
+    for (const line of lines) console.log(line);
+    if (misses.length) throw new CliError(`run void: ${misses.length} band${misses.length === 1 ? '' : 's'} missed\nerror: ${misses.join('\nerror: ')}`);
+    console.log('calibration within bands');
+    return;
+  }
   if (action === 'assets') {
     // Assets come before shots, so assets needs only a schema-valid project.
     const parsed = await parseProject(target);
@@ -257,6 +272,10 @@ async function main() {
   }
   if (action === 'sheet') {
     for (const format of selectFormats(project,process.argv[4])) console.log(await sheet(project,outputs(format),{command,verify}));
+    return;
+  }
+  if (action === 'packet') {
+    for (const format of selectFormats(project,process.argv[4])) console.log(await filmPacket(project,outputs(format),{command,verify}));
     return;
   }
   if (action === 'scan') {

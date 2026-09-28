@@ -4,7 +4,7 @@ Build one packet **per reviewed render and format**. Record the file path, forma
 
 ## Required in-studio inputs
 
-The third column names the v0 route. "Manual" means the dispatcher copies the item into the packet by hand; no CLI command assembles the packet yet. A ticket number names the CLI command that will replace the step.
+`motion-studio packet <film-dir> [format]` assembles every item below into `critique/packet-<format>/packet.json` and lists what is missing. The third column names the source command or the manual route for a video outside a film.
 
 | Input | Source and check | v0 route |
 |---|---|---|
