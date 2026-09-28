@@ -17,7 +17,8 @@ function ok(runtime:string, ...args:string[]) {
   const result = run(runtime,...args);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
-  return result.stdout;
+  // On a fresh install the first Remotion call downloads its headless Chrome and says so on stdout; that is not CLI output.
+  return result.stdout.split('\n').filter(line => !/^(Downloading Chrome Headless Shell|Customize this behavior by adding a onBrowserDownload)/.test(line)).join('\n');
 }
 const copyFilm = async () => {
   const dir = await mkdtemp(join(tmpdir(),'motion-studio-board-'));
