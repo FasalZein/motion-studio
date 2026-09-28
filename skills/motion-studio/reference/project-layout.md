@@ -9,14 +9,14 @@ films/<slug>/
   ledger.json               canonical rights and asset provenance
   style-bible.md            when a reference was supplied
   taste-snapshot.json       copy of global taste at G1
-  beats.json                corrected or imported master grid
+  beats.json                v0 manual grid; with the CLI the grid is storyboard.json audio
   assets/                   frozen local media, including pinned fonts
   shots/<shot-id>/          one engine project per shot
   stills/<gate>/            engine-rendered review frames
   stills/approved/<gate>-<hash8>/   immutable approval copies
   animatic.mp4
   renders/<format>/         shot clips, master picture, delivery files
-  audio/                    track, voice and SFX sources; master mix
+  audio/                    track, voice and SFX sources; master mix; beats.detected.json (CLI grid proposal, seconds)
   critique/loop-<n>.md      each reviewer output and evidence references
 ```
 

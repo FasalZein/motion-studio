@@ -12,6 +12,7 @@ import {checkProject, remotionEntry, validateProject} from './validate.js';
 import {statusLines} from './status.js';
 import {handoff} from './handoff.js';
 import {mix} from './mix.js';
+import {beats} from './beats.js';
 import {clearSeamOutputs} from './seam.js';
 
 const require = createRequire(import.meta.url);
@@ -88,10 +89,10 @@ async function renderShot(shot:Shot, project:Project, output:string) {
     await verify(output,frameCount,fps,width,height);
   } finally {await rm(temp,{recursive:true,force:true});}
 }
-const usage = 'usage: motion-studio init <slug> | validate <film-dir> | status <film-dir> | render <film-dir> | stitch <film-dir> | still <film-dir> <shot-id> [local-frame] | handoff <film-dir> [<shot-a> <shot-b>] | mix <film-dir>';
+const usage = 'usage: motion-studio init <slug> | validate <film-dir> | status <film-dir> | render <film-dir> | stitch <film-dir> | still <film-dir> <shot-id> [local-frame] | handoff <film-dir> [<shot-a> <shot-b>] | mix <film-dir> | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>]';
 async function main() {
   const [action,target] = process.argv.slice(2);
-  if (!['init','validate','status','render','stitch','still','handoff','mix'].includes(action) || !target) throw new CliError(usage);
+  if (!['init','validate','status','render','stitch','still','handoff','mix','beats'].includes(action) || !target) throw new CliError(usage);
   if (action === 'init') {
     console.log(`created ${await initProject(process.cwd(),target)}`);
     return;
@@ -110,6 +111,14 @@ async function main() {
     const {errors} = await checkProject(parsed.project);
     for (const line of statusLines(parsed.project.storyboard.gates)) console.log(line);
     if (errors.length) console.log(`validation: ${errors.length} error${errors.length === 1 ? '' : 's'}; run motion-studio validate ${target}`);
+    return;
+  }
+  if (action === 'beats') {
+    // The grid comes before the shots, and a grid change can put existing cuts off the grid,
+    // so beats needs only a schema-valid project, not a fully valid one.
+    const parsed = await parseProject(target);
+    if (!parsed.ok) {report(parsed.errors,[]); process.exitCode = 1; return;}
+    for (const line of await beats(parsed.project,process.argv.slice(4),{command,verify})) console.log(line);
     return;
   }
   const project = await loadProject(target);
