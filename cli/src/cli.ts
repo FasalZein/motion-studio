@@ -7,8 +7,8 @@ import {createRequire} from 'node:module';
 import {bundle} from '@remotion/bundler';
 import {renderFrames, selectComposition} from '@remotion/renderer';
 
-import {initProject, type Project, type Shot} from './project.js';
-import {remotionEntry, validateProject} from './validate.js';
+import {CliError, initProject, parseProject, type Project, type Shot} from './project.js';
+import {checkProject, remotionEntry, validateProject} from './validate.js';
 import {statusLines} from './status.js';
 
 const require = createRequire(import.meta.url);
@@ -17,11 +17,16 @@ const configuredTimeout = process.env.MOTION_STUDIO_CHILD_TIMEOUT_MS;
 const timeoutMs = configuredTimeout === undefined ? 120_000 : Number(configuredTimeout);
 if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw Error('invalid child timeout');
 
+/** Prints findings as `error:` and `warning:` lines on stderr. */
+function report(errors:string[], warnings:string[]) {
+  for (const w of warnings) console.error(`warning: ${w}`);
+  for (const e of errors) console.error(`error: ${e}`);
+}
 /** Loads a film folder; any validation error stops the command before it writes anything. */
 async function loadProject(filmRoot:string):Promise<Project> {
   const {errors,warnings,project} = await validateProject(filmRoot);
-  for (const w of warnings) console.error(`warning: ${w}`);
-  if (errors.length || !project) throw Error(`invalid project ${resolve(filmRoot)}:\n${errors.map(e => `  ${e}`).join('\n')}`);
+  report(errors,warnings);
+  if (errors.length || !project) throw new CliError(`invalid project ${resolve(filmRoot)}: ${errors.length} error${errors.length === 1 ? '' : 's'}`);
   return project;
 }
 async function command(bin:string,args:string[],cwd?:string):Promise<string> {
@@ -42,13 +47,13 @@ async function command(bin:string,args:string[],cwd?:string):Promise<string> {
 }
 async function verify(path:string, expected:number, fps:number, width:number, height:number) {
   const audio = JSON.parse(await command('ffprobe',['-v','error','-select_streams','a','-show_entries','stream=index','-of','json',path]));
-  if (audio.streams?.length) throw Error(`audio stream in video-only clip: ${path}`);
+  if (audio.streams?.length) throw new CliError(`audio stream in video-only clip: ${path}`);
   const data = JSON.parse(await command('ffprobe',['-v','error','-select_streams','v:0','-count_frames','-show_entries','stream=nb_read_frames,width,height,codec_name,pix_fmt,color_space,color_transfer,color_primaries:frame=best_effort_timestamp_time','-show_frames','-of','json',path]));
   const video = data.streams?.[0];
-  if (Number(video?.nb_read_frames) !== expected || data.frames?.length !== expected || video.width !== width || video.height !== height || video.codec_name !== 'ffv1' || video.pix_fmt !== 'yuv444p' || video.color_space !== 'bt709' || video.color_transfer !== 'bt709' || video.color_primaries !== 'bt709') throw Error(`media contract failed: ${path}`);
+  if (Number(video?.nb_read_frames) !== expected || data.frames?.length !== expected || video.width !== width || video.height !== height || video.codec_name !== 'ffv1' || video.pix_fmt !== 'yuv444p' || video.color_space !== 'bt709' || video.color_transfer !== 'bt709' || video.color_primaries !== 'bt709') throw new CliError(`media contract failed: ${path}`);
   for (let i=0;i<expected;i++) {
     const timestamp = data.frames[i].best_effort_timestamp_time;
-    if (timestamp === undefined || timestamp === null || timestamp === '' || !Number.isFinite(Number(timestamp)) || Math.abs(Number(timestamp) - i/fps) > .0006) throw Error(`timestamp mismatch: ${path} frame ${i}`);
+    if (timestamp === undefined || timestamp === null || timestamp === '' || !Number.isFinite(Number(timestamp)) || Math.abs(Number(timestamp) - i/fps) > .0006) throw new CliError(`timestamp mismatch: ${path} frame ${i}`);
   }
 }
 async function renderShot(shot:Shot, project:Project, output:string) {
@@ -60,11 +65,11 @@ async function renderShot(shot:Shot, project:Project, output:string) {
     await mkdir(frames);
     if (shot.engine === 'remotion') {
       const entry = await remotionEntry(base,shot);
-      if (!entry) throw Error(`Remotion project entry missing: ${shot.id}`);
+      if (!entry) throw new CliError(`Remotion project entry missing: ${shot.id}`);
       const serveUrl = await bundle({entryPoint:entry, publicDir:join(base,'shots',shot.id,'public')});
       try {
         const composition = await selectComposition({serveUrl,id:shot.entrypoint});
-        if (composition.durationInFrames !== frameCount || composition.fps !== fps || composition.width !== width || composition.height !== height) throw Error(`composition metadata mismatch: ${shot.id}`);
+        if (composition.durationInFrames !== frameCount || composition.fps !== fps || composition.width !== width || composition.height !== height) throw new CliError(`composition metadata mismatch: ${shot.id}`);
         await renderFrames({serveUrl,composition,inputProps:{},outputDir:frames,imageFormat:'png',muted:true,onStart:()=>{},onFrameUpdate:()=>{},concurrency:1});
       } finally {await rm(serveUrl,{recursive:true,force:true});}
     } else {
@@ -72,7 +77,7 @@ async function renderShot(shot:Shot, project:Project, output:string) {
       await command('node',[hfBin,'render',dirname(entry),'--composition',shot.entrypoint.split('/').at(-1)!,'--output',frames,'--format','png-sequence','--fps',String(fps),'--workers','1','--sdr','--quiet'],base);
     }
     const pngs = (await readdir(frames)).filter(f => f.endsWith('.png')).sort();
-    if (pngs.length !== frameCount) throw Error(`rendered frame count mismatch: ${shot.id} got ${pngs.length}`);
+    if (pngs.length !== frameCount) throw new CliError(`rendered frame count mismatch: ${shot.id} got ${pngs.length}`);
     // Both renderers write numbered PNGs. Concat demuxer accepts their different numbering schemes.
     const list = join(temp,'frames.txt');
     await writeFile(list,pngs.map(p => `file '${join(frames,p).replaceAll("'", "'\\''")}'`).join('\n')+'\n');
@@ -83,32 +88,36 @@ async function renderShot(shot:Shot, project:Project, output:string) {
 const usage = 'usage: motion-studio init <slug> | validate <film-dir> | status <film-dir> | render <film-dir> | stitch <film-dir> | still <film-dir> <shot-id> [local-frame]';
 async function main() {
   const [action,target] = process.argv.slice(2);
-  if (!['init','validate','status','render','stitch','still'].includes(action) || !target) throw Error(usage);
+  if (!['init','validate','status','render','stitch','still'].includes(action) || !target) throw new CliError(usage);
   if (action === 'init') {
     console.log(`created ${await initProject(process.cwd(),target)}`);
     return;
   }
   if (action === 'validate') {
     const {errors,warnings} = await validateProject(target);
-    for (const w of warnings) console.error(`warning: ${w}`);
-    for (const e of errors) console.error(`error: ${e}`);
+    report(errors,warnings);
     if (errors.length) {process.exitCode = 1; return;}
     console.log(`valid ${resolve(target)}`);
     return;
   }
-  const project = await loadProject(target);
   if (action === 'status') {
-    for (const line of statusLines(project.storyboard.gates)) console.log(line);
+    // Status must work on an unfinished film: only a schema failure stops it.
+    const parsed = await parseProject(target);
+    if (!parsed.ok) {report(parsed.errors,[]); process.exitCode = 1; return;}
+    const {errors} = await checkProject(parsed.project);
+    for (const line of statusLines(parsed.project.storyboard.gates)) console.log(line);
+    if (errors.length) console.log(`validation: ${errors.length} error${errors.length === 1 ? '' : 's'}; run motion-studio validate ${target}`);
     return;
   }
+  const project = await loadProject(target);
   const {root:base, storyboard:{shots, meta:{fps, canvas:{width,height}}}} = project;
-  if (!shots.length) throw Error('project has no shots');
+  if (!shots.length) throw new CliError('project has no shots');
   const output = join(base,'output');
   if (action === 'render' || action === 'still') {
     const selected = action === 'still' ? shots.filter(s => s.id === process.argv[4]) : shots;
-    if (!selected.length) throw Error('unknown shot');
+    if (!selected.length) throw new CliError('unknown shot');
     const stillFrame = action === 'still' ? Number(process.argv[5] ?? '0') : 0;
-    if (!Number.isInteger(stillFrame) || stillFrame < 0 || (action === 'still' && stillFrame >= selected[0].endFrame-selected[0].startFrame)) throw Error('still frame outside shot');
+    if (!Number.isInteger(stillFrame) || stillFrame < 0 || (action === 'still' && stillFrame >= selected[0].endFrame-selected[0].startFrame)) throw new CliError('still frame outside shot');
     // The success marker must be absent throughout a rerender, even if old clips remain.
     if (action === 'render') {
       await rm(join(output,'render.json'),{force:true});
@@ -128,7 +137,7 @@ async function main() {
     } finally {await rm(staging,{recursive:true,force:true});}
   } else {
     try {await readFile(join(output,'render.json'),'utf8');}
-    catch {throw Error('successful render required before stitch');}
+    catch {throw new CliError('successful render required before stitch');}
     for (const shot of shots) await verify(join(output,`${shot.id}.mkv`),shot.endFrame-shot.startFrame,fps,width,height);
     const list = join(output,'clips.txt');
     await writeFile(list,shots.map(s=>`file '${join(output,`${s.id}.mkv`).replaceAll("'", "'\\''")}'`).join('\n')+'\n');
@@ -139,4 +148,4 @@ async function main() {
   }
   console.log(`${action} verified ${action === 'stitch' ? shots.at(-1)!.endFrame : shots.map(s=>s.endFrame-s.startFrame).join('+')} frames`);
 }
-main().catch(e => {console.error(e);process.exitCode=1;});
+main().catch(e => {console.error(e instanceof CliError ? `error: ${e.message}` : e);process.exitCode=1;});

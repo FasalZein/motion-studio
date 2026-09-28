@@ -59,14 +59,28 @@ const checkTimeline:Check = ({storyboard:{shots,meta,audio}}) => {
   }
   const end = previous?.endFrame ?? 0;
   if (end !== meta.durationFrames) errors.push(`shots cover [0, ${end}) but meta.durationFrames is ${meta.durationFrames}`);
-  // A beat grid, when present, is where cuts land. The film start and end are not cuts.
+  // D41: a beat grid, when present, is where cuts land. Handoff seams, the film start and end, and cuts
+  // declared with an offBeatCut reason are exempt.
   const beats = new Set(audio.beatFrames);
   if (beats.size) {
     for (const shot of shots.slice(1)) {
-      if (beats.has(shot.startFrame)) continue;
+      if (shot.entry !== 'cut' || shot.offBeatCut !== undefined || beats.has(shot.startFrame)) continue;
       const nearest = audio.beatFrames.reduce((best,b) => Math.abs(b - shot.startFrame) < Math.abs(best - shot.startFrame) ? b : best);
-      errors.push(`off-grid: shot ${shot.id} starts at frame ${shot.startFrame}, which is not a beat frame (nearest beat: frame ${nearest})`);
+      errors.push(`off-grid: the cut into shot ${shot.id} at frame ${shot.startFrame} is not a beat frame (nearest beat: frame ${nearest}); move it to a beat or declare "offBeatCut" with a reason`);
     }
+  }
+  return errorsOnly(errors);
+};
+
+// A handoff joins two adjoining shots, so both sides of a seam must declare it.
+const checkHandoffs:Check = ({storyboard:{shots}}) => {
+  const errors:string[] = [];
+  if (shots[0]?.entry === 'handoff') errors.push(`shot ${shots[0].id}: entry is handoff but no shot comes before it`);
+  if (shots.at(-1)?.exit === 'handoff') errors.push(`shot ${shots.at(-1)!.id}: exit is handoff but no shot comes after it`);
+  for (const [i,shot] of shots.slice(1).entries()) {
+    const previous = shots[i];
+    if (previous.exit !== shot.entry) errors.push(`seam ${previous.id} -> ${shot.id}: exit is ${previous.exit} but entry is ${shot.entry}; both sides must be cut or both handoff`);
+    if (shot.entry === 'handoff' && shot.offBeatCut !== undefined) errors.push(`shot ${shot.id}: offBeatCut applies to cuts only, but entry is handoff`);
   }
   return errorsOnly(errors);
 };
@@ -111,12 +125,17 @@ const checkLedgerFiles:Check = async ({root,ledger}) => {
   return errorsOnly(errors);
 };
 
-const checks:Check[] = [checkMeta, checkGates, checkTimeline, checkEntrypoints, checkAssetIds, checkLedgerFiles];
+const checks:Check[] = [checkMeta, checkGates, checkTimeline, checkHandoffs, checkEntrypoints, checkAssetIds, checkLedgerFiles];
+
+/** Cross-reference checks on a project that already passed the schema. */
+export async function checkProject(project:Project):Promise<Report> {
+  const reports = await Promise.all(checks.map(check => check(project)));
+  return {errors:reports.flatMap(r => r.errors), warnings:reports.flatMap(r => r.warnings)};
+}
 
 /** Schema check first; cross-reference checks run only on a schema-valid project. */
 export async function validateProject(filmRoot:string):Promise<Report & {project:Project|null}> {
   const parsed = await parseProject(filmRoot);
   if (!parsed.ok) return {errors:parsed.errors, warnings:[], project:null};
-  const reports = await Promise.all(checks.map(check => check(parsed.project)));
-  return {errors:reports.flatMap(r => r.errors), warnings:reports.flatMap(r => r.warnings), project:parsed.project};
+  return {...await checkProject(parsed.project), project:parsed.project};
 }

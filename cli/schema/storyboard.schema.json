@@ -93,8 +93,10 @@
         "entrypoint": {"type": "string", "minLength": 1, "description": "HyperFrames: project-relative HTML file under shots/<id>/. Remotion: the registered composition id; the project entry file is shots/<id>/src/index.ts or index.tsx."},
         "description": {"type": "string"},
         "camera": {"type": "string"},
-        "entry": {"enum": ["cut", "handoff"]},
-        "exit": {"enum": ["cut", "handoff"]},
+        "entry": {"enum": ["cut", "handoff"], "description": "How the shot starts: a cut, or a handoff from the previous shot (D42)."},
+        "exit": {"enum": ["cut", "handoff"], "description": "How the shot ends: a cut, or a handoff to the next shot (D42)."},
+        "transition": {"type": "string", "minLength": 1, "description": "Optional motion-vocabulary term (or custom:<description>) for the named move at this shot's entry (D42)."},
+        "offBeatCut": {"type": "string", "minLength": 1, "description": "Optional reason why the cut at this shot's startFrame is intentionally off the beat grid, for example a word-timed reveal (D41)."},
         "assets": {"type": "array", "items": {"$ref": "#/definitions/id"}},
         "soundCues": {
           "type": "array",
@@ -135,7 +137,21 @@
         "revisionHash": {"$ref": "#/definitions/sha256"},
         "filmScores": {"type": "object", "additionalProperties": {"$ref": "#/definitions/score"}},
         "shotScores": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": {"$ref": "#/definitions/score"}}},
-        "worstIssues": {"type": "array", "maxItems": 3},
+        "worstIssues": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "required": ["shot", "frame", "term", "issue", "repair"],
+            "properties": {
+              "shot": {"$ref": "#/definitions/id"},
+              "frame": {"$ref": "#/definitions/frame"},
+              "term": {"type": "string", "minLength": 1},
+              "issue": {"type": "string", "minLength": 1},
+              "repair": {"type": "string", "minLength": 1}
+            }
+          }
+        },
         "stillMatches": {
           "type": "array",
           "items": {

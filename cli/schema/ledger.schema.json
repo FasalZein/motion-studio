@@ -23,10 +23,10 @@
             "properties": {
               "status": {"enum": ["known", "unknown", "restricted"]},
               "name": {"type": ["string", "null"]},
-              "evidence": {"type": "string"}
+              "evidence": {"type": "string", "minLength": 1}
             },
             "if": {"properties": {"status": {"const": "known"}}},
-            "then": {"properties": {"name": {"type": "string", "minLength": 1}, "evidence": {"type": "string", "minLength": 1}}}
+            "then": {"properties": {"name": {"type": "string", "minLength": 1}}}
           },
           "localPath": {"type": "string", "minLength": 1},
           "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},

@@ -12,7 +12,7 @@ export type GateId = 'G1'|'G2'|'G3'|'G4'|'G5';
 export type GateState = 'pending'|'approved'|'changes'|'stale';
 export type Shot = {
   id:string; startFrame:number; endFrame:number; engine:Engine; entrypoint:string; description:string; camera:string;
-  entry:'cut'|'handoff'; exit:'cut'|'handoff'; assets:string[];
+  entry:'cut'|'handoff'; exit:'cut'|'handoff'; transition?:string; offBeatCut?:string; assets:string[];
   soundCues:{asset:string; eventFrame:number; peakOffsetFrames:number}[];
   stillFrames:number[]; protected:{id:string; bounds:string; heldFrames:number[]}[];
 };
@@ -23,7 +23,12 @@ export type Storyboard = {
   look:{id:string|null; styleBible:string|null; axes:Record<string,string>; tasteSnapshot:string|null};
   audio:{track:string|null; grid:'detected'|'corrected'|'imported'|null; bpm:number|null; beatFrames:number[]; downbeatFrames:number[]; dropFrames:number[]; confidence:'high'|'low'|null};
   voice:{script:string; tts:string|null; wordTimings:string}|null;
-  shots:Shot[]; gates:Gate[]; critique:unknown[];
+  shots:Shot[]; gates:Gate[]; critique:Critique[];
+};
+export type Critique = {
+  loop:number; revisionHash:string; filmScores:Record<string,number>; shotScores:Record<string,Record<string,number>>;
+  worstIssues:{shot:string; frame:number; term:string; issue:string; repair:string}[];
+  stillMatches:{shot:string; frame:number; status:'match'|'drift'|'departure'; reason:string}[];
 };
 export type LedgerAsset = {
   id:string; type:string; sourceKind:string; sourceUrlOrGenerator:string; providerAssetId:string|null;
@@ -34,6 +39,9 @@ export type Ledger = {version:'0'; assets:LedgerAsset[]};
 export type Project = {root:string; storyboard:Storyboard; ledger:Ledger};
 /** Result of reading a film folder: either both files passed the schema, or a list of problems. */
 export type ParseResult = {ok:true; project:Project}|{ok:false; errors:string[]};
+
+/** An expected failure caused by user input or project state. The CLI prints its message without a stack trace. */
+export class CliError extends Error {}
 
 export const gateIds:GateId[] = ['G1','G2','G3','G4','G5'];
 export const briefSections = ['inputs','direction','structure','build','gotchas','start'];
@@ -54,6 +62,8 @@ async function schema(name:'storyboard'|'ledger') {
 }
 function describe(file:string, e:ErrorObject):string {
   const where = `${file} ${e.instancePath || '/'}`;
+  // The ledger schema's only if/then rule: a known license must name the license.
+  if (e.schemaPath.includes('/license/then/')) return `${file} ${e.instancePath.replace(/\/name$/,'')}: a known license needs a non-empty name`;
   if (e.keyword === 'required') return `${where}: missing required field "${(e.params as {missingProperty:string}).missingProperty}"`;
   if (e.keyword === 'enum') return `${where}: must be one of ${(e.params as {allowedValues:unknown[]}).allowedValues.map(v => JSON.stringify(v)).join(', ')}`;
   return `${where}: ${e.message}`;
@@ -98,10 +108,10 @@ export function emptyStoryboard():Storyboard {
 
 /** Creates films/<slug>/ under `cwd` with the fixed layout and an empty valid project. */
 export async function initProject(cwd:string, slug:string):Promise<string> {
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) throw Error(`invalid slug "${slug}": use lowercase letters, digits and hyphens`);
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) throw new CliError(`invalid slug "${slug}": use lowercase letters, digits and hyphens`);
   const root = join(resolve(cwd),'films',slug);
   const existing = await readdir(root).catch(() => null);
-  if (existing !== null) throw Error(`${root} already exists; init never overwrites a project`);
+  if (existing !== null) throw new CliError(`${root} already exists; init never overwrites a project`);
   for (const dir of projectDirs) await mkdir(join(root,dir),{recursive:true});
   await writeFile(join(root,'storyboard.json'),JSON.stringify(emptyStoryboard(),null,2)+'\n');
   await writeFile(join(root,'ledger.json'),JSON.stringify({version:'0', assets:[]} satisfies Ledger,null,2)+'\n');

@@ -168,10 +168,11 @@ Phases run in this order. Each gate lists what it shows, what a note re-runs, an
   - `look`: look id or style-bible path, variation-axis values, taste snapshot id.
   - `audio`: track ledger id, grid source (detected, corrected or imported), BPM, beat and downbeat frames, drop frames or none, confidence.
   - `voice` (optional): script path, TTS ledger id, word-timing file.
-  - `shots[]`: id, start and end frame (half-open), engine, entrypoint, description, camera, entry, exit (cut, or handoff to the next shot), asset ids, sound cues, still times (shot-local frames), protected elements.
+  - `shots[]`: id, start and end frame (half-open), engine, entrypoint, description, camera, entry, exit (cut, or handoff to the next shot), optional transition (the vocabulary term for the named move, D42), optional off-beat cut reason (D41), asset ids, sound cues, still times (shot-local frames), protected elements.
   - `gates[]`: state, input hashes, decision, notes, rounds used.
   - `critique[]`: film-level and per-shot scores, three worst issues, still match lines, loop count, revision hash.
-- **Controlled vocabulary.** `shots[].camera`, `entry` and `exit`, and the reviewer's issues use `motion-vocabulary` terms. Free text needs a `custom:` prefix. `validate` warns on unknown terms.
+- **Controlled vocabulary.** `shots[].camera`, `shots[].transition` and the reviewer's issues use `motion-vocabulary` terms. Free text needs a `custom:` prefix. `validate` warns on unknown terms. `entry` and `exit` are not vocabulary terms: each is `cut` or `handoff` (D42).
+- **Beat-grid rule (D41).** When the project has a beat grid, `validate` requires each `cut` between shots to fall on a beat frame. Handoff seams are exempt. A shot may declare an intentional off-beat cut at its start with a reason (for example a word-timed cut in an explainer).
 - **Asset ledger (canonical).** Each entry has id, type and source kind (`heygen`, `website`, `stock`, `code`, `ai-image`, `data`, and a reserved `video-model`). It also has source URL or generator, the provider asset id, license status (`known` with a license name, `unknown` or `restricted`) with evidence, local path with content hash, and the shots that use it. The `assets` command imports media-use records into this ledger, and engine-local copies link back to it.
 
 ### Media contract (mixed-engine timeline)

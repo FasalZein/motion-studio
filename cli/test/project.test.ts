@@ -2,7 +2,7 @@ import {test as nodeTest} from 'node:test';
 const {expect} = await import('bun' in process.versions ? 'bun:test' : 'expect');
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {mkdtemp, cp, rm, readFile, writeFile, readdir, stat} from 'node:fs/promises';
+import {mkdtemp, cp, rm, readFile, writeFile, readdir, stat, mkdir, realpath} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 
@@ -43,13 +43,22 @@ const invalid:{kind:string; change:(dir:string)=>Promise<void>; message:string}[
   {kind:'sound cue asset not in ledger', change:d => edit(d,'storyboard.json',s => {s.shots[1].soundCues.push({asset:'sfx-01',eventFrame:0,peakOffsetFrames:0});}), message:'shot hyperframes sound cue uses asset sfx-01, which is not in ledger.json'},
   {kind:'ledger path missing', change:d => edit(d,'ledger.json',l => {l.assets[0].localPath = 'assets/missing.ttf';}), message:'ledger asset font-plex: file assets/missing.ttf not found'},
   {kind:'ledger hash mismatch', change:d => edit(d,'ledger.json',l => {l.assets[0].sha256 = '0'.repeat(64);}), message:`ledger asset font-plex: sha256 of shots/remotion/public/IBMPlexSans.ttf is 3b031aa4216174205bd8471f88a49b91f093169e9e87bd5262242bc5967fe2e3, ledger records ${'0'.repeat(64)}`},
-  {kind:'known license without a name', change:d => edit(d,'ledger.json',l => {l.assets[0].license.name = null;}), message:'ledger.json /assets/0/license/name: must be string'},
+  {kind:'known license without a name', change:d => edit(d,'ledger.json',l => {l.assets[0].license.name = null;}), message:'ledger.json /assets/0/license: a known license needs a non-empty name'},
+  {kind:'unknown license without evidence', change:d => edit(d,'ledger.json',l => {l.assets[0].license = {status:'unknown',name:null,evidence:''};}), message:'ledger.json /assets/0/license/evidence: must NOT have fewer than 1 characters'},
+  {kind:'ledger path outside the film folder', change:d => edit(d,'ledger.json',l => {l.assets[0].localPath = '../outside.ttf';}), message:'ledger asset font-plex: path ../outside.ttf is outside the film folder'},
+  {kind:'absolute ledger path', change:d => edit(d,'ledger.json',l => {l.assets[0].localPath = '/etc/hosts';}), message:'ledger asset font-plex: path /etc/hosts is outside the film folder'},
+  {kind:'one-sided handoff', change:d => edit(d,'storyboard.json',s => {s.shots[0].exit = 'handoff';}), message:'seam remotion -> hyperframes: exit is handoff but entry is cut; both sides must be cut or both handoff'},
+  {kind:'handoff after the last shot', change:d => edit(d,'storyboard.json',s => {s.shots[1].exit = 'handoff';}), message:'shot hyperframes: exit is handoff but no shot comes after it'},
+  {kind:'handoff before the first shot', change:d => edit(d,'storyboard.json',s => {s.shots[0].entry = 'handoff';}), message:'shot remotion: entry is handoff but no shot comes before it'},
+  {kind:'offBeatCut on a handoff', change:d => edit(d,'storyboard.json',s => {s.shots[0].exit = 'handoff'; s.shots[1].entry = 'handoff'; s.shots[1].offBeatCut = 'word-timed';}), message:'shot hyperframes: offBeatCut applies to cuts only, but entry is handoff'},
+  {kind:'empty offBeatCut reason', change:d => edit(d,'storyboard.json',s => {s.shots[1].offBeatCut = '';}), message:'storyboard.json /shots/1/offBeatCut: must NOT have fewer than 1 characters'},
+  {kind:'worst issue without a repair', change:d => edit(d,'storyboard.json',s => {s.critique = [{loop:1,revisionHash:'a'.repeat(64),filmScores:{},shotScores:{},worstIssues:[{shot:'remotion',frame:3,term:'pop',issue:'patch jumps'}],stillMatches:[]}];}), message:'storyboard.json /critique/0/worstIssues/0: missing required field "repair"'},
   {kind:'gap', change:d => edit(d,'storyboard.json',s => {s.shots[1].startFrame = 7; s.audio.beatFrames = [];}), message:'gap: shot remotion ends at frame 6 but shot hyperframes starts at frame 7; frames [6, 7) have no shot'},
   {kind:'gap at the timeline start', change:d => edit(d,'storyboard.json',s => {s.shots[0].startFrame = 1;}), message:'gap: the timeline starts at frame 0 but shot remotion starts at frame 1; frames [0, 1) have no shot'},
   {kind:'overlap', change:d => edit(d,'storyboard.json',s => {s.shots[1].startFrame = 5; s.audio.beatFrames = [];}), message:'overlap: shot remotion ends at frame 6 but shot hyperframes starts at frame 5; frames [5, 6) are covered twice'},
   {kind:'empty half-open range', change:d => edit(d,'storyboard.json',s => {s.shots[0].endFrame = 0; s.shots[1].startFrame = 0; s.audio.beatFrames = [];}), message:'shot remotion: endFrame 0 must be greater than startFrame 0'},
   {kind:'shots do not cover the duration', change:d => edit(d,'storyboard.json',s => {s.meta.durationFrames = 13;}), message:'shots cover [0, 12) but meta.durationFrames is 13'},
-  {kind:'off-grid cut', change:d => edit(d,'storyboard.json',s => {s.shots[0].endFrame = 4; s.shots[1].startFrame = 4;}), message:'off-grid: shot hyperframes starts at frame 4, which is not a beat frame (nearest beat: frame 3)'},
+  {kind:'off-grid cut', change:d => edit(d,'storyboard.json',s => {s.shots[0].endFrame = 4; s.shots[1].startFrame = 4;}), message:'off-grid: the cut into shot hyperframes at frame 4 is not a beat frame (nearest beat: frame 3); move it to a beat or declare "offBeatCut" with a reason'},
   {kind:'still frame outside the shot', change:d => edit(d,'storyboard.json',s => {s.shots[0].stillFrames = [6];}), message:'shot remotion: still frame 6 is outside the shot (still frames are shot-local, 0 to 5)'},
   {kind:'canvas does not match the primary format', change:d => edit(d,'storyboard.json',s => {s.meta.formats.primary = '9:16';}), message:'meta.canvas 320x180 does not match primary format 9:16'},
   {kind:'missing gate', change:d => edit(d,'storyboard.json',s => {s.gates.pop();}), message:'gates must be G1, G2, G3, G4, G5 in order; found G1, G2, G3, G4'},
@@ -77,18 +86,42 @@ for (const [i,{kind,change,message}] of invalid.entries()) test(`validate reject
     // Render must refuse the same project before creating output or staging folders.
     const render = run(runtimes[i % 2],['render',dir]);
     expect(render.status).not.toBe(0);
-    expect(render.stderr).toContain(message);
+    expect(render.stderr).toContain(`error: ${message}`);
+    // Expected failures print messages only, never a stack trace.
+    expect(render.stderr).not.toMatch(/^\s+at /m);
     expect((await readdir(dir)).sort()).toEqual(before);
   });
 });
 
-test('a cut off the beat grid is valid when the project has no beat grid', async () => {
+// Off-beat seams that D41 allows: no beat grid, a declared offBeatCut, or a handoff. The transition term is optional (D42).
+const offBeatValid:{kind:string; change:(s:Json)=>void}[] = [
+  {kind:'the project has no beat grid', change:s => {s.audio.beatFrames = [];}},
+  {kind:'the cut declares offBeatCut', change:s => {s.shots[1].offBeatCut = 'word-timed reveal';}},
+  {kind:'the seam is a handoff', change:s => {s.shots[0].exit = 'handoff'; s.shots[1].entry = 'handoff'; s.shots[1].transition = 'match-cut';}},
+];
+for (const {kind,change} of offBeatValid) test(`a seam off the beat grid is valid when ${kind}`, async () => {
   await withFixture(async dir => {
-    await edit(dir,'storyboard.json',s => {s.shots[0].endFrame = 4; s.shots[0].stillFrames = [0,3]; s.shots[1].startFrame = 4; s.shots[1].endFrame = 12; s.audio.beatFrames = [];});
+    await edit(dir,'storyboard.json',s => {s.shots[0].endFrame = 4; s.shots[0].stillFrames = [0,3]; s.shots[1].startFrame = 4; change(s);});
     const result = run('node',['validate',dir]);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
   });
+});
+
+test('the storyboard example in docs/v0-contract.md validates', async () => {
+  const doc = await readFile(resolve(here,'../../docs/v0-contract.md'),'utf8');
+  const example = doc.split('## storyboard.json')[1].match(/```json\n([\s\S]*?)```/)![1];
+  const cwd = await mkdtemp(join(tmpdir(),'motion-studio-doc-'));
+  try {
+    expect(run('node',['init','doc'],cwd).status).toBe(0);
+    const root = join(cwd,'films','doc');
+    await writeFile(join(root,'storyboard.json'),example);
+    await mkdir(join(root,'shots','s01'));
+    await writeFile(join(root,'shots','s01','index.html'),'<!doctype html>');
+    const result = run('bun',['validate',root]);
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+  } finally {await rm(cwd,{recursive:true,force:true});}
 });
 
 test('init creates the fixed layout and an empty valid project; status shows pending gates', async () => {
@@ -117,7 +150,7 @@ test('init creates the fixed layout and an empty valid project; status shows pen
       await writeFile(join(root,'BRIEF.md'),'edited');
       const again = run(runtime,['init',slug],cwd);
       expect(again.status).toBe(1);
-      expect(again.stderr).toContain('already exists');
+      expect(again.stderr).toBe(`error: ${await realpath(root)} already exists; init never overwrites a project\n`);
       expect(await readFile(join(root,'BRIEF.md'),'utf8')).toBe('edited');
     }
     const badSlug = run('node',['init','Bad Slug'],cwd);
@@ -142,9 +175,18 @@ test('status reports gate states and the next step', async () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toBe(expected);
     }
-    await edit(dir,'storyboard.json',s => {s.shots[1].startFrame = 7;});
-    const broken = run('node',['status',dir]);
+    // An unfinished film with cross-reference errors still gets its status. Expected errors: gap [6, 7), still frame 5
+    // outside the shortened shot, coverage [0, 12) vs 900 frames, and the cut at frame 7 off the beat grid.
+    await edit(dir,'storyboard.json',s => {for (const g of s.gates) g.state = 'pending'; s.shots[1].startFrame = 7; s.meta.durationFrames = 900;});
+    const unfinished = run('node',['status',dir]);
+    expect(unfinished.stderr).toBe('');
+    expect(unfinished.status).toBe(0);
+    expect(unfinished.stdout).toBe(`G1 pending\nG2 pending\nG3 pending\nG4 pending\nG5 pending\nnext: brief, hero assets and look test, then present G1\nvalidation: 4 errors; run motion-studio validate ${dir}\n`);
+    // A schema failure stops status with one line per problem and no stack trace.
+    await edit(dir,'storyboard.json',s => {s.meta.fps = 29.97;});
+    const broken = run('bun',['status',dir]);
     expect(broken.status).toBe(1);
-    expect(broken.stderr).toContain('gap: shot remotion ends at frame 6');
+    expect(broken.stdout).toBe('');
+    expect(broken.stderr).toBe('error: storyboard.json /meta/fps: must be one of 24, 25, 30, 60\n');
   });
 });

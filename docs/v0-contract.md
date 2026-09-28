@@ -65,26 +65,34 @@ films/<slug>/
   critique/loop-<n>.md     reviewer output per loop
 ```
 
-## storyboard.json (v0 field names; ticket #4 formalizes the schema)
+## storyboard.json (v0 field names; ticket #4 schema)
+
+The CLI JSON Schemas `cli/schema/storyboard.schema.json` and `cli/schema/ledger.schema.json` define every field. `skills/motion-studio/reference/storyboard-schema.md` explains them. The example below is a minimal valid project: `motion-studio validate` accepts it when `shots/s01/index.html` exists (a CLI test checks this).
 
 ```json
 {
   "version": "0",
-  "meta": { "title": "", "logline": "", "genre": "product-launch|ui-morph-loop|explainer|showreel|social-kinetic-type",
-            "formats": { "primary": "16:9", "extra": ["9:16"] }, "fps": 30, "durationFrames": 0 },
-  "look": { "id": "keynote-minimal", "styleBible": null, "axes": {}, "tasteSnapshot": "taste-snapshot.json" },
-  "audio": { "track": "<ledger id>", "grid": "detected|corrected|imported", "bpm": 0,
-             "beatFrames": [], "downbeatFrames": [], "dropFrames": [], "confidence": "high|low" },
+  "meta": { "title": "Atlas launch", "logline": "Find the answer in one search.", "genre": "product-launch",
+            "formats": { "primary": "16:9", "extra": ["9:16"] }, "fps": 30, "durationFrames": 60,
+            "canvas": { "width": 1920, "height": 1080 } },
+  "look": { "id": "keynote-minimal", "styleBible": null, "axes": {}, "tasteSnapshot": null },
+  "audio": { "track": null, "grid": "imported", "bpm": 120,
+             "beatFrames": [0, 15, 30, 45], "downbeatFrames": [0], "dropFrames": [], "confidence": "high" },
   "voice": null,
-  "shots": [ { "id": "s01", "startFrame": 0, "endFrame": 0, "engine": "hyperframes|remotion",
-               "entrypoint": "", "description": "", "camera": "<vocabulary term or custom:...>",
-               "entry": "cut|handoff", "exit": "cut|handoff", "assets": [], "soundCues": [],
-               "stillFrames": [], "protected": [] } ],
-  "gates": [ { "id": "G1", "state": "pending|approved|changes|stale", "inputHashes": {},
-               "notes": [], "rounds": 0 } ],
+  "shots": [ { "id": "s01", "startFrame": 0, "endFrame": 60, "engine": "hyperframes",
+               "entrypoint": "shots/s01/index.html", "description": "Query becomes a search field", "camera": "custom:slow push",
+               "entry": "cut", "exit": "cut", "assets": [], "soundCues": [],
+               "stillFrames": [0, 30, 59], "protected": [] } ],
+  "gates": [ { "id": "G1", "state": "pending", "inputHashes": {}, "decision": null, "notes": [], "rounds": 0 },
+             { "id": "G2", "state": "pending", "inputHashes": {}, "decision": null, "notes": [], "rounds": 0 },
+             { "id": "G3", "state": "pending", "inputHashes": {}, "decision": null, "notes": [], "rounds": 0 },
+             { "id": "G4", "state": "pending", "inputHashes": {}, "decision": null, "notes": [], "rounds": 0 },
+             { "id": "G5", "state": "pending", "inputHashes": {}, "decision": null, "notes": [], "rounds": 0 } ],
   "critique": []
 }
 ```
+
+Allowed values: `genre` is `product-launch`, `ui-morph-loop`, `explainer`, `showreel`, `social-kinetic-type` or `null`; `grid` is `detected`, `corrected`, `imported` or `null`; `confidence` is `high`, `low` or `null`; `engine` is `hyperframes` or `remotion`; `entry` and `exit` are `cut` or `handoff`; gate `state` is `pending`, `approved`, `changes` or `stale`. Optional shot fields: `transition` (a `motion-vocabulary` term for the named move, D42) and `offBeatCut` (the reason a cut is intentionally off the beat grid, D41).
 
 Ranges are half-open: `[startFrame, endFrame)`. Beat time to frame: `round(seconds * fps)`, one rule everywhere.
 
