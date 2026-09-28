@@ -15,7 +15,7 @@ films/<slug>/
   stills/<gate>/            engine-rendered review frames
   stills/approved/<gate>-<hash8>/   immutable approval copies
   animatic.mp4
-  renders/<format>/         shot clips, master picture, delivery files
+  renders/<format>/         shot clips, master picture, safezone.json, delivery files (16x9, 9x16, 1x1)
   audio/                    track, voice and SFX sources; master mix
   critique/loop-<n>.md      each reviewer output and evidence references
 ```

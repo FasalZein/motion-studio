@@ -1,0 +1,16 @@
+<!doctype html><html lang="en" data-composition-variables='[{"id":"format","type":"string","label":"Format","default":"16:9"},{"id":"canvasWidth","type":"number","label":"Canvas width","default":320},{"id":"canvasHeight","type":"number","label":"Canvas height","default":180},{"id":"safeX","type":"number","label":"Safe x","default":32},{"id":"safeY","type":"number","label":"Safe y","default":18},{"id":"safeWidth","type":"number","label":"Safe width","default":256},{"id":"safeHeight","type":"number","label":"Safe height","default":144},{"id":"overlay","type":"string","label":"Overlay preset","default":""}]'><head><meta charset="UTF-8"/><style>
+@font-face { font-family: StudioFont; src: url('IBMPlexSans.ttf'); }
+body {margin:0;} #root {position:relative;width:100%;height:100%;overflow:hidden;font-family:StudioFont;}
+.art {position:absolute;inset:0;background:repeating-linear-gradient(45deg, #172b46 0 12px, #24406b 12px 24px);}
+#title {position:absolute;font-size:20px;line-height:24px;color:#f2d064;}
+#corner {position:absolute;left:2px;top:2px;font-size:10px;line-height:12px;color:#ffffff;}
+</style></head><body><div id="root" data-composition-id="shot" data-width="320" data-height="180" data-duration="0.2"><div class="art" data-full-bleed></div><div id="title" data-protected="title">Every format from one timeline</div><div id="corner" data-protected="corner">LIVE</div></div><script>
+// Layout inputs arrive as HyperFrames variables (see motion-studio engines/hyperframes.md).
+const v = window.__hyperframes.getVariables();
+const title = document.getElementById('title');
+Object.assign(title.style, {left: v.safeX + 'px', top: v.safeY + 'px', width: v.safeWidth + 'px'});
+// Entrance travel: the title slides in from off the left edge over frames 0-1 and holds from frame 2.
+const pose = t => { const frame = Math.round(t * 30); title.style.transform = `translateX(${frame < 2 ? -v.canvasWidth * (2 - frame) / 2 : 0}px)`; };
+pose(0);
+document.fonts.ready.then(() => { window.__timelines['shot'] = { duration: () => 0.2, pause: () => {}, seek: pose }; });
+</script></body></html>

@@ -21,7 +21,7 @@ const exists = (file:string) => stat(file).then(() => true,() => false);
 const json = async (file:string) => JSON.parse(await readFile(file,'utf8'));
 const copyFilm = async (name:string) => {
   const dir = await mkdtemp(join(tmpdir(),`motion-studio-${name}-`));
-  await cp(join(fixtures,name),dir,{recursive:true,filter: src => !src.endsWith('/output')});
+  await cp(join(fixtures,name),dir,{recursive:true,filter: src => !src.endsWith('/renders')});
   return dir;
 };
 /** Decodes the audio of a file to interleaved 48 kHz stereo float samples, independently of the CLI. */
@@ -49,7 +49,7 @@ const redShift = async (file:string, levels:number, from:number, scratch:string)
 for (const runtime of ['bun','node']) test(`${runtime}: real two-engine fixture mixes an SFX peak at the cut seam`, async () => {
   const dir = await copyFilm('two-engine');
   try {
-    const output = join(dir,'output');
+    const output = join(dir,'renders','16x9');
     expect(run(runtime,'render',dir).status).toBe(0);
     expect(run(runtime,'stitch',dir).status).toBe(0);
     // This film declares only a cut, so there is no handoff to check.
@@ -89,7 +89,7 @@ for (const runtime of ['bun','node']) test(`${runtime}: real two-engine fixture 
 for (const runtime of ['bun','node']) test(`${runtime}: declared handoffs: the matching one passes, the intentional mismatch fails, and master and color defects are caught`, async () => {
   const dir = await copyFilm('handoff');
   try {
-    const output = join(dir,'output');
+    const output = join(dir,'renders','16x9');
     expect(run(runtime,'render',dir).status).toBe(0);
     expect(run(runtime,'stitch',dir).status).toBe(0);
     const all = run(runtime,'handoff',dir);
@@ -146,8 +146,8 @@ type Cue = {asset:string; eventFrame:number; peakOffsetFrames:number; gainDb?:nu
 /** A film with a synthetic stitched master (no engine render): 25 fps, 75 frames, an off-beat cut at frame 50. */
 async function syntheticFilm(runtime:string) {
   const dir = await mkdtemp(join(tmpdir(),'motion-studio-mix-'));
-  const output = join(dir,'output');
-  for (const sub of ['output','audio','shots/a','shots/b']) await mkdir(join(dir,sub),{recursive:true});
+  const output = join(dir,'renders','16x9');
+  for (const sub of ['renders/16x9','audio','shots/a','shots/b']) await mkdir(join(dir,sub),{recursive:true});
   for (const id of ['a','b']) await writeFile(join(dir,'shots',id,'index.html'),'<!doctype html>');
   ffmpeg('-f','lavfi','-i','color=c=0x172b46:s=64x36:r=25:d=3','-vf','setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709',...ffv1,join(output,'master.mkv'));
   await writeFile(join(output,'render.json'),'{}');
@@ -158,7 +158,7 @@ async function syntheticFilm(runtime:string) {
   ffmpeg('-f','lavfi','-i','aevalsrc=0.15*exp(-abs(t-0.2)*20000):s=48000:d=0.3','-c:a','pcm_s16le',join(dir,'audio','cut.wav'));
   const write = async (cues:{a:Cue[]; b:Cue[]}, track:string|null = 'track') => {
     const shot = (id:string, start:number, end:number, soundCues:Cue[], extra = {}) => ({id,startFrame:start,endFrame:end,engine:'hyperframes',entrypoint:`shots/${id}/index.html`,description:'',camera:'custom:locked',entry:'cut',exit:'cut',assets:[],soundCues,stillFrames:[],protected:[],...extra});
-    const storyboard = {version:'0',meta:{title:'mix',logline:'',genre:null,formats:{primary:'16:9',extra:[]},fps:25,durationFrames:75,canvas:{width:64,height:36}},look:{id:null,styleBible:null,axes:{},tasteSnapshot:null},
+    const storyboard = {version:'0',meta:{title:'mix',logline:'',genre:null,formats:{primary:'16:9',extra:[]},fps:25,durationFrames:75,layouts:{'16:9':{canvas:{width:64,height:36},safe:{x:0,y:0,width:64,height:36},overlay:null}}},look:{id:null,styleBible:null,axes:{},tasteSnapshot:null},
       audio:{track,grid:'imported',bpm:null,beatFrames:[12,49],downbeatFrames:[],dropFrames:[],confidence:'high'},voice:null,
       shots:[shot('a',0,50,cues.a),shot('b',50,75,cues.b,{offBeatCut:'word-timed reveal'})],
       gates:['G1','G2','G3','G4','G5'].map(id => ({id,state:'pending',inputHashes:{},decision:null,notes:[],rounds:0})),critique:[]};

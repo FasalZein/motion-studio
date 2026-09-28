@@ -61,7 +61,11 @@ const invalid:{kind:string; change:(dir:string)=>Promise<void>; message:string}[
   {kind:'off-grid cut', change:d => edit(d,'storyboard.json',s => {s.shots[0].endFrame = 4; s.shots[1].startFrame = 4;}), message:'off-grid: the cut into shot hyperframes at frame 4 is not a beat frame (nearest beat: frame 3); move it to a beat or declare "offBeatCut" with a reason'},
   {kind:'sound cue outside its shot', change:d => edit(d,'storyboard.json',s => {s.shots[0].soundCues.push({asset:'font-plex',eventFrame:6,peakOffsetFrames:0});}), message:'shot remotion: sound cue font-plex eventFrame 6 is outside the shot [0, 6) (event frames are film frames)'},
   {kind:'still frame outside the shot', change:d => edit(d,'storyboard.json',s => {s.shots[0].stillFrames = [6];}), message:'shot remotion: still frame 6 is outside the shot (still frames are shot-local, 0 to 5)'},
-  {kind:'canvas does not match the primary format', change:d => edit(d,'storyboard.json',s => {s.meta.formats.primary = '9:16';}), message:'meta.canvas 320x180 does not match primary format 9:16'},
+  {kind:'canvas does not match its format', change:d => edit(d,'storyboard.json',s => {s.meta.layouts['16:9'].canvas.height = 200;}), message:'meta.layouts 16:9: canvas 320x200 does not match the format'},
+  {kind:'chosen format without a layout', change:d => edit(d,'storyboard.json',s => {s.meta.formats.extra = ['9:16'];}), message:'meta.layouts has no layout for chosen format 9:16'},
+  {kind:'layout for a format that is not chosen', change:d => edit(d,'storyboard.json',s => {s.meta.layouts['1:1'] = {canvas:{width:100,height:100},safe:{x:0,y:0,width:100,height:100},overlay:null};}), message:'meta.layouts has a layout for 1:1, which is not a chosen format'},
+  {kind:'safe rectangle outside the canvas', change:d => edit(d,'storyboard.json',s => {s.meta.layouts['16:9'].safe = {x:40,y:9,width:288,height:162};}), message:'meta.layouts 16:9: safe rectangle 40,9 288x162 is outside the canvas 320x180'},
+  {kind:'protected held frame outside the shot', change:d => edit(d,'storyboard.json',s => {s.shots[0].protected = [{id:'title',bounds:'measured',heldFrames:[6]}];}), message:'shot remotion: protected title held frame 6 is outside the shot (held frames are shot-local, 0 to 5)'},
   {kind:'missing gate', change:d => edit(d,'storyboard.json',s => {s.gates.pop();}), message:'gates must be G1, G2, G3, G4, G5 in order; found G1, G2, G3, G4'},
 ];
 

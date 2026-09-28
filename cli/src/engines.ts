@@ -1,0 +1,90 @@
+import {cp, mkdtemp, readdir, readFile, rm, writeFile} from 'node:fs/promises';
+import {dirname, join, relative, resolve} from 'node:path';
+import {createRequire} from 'node:module';
+import {bundle} from '@remotion/bundler';
+import {renderFrames, selectComposition} from '@remotion/renderer';
+
+import {CliError, layoutOf, type Format, type Layout, type Project, type Shot} from './project.js';
+import {remotionEntry} from './validate.js';
+import type {Tools} from './seam.js';
+
+const require = createRequire(import.meta.url);
+const hfBin = resolve(dirname(require.resolve('hyperframes/package.json')), 'bin/hyperframes.mjs');
+
+/** Remotion input props: the format's layout inputs under `layout`. */
+export const remotionProps = (format:Format, {canvas,safe,overlay}:Layout) => ({layout:{format, canvas, safe, overlay}});
+/**
+ * HyperFrames variables: the same layout inputs, flattened, because HyperFrames variables are scalars.
+ * Each scalar also reaches CSS as `--<id>` on the composition root.
+ */
+export const hyperframesVariables = (format:Format, {canvas,safe,overlay}:Layout) => ({
+  format, canvasWidth:canvas.width, canvasHeight:canvas.height,
+  safeX:safe.x, safeY:safe.y, safeWidth:safe.width, safeHeight:safe.height, overlay:overlay ?? '',
+});
+/** CSS that hides one protected element; safezone renders a frame with and without it to measure its painted bounds. */
+const hideCss = (id:string) => `[data-protected="${id}"]{visibility:hidden !important}`;
+
+/** Options for one engine render into a folder of numbered PNGs, one per shot-local frame. */
+export type FrameRender = {format:Format; framesDir:string; hide?:string};
+
+/**
+ * A Remotion bundle for one shot. `withHide` wraps the author's entry so that the input prop
+ * `motionStudioHide` hides one protected element; normal renders use the author's entry unchanged.
+ */
+export async function remotionBundle(project:Project, shot:Shot, withHide:boolean):Promise<{serveUrl:string; dispose:() => Promise<void>}> {
+  const entry = await remotionEntry(project.root,shot);
+  if (!entry) throw new CliError(`Remotion project entry missing: ${shot.id}`);
+  let wrapper:string|undefined;
+  if (withHide) {
+    // The wrapper sits beside the author's entry so the bundler resolves imports the same way.
+    wrapper = join(dirname(entry),`.motion-studio-measure-${process.pid}.tsx`);
+    await writeFile(wrapper,`import {getInputProps} from 'remotion';\nimport './${relative(dirname(entry),entry).replace(/\.tsx?$/,'')}';\nconst hide = (getInputProps() as {motionStudioHide?:string}).motionStudioHide;\nif (hide) {const style = document.createElement('style'); style.textContent = ${JSON.stringify(hideCss('__ID__'))}.replace('__ID__', hide); document.head.appendChild(style);}\n`);
+  }
+  try {
+    const serveUrl = await bundle({entryPoint:wrapper ?? entry, ignoreRegisterRootWarning:Boolean(wrapper), publicDir:join(project.root,'shots',shot.id,'public')});
+    return {serveUrl, dispose:() => rm(serveUrl,{recursive:true,force:true})};
+  } finally {if (wrapper) await rm(wrapper,{force:true});}
+}
+
+export async function renderRemotionFrames(project:Project, shot:Shot, serveUrl:string, {format,framesDir,hide}:FrameRender) {
+  const {fps} = project.storyboard.meta;
+  const layout = layoutOf(project.storyboard,format);
+  const inputProps = {...remotionProps(format,layout), ...(hide ? {motionStudioHide:hide} : {})};
+  const composition = await selectComposition({serveUrl,id:shot.entrypoint,inputProps});
+  if (composition.durationInFrames !== shot.endFrame-shot.startFrame || composition.fps !== fps || composition.width !== layout.canvas.width || composition.height !== layout.canvas.height) {
+    throw new CliError(`composition metadata mismatch: ${shot.id} ${format} is ${composition.width}x${composition.height} ${composition.fps} fps ${composition.durationInFrames} frames`);
+  }
+  await renderFrames({serveUrl,composition,inputProps,outputDir:framesDir,imageFormat:'png',muted:true,onStart:()=>{},onFrameUpdate:()=>{},concurrency:1});
+}
+
+/**
+ * Renders a HyperFrames shot for one format. The CLI stages a copy of `shots/<id>/` beside it,
+ * sets the root's data-width and data-height to the format canvas, and passes the layout as variables.
+ * The copy keeps the folder depth, so relative paths such as ../../assets still resolve.
+ */
+export async function renderHyperframesFrames(project:Project, shot:Shot, tools:Tools, {format,framesDir,hide}:FrameRender) {
+  const {root,storyboard} = project;
+  const layout = layoutOf(storyboard,format);
+  const shotDir = join(root,'shots',shot.id);
+  const stage = await mkdtemp(join(root,'shots',`.motion-${shot.id}-`));
+  try {
+    await cp(shotDir,stage,{recursive:true});
+    const rel = relative(shotDir,resolve(root,shot.entrypoint));
+    const entry = join(stage,rel);
+    let html = await readFile(entry,'utf8');
+    const rootTag = /<[a-zA-Z][^>]*\bdata-composition-id\s*=[^>]*>/.exec(html);
+    if (!rootTag || !/\bdata-width\s*=\s*"\d+"/.test(rootTag[0]) || !/\bdata-height\s*=\s*"\d+"/.test(rootTag[0])) throw new CliError(`HyperFrames root needs data-composition-id, data-width and data-height: ${shot.entrypoint}`);
+    const sized = rootTag[0].replace(/\bdata-width\s*=\s*"\d+"/,`data-width="${layout.canvas.width}"`).replace(/\bdata-height\s*=\s*"\d+"/,`data-height="${layout.canvas.height}"`);
+    html = html.slice(0,rootTag.index) + sized + html.slice(rootTag.index + rootTag[0].length);
+    if (hide) html = html.includes('</head>') ? html.replace('</head>',`<style>${hideCss(hide)}</style></head>`) : `<style>${hideCss(hide)}</style>` + html;
+    await writeFile(entry,html);
+    await tools.command('node',[hfBin,'render',dirname(entry),'--composition',rel.split('/').at(-1)!,'--output',framesDir,'--format','png-sequence','--fps',String(storyboard.meta.fps),'--workers','1','--sdr','--quiet','--variables',JSON.stringify(hyperframesVariables(format,layout))],root);
+  } finally {await rm(stage,{recursive:true,force:true});}
+}
+
+/** The rendered PNG files of a frame folder in frame order; checks that there is one per shot frame. */
+export async function framePngs(shot:Shot, framesDir:string):Promise<string[]> {
+  const pngs = (await readdir(framesDir)).filter(f => f.endsWith('.png')).sort();
+  if (pngs.length !== shot.endFrame-shot.startFrame) throw new CliError(`rendered frame count mismatch: ${shot.id} got ${pngs.length}`);
+  return pngs.map(p => join(framesDir,p));
+}

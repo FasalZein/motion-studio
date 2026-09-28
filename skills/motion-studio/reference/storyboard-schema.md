@@ -5,13 +5,13 @@
 ```json
 {
   "version": "0",
-  "meta": {"title":"Atlas launch", "logline":"Find the answer in one search.", "genre":"product-launch", "formats":{"primary":"16:9", "extra":["9:16"]}, "fps":30, "durationFrames":120, "canvas":{"width":1920, "height":1080}},
+  "meta": {"title":"Atlas launch", "logline":"Find the answer in one search.", "genre":"product-launch", "formats":{"primary":"16:9", "extra":["9:16"]}, "fps":30, "durationFrames":120, "layouts":{"16:9":{"canvas":{"width":1920, "height":1080}, "safe":{"x":96, "y":54, "width":1728, "height":972}, "overlay":null}, "9:16":{"canvas":{"width":1080, "height":1920}, "safe":{"x":54, "y":240, "width":972, "height":1440}, "overlay":"vertical-social"}}},
   "look": {"id":"keynote-minimal", "styleBible":"style-bible.md", "axes":{"contrast":"high", "density":"spare"}, "tasteSnapshot":"taste-snapshot.json"},
   "audio": {"track":"music-01", "grid":"corrected", "bpm":120, "beatFrames":[0,15,30,45,60,75,90,105], "downbeatFrames":[0,60], "dropFrames":[], "confidence":"high"},
   "voice": {"script":"audio/voice-script.txt", "tts":"voice-01", "wordTimings":"audio/word-times.json"},
   "shots": [
-    {"id":"s01", "startFrame":0, "endFrame":60, "engine":"hyperframes", "entrypoint":"shots/s01/index.html", "description":"Query becomes a search field", "camera":"custom:slow push", "entry":"cut", "exit":"cut", "assets":["music-01","logo-01"], "soundCues":[{"asset":"sfx-01","eventFrame":30,"peakOffsetFrames":0}], "stillFrames":[0,30,59], "protected":[{"id":"query","bounds":"shots/s01/protected.json","heldFrames":[15,45]}]},
-    {"id":"s02", "startFrame":60, "endFrame":120, "engine":"remotion", "entrypoint":"AtlasResult", "description":"Real results and claim", "camera":"custom:locked", "entry":"cut", "exit":"cut", "assets":["logo-01","ui-01"], "soundCues":[], "stillFrames":[0,30,59], "protected":[{"id":"claim","bounds":"shots/s02/protected.json","heldFrames":[20,45]}]}
+    {"id":"s01", "startFrame":0, "endFrame":60, "engine":"hyperframes", "entrypoint":"shots/s01/index.html", "description":"Query becomes a search field", "camera":"custom:slow push", "entry":"cut", "exit":"cut", "assets":["music-01","logo-01"], "soundCues":[{"asset":"sfx-01","eventFrame":30,"peakOffsetFrames":0}], "stillFrames":[0,30,59], "protected":[{"id":"query","bounds":"measured","heldFrames":[15,45]}]},
+    {"id":"s02", "startFrame":60, "endFrame":120, "engine":"remotion", "entrypoint":"AtlasResult", "description":"Real results and claim", "camera":"custom:locked", "entry":"cut", "exit":"cut", "assets":["logo-01","ui-01"], "soundCues":[], "stillFrames":[0,30,59], "protected":[{"id":"claim","bounds":"measured","heldFrames":[20,45]}, {"id":"chart","bounds":"shots/s02/chart-bounds.json","heldFrames":[45]}]}
   ],
   "gates": [
     {"id":"G1", "state":"approved", "inputHashes":{"BRIEF.md":"<64 hex SHA-256 of the actual file>","stills/G1/hero.png":"<64 hex SHA-256 of the actual file>"}, "decision":"approved keynote minimal", "notes":[], "rounds":0},
@@ -28,7 +28,8 @@ The example is illustrative: replace hash placeholders with real hashes before a
 
 ## Changes from the first v0 draft (CLI #4)
 
-- `meta.canvas` `{width,height}` is required. It is the master canvas of the primary format in pixels and must match the primary aspect ratio. Add it to older files; `init` writes 1920x1080 for 16:9.
+- `meta.layouts` is required (CLI #9; it replaces the earlier `meta.canvas`). It maps each chosen format (primary and extra, no others) to `{canvas:{width,height}, safe:{x,y,width,height}, overlay}`. The canvas must match the format's aspect ratio, and the safe rectangle must lie inside the canvas. `overlay` is an optional platform-overlay preset name or `null`; engines receive it, the CLI does not interpret it. `init` writes 16:9 at 1920x1080 with the safe rectangle 96,54 1728x972. Move an older `meta.canvas` into `meta.layouts[<primary>].canvas`.
+- `protected[].id` uses the shot id pattern and matches the element's `data-protected` attribute in both engines. `bounds` is `"measured"` (safezone measures the rendered element) or a film-relative JSON file of declared geometry for canvas or SVG content, `{"<format>": {"x","y","width","height"}}`. `heldFrames` are shot-local frames inside the shot; list only frames where the element is held, not entrance or exit travel.
 - An empty project uses `null` for `meta.genre`, `look.id`, `audio.track`, `audio.grid`, `audio.bpm` and `audio.confidence` until the brief and beat phases set them.
 - HyperFrames `entrypoint` is an HTML file under `shots/<id>/`. Remotion `entrypoint` is the composition id; its project entry file is `shots/<id>/src/index.ts` or `src/index.tsx`, and its public files live in `shots/<id>/public/`.
 - `gates` lists `G1` to `G5` in this order. `critique[].worstIssues` holds at most 3 items.

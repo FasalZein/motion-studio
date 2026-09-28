@@ -74,7 +74,9 @@ The CLI JSON Schemas `cli/schema/storyboard.schema.json` and `cli/schema/ledger.
   "version": "0",
   "meta": { "title": "Atlas launch", "logline": "Find the answer in one search.", "genre": "product-launch",
             "formats": { "primary": "16:9", "extra": ["9:16"] }, "fps": 30, "durationFrames": 60,
-            "canvas": { "width": 1920, "height": 1080 } },
+            "layouts": {
+              "16:9": { "canvas": { "width": 1920, "height": 1080 }, "safe": { "x": 96, "y": 54, "width": 1728, "height": 972 }, "overlay": null },
+              "9:16": { "canvas": { "width": 1080, "height": 1920 }, "safe": { "x": 54, "y": 240, "width": 972, "height": 1440 }, "overlay": "vertical-social" } } },
   "look": { "id": "keynote-minimal", "styleBible": null, "axes": {}, "tasteSnapshot": null },
   "audio": { "track": null, "grid": "imported", "bpm": 120,
              "beatFrames": [0, 15, 30, 45], "downbeatFrames": [0], "dropFrames": [], "confidence": "high" },
