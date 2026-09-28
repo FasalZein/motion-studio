@@ -168,7 +168,7 @@ Phases run in this order. Each gate lists what it shows, what a note re-runs, an
   - `look`: look id or style-bible path, variation-axis values, taste snapshot id.
   - `audio`: track ledger id, grid source (detected, corrected or imported), BPM, beat and downbeat frames, drop frames or none, confidence.
   - `voice` (optional): script path, TTS ledger id, word-timing file.
-  - `shots[]`: id, start and end frame (half-open), engine, entrypoint, description, camera, entry, exit (cut, or handoff to the next shot), optional transition (the vocabulary term for the named move, D42), optional off-beat cut reason (D41), asset ids, sound cues, still times (shot-local frames), protected elements.
+  - `shots[]`: id, start and end frame (half-open), engine, entrypoint, description, camera, entry, exit (cut, or handoff to the next shot), optional transition (the vocabulary term for the named move, D42), optional off-beat cut reason (D41), asset ids, sound cues, still times (shot-local frames), protected elements, and optional holds and effects (shot-local runs that `scan` treats as context).
   - `gates[]`: state, input hashes, decision, notes, rounds used.
   - `critique[]`: film-level and per-shot scores, three worst issues, still match lines, loop count, revision hash.
 - **Controlled vocabulary.** `shots[].camera`, `shots[].transition` and the reviewer's issues use `motion-vocabulary` terms. Free text needs a `custom:` prefix. `validate` warns on unknown terms. `entry` and `exit` are not vocabulary terms: each is `cut` or `handoff` (D42).
@@ -196,7 +196,7 @@ Phases run in this order. Each gate lists what it shows, what a note re-runs, an
 - `stills`: render named shots at shot-local frames through each engine.
 - `animatic`: assemble the frozen stills and the track into an MP4.
 - `sheet`: make contact sheets (1 frame per second) and per-transition strips.
-- `scan`: frame-difference flags (pop, stutter, hitch, flash, blank, color jump, ghost). It knows the declared cuts, holds and effects. Blank frames, frame-count errors and unintended single-frame pops block. The other flags are advisory evidence for the reviewer.
+- `scan`: frame-difference flags (pop, stutter, hitch, flash, blank, color jump, ghost). It knows the declared cuts, holds and effects. Blank frames (a sudden flat dropout or a fully flat shot, D47), frame-count errors and unintended single-frame pops block. The other flags are advisory evidence for the reviewer.
 - `handoff`: as defined in the media contract.
 - `render`: render shots per engine and per format, at draft or final quality.
 - `stitch`: join shot clips on the master timeline and verify the frame count and timestamps.

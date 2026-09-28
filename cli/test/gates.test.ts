@@ -234,6 +234,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
       'next: polish, mix, draft renders per format, critique loop B and license check, then present G5'));
 
     await write(dir,'renders/16x9/safezone.json','{"ok":true}');
+    await write(dir,'renders/16x9/scan.json','{"counts":{"blocking":0}}');
     await write(dir,'renders/16x9/sync.json','{"sync":1}');
     await write(dir,'renders/16x9/handoff-remotion-hyperframes.json','{"status":"match"}');
     await write(dir,'renders/16x9/mix.wav','mix v1');
@@ -250,6 +251,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     expect(g5.inputHashes['ledger.json']).toBe(sha(await readFile(join(dir,'ledger.json'),'utf8')));
     expect(g5.inputHashes['storyboard.json#/meta/layouts']).toBe(sha('{"16:9":{"canvas":{"height":180,"width":320},"overlay":"youtube","safe":{"height":162,"width":288,"x":16,"y":9}}}'));
     expect(g5.inputHashes['renders/16x9/safezone.json']).toBe(sha('{"ok":true}'));
+    expect(g5.inputHashes['renders/16x9/scan.json']).toBe(sha('{"counts":{"blocking":0}}'));
     expect(g5.inputHashes['renders/16x9/handoff-remotion-hyperframes.json']).toBe(sha('{"status":"match"}'));
     expect(g5.inputHashes['renders/16x9/contact-sheet-001.png']).toBe(sha('contact page 1'));
     expect(Object.keys(g5.inputHashes).filter(k => k.includes('transition-') || k.endsWith('sheet.json'))).toEqual([]);
@@ -259,6 +261,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
 
     // Re-running a delivery check after G5 keeps G5; a shot source edit stales G5 only.
     await write(dir,'renders/16x9/safezone.json','{"ok":true,"rerun":1}');
+    await write(dir,'renders/16x9/scan.json','{"counts":{"blocking":0},"rerun":1}');
     await write(dir,'shots/hyperframes/.cache','cache v2');
     // Engine output inside a shot folder after G5 (HyperFrames check --snapshots, render without --output, beats;
     // Remotion out/ and build/) and look-test edits are not shot sources.

@@ -15,7 +15,10 @@ export type Shot = {
   entry:'cut'|'handoff'; exit:'cut'|'handoff'; transition?:string; offBeatCut?:string; assets:string[];
   soundCues:{asset:string; eventFrame:number; peakOffsetFrames:number; gainDb?:number}[];
   stillFrames:number[]; protected:{id:string; bounds:string; heldFrames:number[]}[]; // bounds: 'measured' or a declared-geometry file
+  holds?:FrameSpan[]; effects?:(FrameSpan & {term:string})[]; // declared context for scan
 };
+/** A run of shot-local frames: the first frame and the number of frames, so the run can never end before it starts. */
+export type FrameSpan = {start:number; frames:number};
 export type Rect = {x:number; y:number; width:number; height:number};
 /** Layout inputs of one format. Both engines receive the same values (Remotion as props, HyperFrames as variables). */
 export type Layout = {canvas:{width:number; height:number}; safe:Rect; overlay:string|null};

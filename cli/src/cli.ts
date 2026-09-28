@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import {readFile, mkdir, mkdtemp, rename, rm, writeFile} from 'node:fs/promises';
+import {readFile, mkdir, mkdtemp, rename, rm, stat, writeFile} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
@@ -21,6 +21,7 @@ import {boardStills, captureStills} from './stills.js';
 import {animatic} from './animatic.js';
 import {clearSheetOutputs, sheet} from './sheet.js';
 import {outputsOf, type Outputs} from './outputs.js';
+import {scanFile, scanFilm} from './scan.js';
 
 const configuredTimeout = process.env.MOTION_STUDIO_CHILD_TIMEOUT_MS;
 const timeoutMs = configuredTimeout === undefined ? 120_000 : Number(configuredTimeout);
@@ -90,7 +91,7 @@ async function renderShot(shot:Shot, project:Project, format:Format, output:stri
     await verify(output,frameCount,fps,width,height);
   } finally {await rm(temp,{recursive:true,force:true});}
 }
-const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>] | animatic <film-dir> | sheet <film-dir> [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | assets <film-dir> <list|add|resolve> ...';
+const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>] | animatic <film-dir> | sheet <film-dir> [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | assets <film-dir> <list|add|resolve> ... | scan <film-dir> [format] | scan <video-file> [--report <file.json>]';
 /** The formats a command works on: one named chosen format, or every chosen format when none is named. */
 function selectFormats(project:Project, named:string|undefined):Format[] {
   const formats = chosenFormats(project.storyboard.meta);
@@ -147,7 +148,7 @@ async function main() {
     if (missingRequired) throw new CliError(`doctor: ${missingRequired} required tool${missingRequired === 1 ? '' : 's'} missing`);
     return;
   }
-  if (!['init','validate','status','gate','render','stitch','still','stills','animatic','sheet','handoff','mix','safezone','beats','assets'].includes(action) || !target) throw new CliError(usage);
+  if (!['init','validate','status','gate','render','stitch','still','stills','animatic','sheet','handoff','mix','safezone','beats','assets','scan'].includes(action) || !target) throw new CliError(usage);
   if (action === 'init') {
     console.log(`created ${await initProject(process.cwd(),target)}`);
     return;
@@ -195,6 +196,11 @@ async function main() {
     for (const line of await beats(parsed.project,process.argv.slice(4),{command,verify})) console.log(line);
     return;
   }
+  // scan also reads a lone video file for standalone critique, with no project context.
+  if (action === 'scan' && await stat(target).then(s => s.isFile(),() => false)) {
+    if (await scanFile(target,process.argv.slice(4),{command,verify})) process.exitCode = 1;
+    return;
+  }
   if (action === 'assets') {
     // Assets come before shots, so assets needs only a schema-valid project.
     const parsed = await parseProject(target);
@@ -236,6 +242,10 @@ async function main() {
   }
   if (action === 'sheet') {
     for (const format of selectFormats(project,process.argv[4])) console.log(await sheet(project,outputs(format),{command,verify}));
+    return;
+  }
+  if (action === 'scan') {
+    if (await scanFilm(project,selectFormats(project,process.argv[4]),outputs,{command,verify})) process.exitCode = 1;
     return;
   }
   if (action === 'safezone') {

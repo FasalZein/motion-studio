@@ -3,7 +3,7 @@ import {formatDir, type Format} from './project.js';
 
 /**
  * The one path resolver for a format's render outputs. Pipeline outputs (render.json, master.mkv, handoff
- * and mix files, safezone.json) sit in `renders/<format>/`. Shot clips and stills sit in its `shots/`
+ * and mix files, safezone.json, scan.json) sit in `renders/<format>/`. Shot clips and stills sit in its `shots/`
  * folder, so a legal shot id such as `final`, `master` or `poster` never names a pipeline output.
  */
 export type Outputs = {
