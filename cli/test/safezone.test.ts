@@ -16,6 +16,12 @@ const run = (...args:string[]) => spawnSync(runtime,[cli,...args],{encoding:'utf
 type Rect = {x:number; y:number; width:number; height:number};
 type Check = {shot:string; id:string; frame:number; source:string; bounds:Rect|null; status:string};
 const json = async (file:string) => JSON.parse(await readFile(file,'utf8'));
+// The Remotion measure wrapper and the HyperFrames staging copy must not stay in the author's shot folders.
+async function expectNoMeasureFiles(dir:string) {
+  expect((await readdir(join(dir,'shots'))).sort()).toEqual(['hyperframes','remotion']);
+  expect((await readdir(join(dir,'shots/remotion'))).sort()).toEqual(['mark-bounds.json','public','src']);
+  expect(await readdir(join(dir,'shots/remotion/src'))).toEqual(['index.tsx']);
+}
 async function withFilm(fn:(dir:string)=>Promise<void>) {
   const dir = await mkdtemp(join(tmpdir(),'motion-studio-safezone-'));
   try {
@@ -57,6 +63,7 @@ test(`${runtime}: safezone measures wrapped titles in both engines for 16:9, 9:1
   }
   // The narrow portrait safe width wraps the title onto at least one more 24px line than landscape.
   for (const shot of ['remotion','hyperframes']) expect(heights[shot]['9x16']).toBeGreaterThanOrEqual(heights[shot]['16x9'] + 20);
+  await expectNoMeasureFiles(dir);
 }), 600000);
 
 test(`${runtime}: safezone fails held protected content outside the safe rectangle, not travel`, async () => withFilm(async dir => {
@@ -68,6 +75,12 @@ test(`${runtime}: safezone fails held protected content outside the safe rectang
   storyboard.shots[0].protected[0].heldFrames = [1,5];
   // An element id that no composition marks has no painted pixels.
   storyboard.shots[0].protected.push({id:'ghost', bounds:'measured', heldFrames:[4]});
+  // A protected badge whose own text sits inside the safe rectangle, but whose child sets visibility:visible
+  // and paints at x=300 (badge left 40 + child left 260), right of the safe edge at 288. The hide rule must
+  // hide the child too, so the badge's measured bounds reach past the safe rectangle.
+  storyboard.shots[1].protected.push({id:'badge', bounds:'measured', heldFrames:[3]});
+  const html = join(dir,'shots/hyperframes/index.html');
+  await writeFile(html,(await readFile(html,'utf8')).replace('<div id="corner"','<div data-protected="badge" style="position:absolute;left:40px;top:100px;font-size:10px;line-height:12px;color:#ffffff">OK<span style="position:absolute;left:260px;top:0;visibility:visible">X</span></div><div id="corner"'));
   await writeFile(path,JSON.stringify(storyboard));
   const bounds = await json(join(dir,'shots/remotion/mark-bounds.json'));
   bounds['16:9'].x = 290;
@@ -75,22 +88,27 @@ test(`${runtime}: safezone fails held protected content outside the safe rectang
   const result = run('safezone',dir,'16:9');
   expect(result.status).toBe(1);
   const errors = result.stderr.split('\n').filter(l => l.startsWith('error:'));
-  expect(errors.length).toBe(5);
+  expect(errors.length).toBe(6);
   expect(result.stderr).toContain('error: safezone 16:9 remotion/mark frame 0: held declared bounds 290,138 16x16 outside safe rectangle 32,18 256x144');
   expect(result.stderr).toContain('error: safezone 16:9 remotion/ghost frame 4: no painted pixels for data-protected="ghost"');
   expect(result.stdout).toContain('safezone 16:9 remotion/title frame 5: inside');
-  expect(result.stdout).toContain('safezone 16:9: 3 of 8 checks inside');
+  expect(result.stdout).toContain('safezone 16:9: 3 of 9 checks inside');
   const checks:Check[] = (await json(join(dir,'renders','16x9','safezone.json'))).checks;
   const find = (shot:string, id:string, frame:number) => checks.find(c => c.shot === shot && c.id === id && c.frame === frame)!;
   const corner = find('hyperframes','corner',3);
   expect(corner.status).toBe('outside');
   expect(corner.bounds!.x).toBeLessThan(safe['16x9'].x);
   expect(corner.bounds!.y).toBeLessThan(safe['16x9'].y);
+  const badge = find('hyperframes','badge',3);
+  expect(badge.status).toBe('outside');
+  expect(badge.bounds!.x).toBeLessThanOrEqual(42);
+  expect(badge.bounds!.x + badge.bounds!.width).toBeGreaterThan(300);
   const travel = find('remotion','title',1);
   expect(travel.status).toBe('outside');
   expect(travel.bounds!.x).toBe(0);
   // Only the requested format was checked.
   expect((await readdir(join(dir,'renders'))).sort()).toEqual(['16x9']);
+  await expectNoMeasureFiles(dir);
   const unknown = run('safezone',dir,'4:5');
   expect(unknown.status).toBe(1);
   expect(unknown.stderr).toContain('error: format 4:5 is not a chosen format (16:9, 9:16, 1:1)');

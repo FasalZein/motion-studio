@@ -1,4 +1,4 @@
-import {cp, mkdtemp, readdir, readFile, rm, writeFile} from 'node:fs/promises';
+import {cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile} from 'node:fs/promises';
 import {dirname, join, relative, resolve} from 'node:path';
 import {createRequire} from 'node:module';
 import {bundle} from '@remotion/bundler';
@@ -21,8 +21,11 @@ export const hyperframesVariables = (format:Format, {canvas,safe,overlay}:Layout
   format, canvasWidth:canvas.width, canvasHeight:canvas.height,
   safeX:safe.x, safeY:safe.y, safeWidth:safe.width, safeHeight:safe.height, overlay:overlay ?? '',
 });
-/** CSS that hides one protected element; safezone renders a frame with and without it to measure its painted bounds. */
-const hideCss = (id:string) => `[data-protected="${id}"]{visibility:hidden !important}`;
+/**
+ * CSS that hides one protected element; safezone renders a frame with and without it to measure its painted bounds (D45).
+ * It uses opacity, not visibility: a descendant can set visibility:visible and stay painted, but cannot undo an ancestor's opacity.
+ */
+const hideCss = (id:string) => `[data-protected="${id}"]{opacity:0 !important}`;
 
 /** Options for one engine render into a folder of numbered PNGs, one per shot-local frame. */
 export type FrameRender = {format:Format; framesDir:string; hide?:string};
@@ -34,16 +37,20 @@ export type FrameRender = {format:Format; framesDir:string; hide?:string};
 export async function remotionBundle(project:Project, shot:Shot, withHide:boolean):Promise<{serveUrl:string; dispose:() => Promise<void>}> {
   const entry = await remotionEntry(project.root,shot);
   if (!entry) throw new CliError(`Remotion project entry missing: ${shot.id}`);
+  let wrapperDir:string|undefined;
   let wrapper:string|undefined;
-  if (withHide) {
-    // The wrapper sits beside the author's entry so the bundler resolves imports the same way.
-    wrapper = join(dirname(entry),`.motion-studio-measure-${process.pid}.tsx`);
-    await writeFile(wrapper,`import {getInputProps} from 'remotion';\nimport './${relative(dirname(entry),entry).replace(/\.tsx?$/,'')}';\nconst hide = (getInputProps() as {motionStudioHide?:string}).motionStudioHide;\nif (hide) {const style = document.createElement('style'); style.textContent = ${JSON.stringify(hideCss('__ID__'))}.replace('__ID__', hide); document.head.appendChild(style);}\n`);
-  }
   try {
+    if (withHide) {
+      // The wrapper sits in a hidden folder of the shot, not in the author's src/, so author files stay untouched.
+      // The folder is at the same depth as src/, so the bundler resolves imports the same way.
+      wrapperDir = join(project.root,'shots',shot.id,`.motion-measure-${process.pid}`);
+      wrapper = join(wrapperDir,'entry.tsx');
+      await mkdir(wrapperDir,{recursive:true});
+      await writeFile(wrapper,`import {getInputProps} from 'remotion';\nimport '${relative(wrapperDir,entry).replace(/\.tsx?$/,'')}';\nconst hide = (getInputProps() as {motionStudioHide?:string}).motionStudioHide;\nif (hide) {const style = document.createElement('style'); style.textContent = ${JSON.stringify(hideCss('__ID__'))}.replace('__ID__', hide); document.head.appendChild(style);}\n`);
+    }
     const serveUrl = await bundle({entryPoint:wrapper ?? entry, ignoreRegisterRootWarning:Boolean(wrapper), publicDir:join(project.root,'shots',shot.id,'public')});
     return {serveUrl, dispose:() => rm(serveUrl,{recursive:true,force:true})};
-  } finally {if (wrapper) await rm(wrapper,{force:true});}
+  } finally {if (wrapperDir) await rm(wrapperDir,{recursive:true,force:true});}
 }
 
 export async function renderRemotionFrames(project:Project, shot:Shot, serveUrl:string, {format,framesDir,hide}:FrameRender) {
