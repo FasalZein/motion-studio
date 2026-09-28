@@ -5,6 +5,7 @@ import {chosenFormats, CliError, formatDir, layoutOf, type Format, type Project,
 import {framePngs, remotionBundle, renderHyperframesFrames, renderRemotionStills} from './engines.js';
 import type {Tools} from './seam.js';
 import {SHEET_COLUMNS, tile, tiling} from './sheet.js';
+import {requireOpaque} from './opaque.js';
 
 /** Board stills live where G2 hashes and freezes them: `stills/G2/<format>/<shot-id>-f<frame>.png` (D43). */
 export const boardStillsDir = (root:string, format:Format) => join(root,'stills','G2',formatDir(format));
@@ -49,6 +50,7 @@ export async function captureStills(project:Project, shot:Shot, format:Format, r
       const pngs = await framePngs(shot,framesDir);
       for (const r of raw) await rename(pngs[r.frame],r.raw);
     }
+    await requireOpaque(tools,shot,format,raw.map(r => ({frame:r.frame, png:r.raw})),temp);
     for (const [i,r] of raw.entries()) {
       const staged = join(temp,`rgb-${i}.png`);
       // rgb24 drops alpha the same way the clip encoder does, so a still shows what the clip shows.

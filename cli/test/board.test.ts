@@ -241,3 +241,42 @@ test('sheet writes 1 fps contact pages and full-rate transition strips from the 
     ]);
   } finally {await rm(dir,{recursive:true,force:true});}
 });
+
+// Engine contract (#14): a frame with transparent pixels is refused. The clip and the still drop alpha, so a lost
+// background turns black, as s02 did in the e2e run. The fixture paints #172b46 on a full-bleed child of the root.
+test('stills and render refuse transparent frames in both engines; a full-bleed background child passes', async () => {
+  const dir = await copyFilm();
+  try {
+    const html = join(dir,'shots','hyperframes','index.html');
+    const tsx = join(dir,'shots','remotion','src','index.tsx');
+    const [page,component] = [await readFile(html,'utf8'),await readFile(tsx,'utf8')];
+    const child = '<div style="position:absolute;inset:0;background:#172b46"></div>';
+    // Author mistakes: the background painted on the page, as in the installed minimal HyperFrames composition, or
+    // on the HyperFrames composition root, which the PNG render leaves transparent.
+    const refuse = async (shot:string, frame:number) => {
+      const refused = run('node','stills',dir,shot,'--frames',`${frame},5`);
+      expect(refused.stderr).toBe(`error: transparent pixels in ${shot} frame ${frame} (16:9): paint an opaque full-bleed background inside the composition root\n`);
+      expect(refused.status).toBe(1);
+    };
+    await writeFile(tsx,component.replace("backgroundColor: '#172b46', ",'').replace('<style>{`','<style>{`body {background:#172b46;} '));
+    await refuse('remotion',1);
+    await writeFile(html,page.replace(child,'').replace('body {margin:0;}','html,body {margin:0;background:#172b46;}'));
+    await refuse('hyperframes',0);
+    await writeFile(html,page.replace(child,'').replace('#root {','#root {background:#172b46;'));
+    await refuse('hyperframes',0);
+    const render = run('bun','render',dir);
+    expect(render.stderr).toBe('error: transparent pixels in remotion frame 0 (16:9): paint an opaque full-bleed background inside the composition root\n');
+    expect(render.status).toBe(1);
+    expect(await readdir(join(dir,'stills')).catch(() => [])).toEqual([]);
+    expect(await readdir(join(dir,'renders')).catch(() => [])).toEqual([]);
+
+    // The contract's form: a full-bleed background child inside the composition root (HyperFrames), and the
+    // component's outer element (Remotion).
+    await writeFile(html,page);
+    await writeFile(tsx,component);
+    expect(ok('node','stills',dir,'--frames','0')).toBe('stills 16:9: remotion 0; hyperframes 0 -> stills/G2/16x9/\n');
+    // A background pixel away from the patch and the text keeps the painted color.
+    for (const shot of ['remotion','hyperframes']) expect(diff(rgb(join(dir,'stills','G2','16x9',`${shot}-f000.png`),0,'1:1:300:170'),new Uint8Array([0x17,0x2b,0x46]))).toBeLessThanOrEqual(1);
+    ok('bun','render',dir);
+  } finally {await rm(dir,{recursive:true,force:true});}
+});

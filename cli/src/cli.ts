@@ -22,6 +22,7 @@ import {animatic} from './animatic.js';
 import {clearSheetOutputs, sheet} from './sheet.js';
 import {outputsOf, type Outputs} from './outputs.js';
 import {scanFile, scanFilm} from './scan.js';
+import {requireOpaque} from './opaque.js';
 
 const configuredTimeout = process.env.MOTION_STUDIO_CHILD_TIMEOUT_MS;
 const timeoutMs = configuredTimeout === undefined ? 120_000 : Number(configuredTimeout);
@@ -84,6 +85,7 @@ async function renderShot(shot:Shot, project:Project, format:Format, output:stri
       finally {await dispose();}
     } else await renderHyperframesFrames(project,shot,{command,verify},{format,framesDir:frames});
     const pngs = await framePngs(shot,frames);
+    await requireOpaque({command,verify},shot,format,pngs.map((png,frame) => ({frame, png})),temp);
     // Both renderers write numbered PNGs. Concat demuxer accepts their different numbering schemes.
     const list = join(temp,'frames.txt');
     await writeFile(list,pngs.map(p => `file '${p.replaceAll("'", "'\\''")}'`).join('\n')+'\n');
