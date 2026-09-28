@@ -4,11 +4,11 @@ import {isAbsolute, join, relative, resolve} from 'node:path';
 import {chosenFormats, gateIds, parseProject, type Format, type Project, type Shot} from './project.js';
 import {gateViews} from './gates.js';
 import {checkScanContext} from './scan.js';
+import {vocabularyWarnings} from './vocabulary.js';
 
 export type Report = {errors:string[]; warnings:string[]};
 /**
  * One project check. Each returns its own findings; `validateProject` concatenates them.
- * Later checks plug in here, for example vocabulary-term warnings (#12).
  */
 type Check = (project:Project) => Promise<Report>|Report;
 
@@ -176,7 +176,10 @@ const checkGateHashes:Check = async project => {
     .map(v => `gate ${v.gate.id} is stale${v.reason ? ` (${v.reason})` : ''}; present ${v.gate.id} again`));
 };
 
-const structuralChecks:Check[] = [checkMeta, checkGates, checkTimeline, checkHandoffs, checkSoundCues, checkEntrypoints, checkAssetIds, checkLedgerFiles, checkScanContext];
+// Unknown vocabulary terms warn and never block (spec: controlled vocabulary).
+const checkVocabulary:Check = async ({storyboard}) => ({errors:[], warnings:await vocabularyWarnings(storyboard)});
+
+const structuralChecks:Check[] = [checkMeta, checkGates, checkTimeline, checkHandoffs, checkSoundCues, checkEntrypoints, checkAssetIds, checkLedgerFiles, checkScanContext, checkVocabulary];
 
 /**
  * Which checks run. `validate` runs all of them. Render commands pass `{gates:false}` (D44): re-rendering after an

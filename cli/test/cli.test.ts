@@ -91,6 +91,18 @@ test('packed CLI renders stills and video under both runtimes', async () => {
     const binary = join(dir,'node_modules','motion-studio','dist','cli.js');
     const project = join(dir,'film');
     await cp(fixture,project,{recursive:true, filter: src => !src.endsWith('/renders')});
+    // The glossary ships inside the package: the installed CLI warns on an unknown camera term (#12).
+    const vocab = join(dir,'vocab');
+    await cp(fixture,vocab,{recursive:true, filter: src => !src.endsWith('/renders')});
+    const storyboard = join(vocab,'storyboard.json');
+    const data = JSON.parse(await (await import('node:fs/promises')).readFile(storyboard,'utf8'));
+    data.shots[0].camera = 'slow-push';
+    await (await import('node:fs/promises')).writeFile(storyboard,JSON.stringify(data));
+    for (const runtime of ['node','bun']) {
+      const checked = spawnSync(runtime,[binary,'validate',vocab],{encoding:'utf8',timeout:60000});
+      expect(checked.stderr).toBe('warning: shot remotion: camera "slow-push" is not a motion-vocabulary term; use a term id or custom:<description>\n');
+      expect(checked.status).toBe(0);
+    }
     for (const runtime of ['node','bun']) {
       const still = spawnSync(runtime,[binary,'still',project,'remotion'],{encoding:'utf8',timeout:180000});
       expect(still.status).toBe(0);
