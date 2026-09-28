@@ -1,16 +1,16 @@
-import {chmod, copyFile, mkdir, readFile, readdir, rename, writeFile} from 'node:fs/promises';
+import {chmod, copyFile, mkdir, readFile, readdir} from 'node:fs/promises';
 import {createReadStream} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {dirname, isAbsolute, join, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import AjvModule from 'ajv';
-import {CliError, gateIds, type Gate, type GateId, type GateState, type Project} from './project.js';
+import {CliError, gateIds, writeStoryboard, type Gate, type GateId, type GateState, type Project} from './project.js';
 
 /** Note rounds allowed per gate before the user must accept, rescope or stop. */
 export const noteRounds = 3;
 
 // schema/gate-inputs.json lists what each gate hashes. It is data so later tickets add inputs without code changes.
-type Source = {file:string}|{storyboard:string; fields?:string[]}|{storyboardPath:string};
+type Source = {file:string; exclude?:string[]}|{storyboard:string; fields?:string[]}|{storyboardPath:string};
 type GateInput = {name:string; freeze?:boolean; sources:Source[]};
 type GateInputs = Record<GateId,GateInput[]>;
 
@@ -20,7 +20,7 @@ const inputsSchema = {
   properties:{$comment:{type:'string'}, ...Object.fromEntries(gateIds.map(id => [id,{type:'array', items:{
     type:'object', required:['name','sources'], additionalProperties:false,
     properties:{name:{type:'string', minLength:1}, freeze:{type:'boolean'}, sources:{type:'array', items:{oneOf:[
-      {type:'object', required:['file'], additionalProperties:false, properties:{file:{type:'string', minLength:1}}},
+      {type:'object', required:['file'], additionalProperties:false, properties:{file:{type:'string', minLength:1}, exclude:{type:'array', minItems:1, items:{type:'string', minLength:1}}}},
       {type:'object', required:['storyboard'], additionalProperties:false, properties:{storyboard:pointer, fields:{type:'array', minItems:1, items:{type:'string', minLength:1}}}},
       {type:'object', required:['storyboardPath'], additionalProperties:false, properties:{storyboardPath:pointer}},
     ]}}},
@@ -97,8 +97,9 @@ function resolveSource(project:Project, files:string[], source:Source, freeze:bo
   const {root,storyboard} = project;
   if ('file' in source) {
     const re = globRegex(source.file);
+    const excluded = (source.exclude ?? []).map(globRegex);
     const base = globBase(source.file);
-    return files.filter(f => re.test(f)).map(f => ({key:f, file:f, ...(freeze ? {freezeBase:base} : {})}));
+    return files.filter(f => re.test(f) && !excluded.some(x => x.test(f))).map(f => ({key:f, file:f, ...(freeze ? {freezeBase:base} : {})}));
   }
   if ('storyboard' in source) {
     const value = readPointer(storyboard,source.storyboard);
@@ -210,8 +211,10 @@ async function freeze(project:Project, id:GateId, hashes:Record<string,string>, 
 export async function recordGate(project:Project, id:GateId, decision:Decision, notes:string[]):Promise<string[]> {
   const views = await gateViews(project);
   const order = (g:GateId) => gateIds.indexOf(g);
-  const view = views.find(v => v.gate.id === id);
-  if (!view) throw new CliError(`cannot record ${id}: storyboard.json has no gate ${id}; run motion-studio validate`);
+  // Every gate needs exactly one record; a missing earlier record would let a later gate skip it.
+  const ids = project.storyboard.gates.map(g => g.id);
+  if (gateIds.some(g => ids.filter(i => i === g).length !== 1)) throw new CliError(`cannot record ${id}: storyboard.json must list gates ${gateIds.join(', ')} once each; found ${ids.join(', ') || 'none'}`);
+  const view = views.find(v => v.gate.id === id)!;
   const earlier = views.find(v => order(v.gate.id) < order(id) && v.state !== 'approved');
   if (earlier) throw new CliError(`cannot record ${id}: ${earlier.gate.id} is not approved (${earlier.state}${earlier.reason ? `: ${earlier.reason}` : ''}); approve ${earlier.gate.id} first`);
   if (decision !== 'approve' && !notes.length) throw new CliError(`${decision} needs at least one --note`);
@@ -232,9 +235,6 @@ export async function recordGate(project:Project, id:GateId, decision:Decision, 
     return {...g, state:decision !== 'approve' && order(g.id) > order(id) && current !== 'pending' ? 'stale' : current};
   });
 
-  const path = join(project.root,'storyboard.json');
-  const temp = join(project.root,'.storyboard.json.tmp');
-  await writeFile(temp,JSON.stringify({...project.storyboard, gates},null,2)+'\n');
-  await rename(temp,path);
+  await writeStoryboard(project.root,{...project.storyboard, gates});
   return [`recorded ${id} ${decision}: ${Object.keys(hashes).length} inputs, revision ${revisionId(hashes)}`, ...(frozen ? [`frozen stills: ${frozen}`] : [])];
 }

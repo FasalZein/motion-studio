@@ -1,4 +1,4 @@
-import {readFile, mkdir, writeFile, readdir} from 'node:fs/promises';
+import {readFile, mkdir, writeFile, readdir, rename} from 'node:fs/promises';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import AjvModule, {type ErrorObject} from 'ajv';
@@ -123,6 +123,13 @@ export async function initProject(cwd:string, slug:string):Promise<string> {
 }
 
 /** Folder name of a format under renders/: `16x9`, `9x16` or `1x1`. A colon is not portable in file names. */
+/** Writes storyboard.json through a hidden temp file and a rename, so a failed write never leaves a partial file. */
+export async function writeStoryboard(root:string, storyboard:Storyboard):Promise<void> {
+  const temp = join(root,'.storyboard.json.tmp');
+  await writeFile(temp,JSON.stringify(storyboard,null,2)+'\n');
+  await rename(temp,join(root,'storyboard.json'));
+}
+
 export const formatDir = (format:Format) => format.replace(':','x');
 /** Primary format first, then the extra formats in their declared order. */
 export const chosenFormats = ({formats}:Storyboard['meta']):Format[] => [formats.primary, ...formats.extra];

@@ -1,7 +1,7 @@
 import {mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join, relative, resolve} from 'node:path';
-import {CliError, type Fps, type Project, type Storyboard} from './project.js';
+import {CliError, writeStoryboard, type Fps, type Project, type Storyboard} from './project.js';
 import {secondsToFrame} from './frames.js';
 import type {Tools} from './seam.js';
 
@@ -34,7 +34,7 @@ const PHASE_MARGIN = 1.2;
 const DROP_RATIO = 2;
 const BEATS_PER_BAR_WITHOUT_METER = 4;
 
-/** True when any beat time or the tempo differs. #5 marks G2 and every later gate stale on a true result (SPEC flow table: G2 goes stale when a beat time changes). */
+/** True when any beat time or the tempo differs. G2 hashes these same four fields, so a true result makes G2 and every later gate stale (D43). */
 export function gridChanged(before:Audio, after:Audio):boolean {
   const key = (a:Audio) => JSON.stringify([a.bpm,a.beatFrames,a.downbeatFrames,a.dropFrames]);
   return key(before) !== key(after);
@@ -316,8 +316,7 @@ export async function beats(project:Project, args:string[], tools:Tools):Promise
     }
   }
   const changed = gridChanged(before,after);
-  await writeFile(join(root,'storyboard.json'),JSON.stringify({...storyboard, audio:after},null,2)+'\n');
-  // Ticket #5 hook: when `changed` is true, G2 and every later gate must be marked stale here.
+  await writeStoryboard(root,{...storyboard, audio:after});
   lines.push(changed ? 'grid changed' : 'grid unchanged');
   return lines;
 }
