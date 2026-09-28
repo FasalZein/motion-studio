@@ -50,8 +50,8 @@ Environment facts (2026-09-28): no heygen CLI, no video-model keys (FAL/REPLICAT
 | D36 | First slice | Mixed-engine integration proof first (Remotion shot + HyperFrames shot, cut + handoff, stitched + mixed, measured frame-exact) |
 | D37 | Unknown license | Final render blocks until user acknowledges each unresolved asset or swaps it |
 | D38 | Runtime (fact-driven refinement of D34) | HyperFrames CLI requires Node 22+, so Node 22+ is required; CLI authored in TS, developed with Bun, npm package Node-compatible; Bun runtime supported where the packed-CLI render smoke test passes |
-
 | D39 | Delivery order change (user, 2026-09-28) | Ship v0 skills now (guidance-level, calling hyperframes/remotion/ffmpeg directly; contract in docs/v0-contract.md) and start ticket #2 in parallel. Refines D36. heygen v0.8.1 installed and signed in (free plan); media-use doctor passes |
+| D40 | Build and test mode (user, 2026-09-28) | Frontier-parallel workers in git worktrees (max 3), merge to main on green after parent inspection; per ticket: worker black-box tests under Node and Bun + independent code review, material findings fixed before merge. After #2-#19 merge, an Opus worker (anthropic/claude-opus-5-5) installs from GitHub, plays director, runs tracers #20 and #21; failures become new tickets |
 
 Assumptions (low-risk, reversible): storyboard stills are static key frames rendered by the shot's engine and reused as the build start; CLI in Bun + TypeScript inside the repo.
 
