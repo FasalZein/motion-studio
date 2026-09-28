@@ -205,6 +205,22 @@ test('G2 binds the beat grid and beat map, not shot descriptions or fill-mode as
   });
 });
 
+test('G2 binds the narration script and word timings by content', async () => {
+  await withFilm(async dir => {
+    await write(dir,'audio/script.txt','Why now?');
+    await write(dir,'audio/words.json','[{"text":"Why","start":0.05,"end":0.1}]');
+    await edit(dir,s => {s.voice = {script:'audio/script.txt', tts:null, wordTimings:'audio/words.json'};});
+    for (const id of ['G1','G2']) ok(['gate',dir,id,'approve']);
+    const g2 = (await storyboard(dir)).gates[1];
+    expect(g2.inputHashes['audio/script.txt']).toBe(sha('Why now?'));
+    expect(g2.inputHashes['audio/words.json']).toBe(sha('[{"text":"Why","start":0.05,"end":0.1}]'));
+    // A new take with other word times keeps the storyboard unchanged but stales G2.
+    await write(dir,'audio/words.json','[{"text":"Why","start":0.1,"end":0.2}]');
+    expect(status(dir)).toBe(lines('G1 approved','G2 stale (changed: audio/words.json)','G3 pending','G4 pending','G5 pending',
+      'next: G2 is stale: rerun board: beat map, keyframe builds and stills, then present G2 again'));
+  });
+});
+
 test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () => {
   await withFilm(async dir => {
     await write(dir,'animatic.mp4','animatic v1');

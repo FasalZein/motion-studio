@@ -5,6 +5,7 @@ import {chosenFormats, gateIds, parseProject, type Format, type Project, type Sh
 import {gateViews} from './gates.js';
 import {checkScanContext} from './scan.js';
 import {vocabularyWarnings} from './vocabulary.js';
+import {checkVoice} from './voice.js';
 
 export type Report = {errors:string[]; warnings:string[]};
 /**
@@ -180,7 +181,7 @@ const checkGateHashes:Check = async project => {
 // Unknown vocabulary terms warn and never block (spec: controlled vocabulary).
 const checkVocabulary:Check = async ({storyboard}) => ({errors:[], warnings:await vocabularyWarnings(storyboard)});
 
-const structuralChecks = (only?:readonly string[]):Check[] => [checkMeta, checkGates, checkTimeline, checkHandoffs, checkSoundCues, checkEntrypoints(only), checkAssetIds, checkLedgerFiles, checkScanContext, checkVocabulary];
+const structuralChecks = (only?:readonly string[]):Check[] => [checkMeta, checkGates, checkTimeline, checkHandoffs, checkSoundCues, checkEntrypoints(only), checkAssetIds, checkLedgerFiles, checkScanContext, checkVocabulary, checkVoice];
 
 /**
  * Which checks run. `validate` runs all of them. Render commands pass `{gates:false}` (D44): re-rendering after an

@@ -95,12 +95,14 @@ export function heygenProvider(timeoutMs:number, env:NodeJS.ProcessEnv):AssetPro
     name:'heygen', sourceKind:'heygen',
     ready:heygenStatus,
     paid:type => isHeygenType(type) && heygenTypes[type].paid,
-    async resolve({type,intent,outDir}) {
+    async resolve({type,intent,outDir,voiceId}) {
       if (!isHeygenType(type)) throw new CliError(`heygen provider: --type must be one of ${Object.keys(heygenTypes).join(', ')}`);
+      // Without a chosen voice, media-use speaks with the first voice HeyGen lists, and the ledger could not name it.
+      if (type === 'voice' && voiceId === null) throw new CliError('heygen provider: --type voice needs --voice-id <id>; list voices with heygen voice list --engine starfish');
       const status = await heygenStatus();
       if (!status.ready) throw new CliError(`heygen provider: ${status.detail}`);
       const {provider,idKey} = heygenTypes[type];
-      const r = await run(bin,[...prefix,'resolve','--type',type,'--intent',intent,'--project',outDir,'--provider',provider,'--json'],
+      const r = await run(bin,[...prefix,'resolve','--type',type,'--intent',intent,'--project',outDir,'--provider',provider,...(voiceId === null ? [] : ['--voice-id',voiceId]),'--json'],
         {timeoutMs, env:{...heygenEnv(), HYPERFRAMES_NO_UPDATE_CHECK:'1'}});
       if (r.kind === 'failed') throw new CliError(`heygen provider: media-use ${r.reason}`);
       let record:unknown;
@@ -116,9 +118,10 @@ export function heygenProvider(timeoutMs:number, env:NodeJS.ProcessEnv):AssetPro
       // A copy, not a link: the staging folder, and with it .media, is deleted after the file is frozen.
       const file = basename(frozen);
       await copyFile(frozen,join(outDir,file));
-      const from = `HeyGen ${provider}${assetId ? ` ${idKey} ${assetId}` : ''}`;
+      const from = `HeyGen ${provider}${assetId ? ` ${idKey} ${assetId}` : ''}${voiceId === null ? '' : ` voice ${voiceId}`}`;
       return {
         file, providerAssetId:assetId as string|null,
+        ...(voiceId === null ? {} : {speech:{voiceId, text:intent}}),
         sourceUrlOrGenerator:`${from} via hyperframes media-use`,
         // The catalog reply names no license. The user checks HeyGen's terms before the final render (D37).
         license:{status:'unknown', name:null, evidence:`${from}; the HeyGen reply states no license, so HeyGen's terms apply`},

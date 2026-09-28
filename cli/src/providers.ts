@@ -32,10 +32,16 @@ export function run(bin:string, args:string[], {timeoutMs, env}:{timeoutMs:numbe
 }
 
 export type Readiness = {ready:true; detail:string}|{ready:false; detail:string};
-/** What a provider asks for. The provider writes exactly one file into `outDir`, a hidden folder in the film root. */
-export type ResolveRequest = {type:string; intent:string; outDir:string};
-/** One resolved file and its provenance, before the CLI freezes it under assets/ and records it in the ledger. */
-export type ProvidedAsset = {file:string; sourceUrlOrGenerator:string; providerAssetId:string|null; license:LedgerAsset['license']};
+/**
+ * What a provider asks for. The provider writes exactly one file into `outDir`, a hidden folder in the film root.
+ * `voiceId` is the chosen voice of a `voice` request (the CLI refuses it for other types), else null.
+ */
+export type ResolveRequest = {type:string; intent:string; outDir:string; voiceId:string|null};
+/**
+ * One resolved file and its provenance, before the CLI freezes it under assets/ and records it in the ledger.
+ * Generated speech also names the voice and the spoken text.
+ */
+export type ProvidedAsset = {file:string; sourceUrlOrGenerator:string; providerAssetId:string|null; license:LedgerAsset['license']; speech?:LedgerAsset['speech']};
 /**
  * A source that fetches or generates assets. `ready` must be free: `doctor` calls it, so it must not start paid work.
  * `paid(type)` is true when resolving that type can start paid generation; the CLI then refuses to call `resolve`
@@ -87,7 +93,9 @@ export function commandProvider(name:string, sourceKind:SourceKind, bin:string, 
       const r = await run(bin,['ready'],{timeoutMs:READY_TIMEOUT_MS});
       return r.kind === 'exited' && r.code === 0 ? {ready:true, detail:'ready'} : {ready:false, detail:`"${bin} ready" ${outcome(r)}`};
     },
-    async resolve({type,intent,outDir}) {
+    async resolve({type,intent,outDir,voiceId}) {
+      // The command protocol has no voice argument; a chosen voice would be dropped silently.
+      if (voiceId !== null) throw new CliError(`${name} provider does not take --voice-id`);
       const r = await run(bin,['resolve','--type',type,'--intent',intent,'--out',outDir],{timeoutMs});
       if (r.kind === 'failed' || r.code !== 0) {
         const last = r.kind === 'exited' ? r.stderr.trim().split('\n').at(-1) : undefined;
