@@ -9,7 +9,8 @@ const glossaryFile = join(dirname(fileURLToPath(import.meta.url)),'vocabulary.js
 const customPrefix = 'custom:';
 
 let glossary:Promise<Set<string>>|undefined;
-function termIds():Promise<Set<string>> {
+/** Every motion-vocabulary term id. */
+export function termIds():Promise<Set<string>> {
   glossary ??= readFile(glossaryFile,'utf8').then(text => new Set((JSON.parse(text) as {terms:{id:string}[]}).terms.map(t => t.id)));
   return glossary;
 }

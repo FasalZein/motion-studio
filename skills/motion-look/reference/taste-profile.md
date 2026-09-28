@@ -1,16 +1,36 @@
 # Taste profile
 
-Global file: `~/.motion-studio/taste.json`. Create it with the empty shape below if absent. Preserve existing entries and `version: 1`. Use ISO dates in `date` (for example `2026-09-28`); the `note` names the film slug and gate, then quotes the director's decision text from `storyboard.json` `gates[].decision`, including any stated reason (for example `raycast-launch: G1 passed: "thin serif competes with the UI"`). A note without the director's words cannot steer a later recommendation. Each liked or rejected entry has `kind: look|move|pacing`. Each free-text gate note belongs in `notes` with exact named vocabulary term ids in `terms`.
+Global file: `~/.motion-studio/taste.json` (under `$HOME`). The `motion-studio taste` commands are the only writers. Each write goes through a temporary file in the same folder and a rename, is read back and must match `cli/schema/taste.schema.json`. An absent file is the empty profile; an invalid file stops the command and is never overwritten.
 
 ```json
 {
   "version": 1,
-  "liked": [{ "kind": "look", "value": "keynote-minimal", "note": "film slug: G1 chosen: \"the flood makes the action obvious\"", "date": "2026-09-28" }],
-  "rejected": [{ "kind": "look", "value": "swiss-grid", "note": "film slug: G1 passed: \"the grid feels cold for this product\"", "date": "2026-09-28" }],
-  "notes": [{ "text": "Make the type reveal more direct", "terms": ["mask-line-reveal"], "date": "2026-09-28" }]
+  "liked": [{ "kind": "look", "value": "keynote-minimal", "note": "raycast-launch: G1 chosen: \"the flood makes the action obvious\"", "date": "2026-09-28" }],
+  "rejected": [{ "kind": "look", "value": "swiss-grid", "note": "raycast-launch: G1 passed: \"the grid feels cold for this product\"", "date": "2026-09-28" }],
+  "notes": [{ "text": "make the mask-line-reveal more direct", "terms": ["mask-line-reveal"], "date": "2026-09-28", "film": "raycast-launch", "gate": "G2" }]
 }
 ```
 
-An empty profile uses empty arrays, not the examples. Recommend from the **current global file in the brief phase**, with notes and rejected entries as context. Never turn an unshown candidate into a rejection. At G1, add the chosen look to `liked`. Add a shown-and-passed candidate to `rejected` only when its still honored its applied pattern replacements. When the still kept a template pattern without a stated reason, add a `notes` entry that quotes the decision and names the pattern instead; a bad execution is not evidence against the look. At **every** gate note, append the note and exact terms it names. At **final acceptance**, add the accepted look, named signature moves and pacing profile to `liked` using the relevant kinds. Record observed preferences only; do not invent pacing when acceptance gives no pacing evidence. Preserve both conflicting historical entries with their dates and notes; explain the conflict when recommending.
+`kind` is `look`, `move` or `pacing`. `date` is the UTC day of the write. A `note` names the film slug and gate, then quotes every note of that gate record in order, joined by ` / `. The director's words come from `motion-studio gate ... --note`; a gate without notes gives a later recommendation nothing to weigh, so `taste g1` refuses it. A notes entry names its `film` and `gate` when a command wrote it.
 
-After the G1 write, copy the whole file to `films/<slug>/taste-snapshot.json` and set `storyboard.json` `look.tasteSnapshot` to `taste-snapshot.json`. The snapshot is a frozen project input. Later global writes never replace it automatically. Write valid JSON atomically (temporary file in the same directory, then rename); read it back and check the fields before continuing. A standalone profile update changes the global file only unless the user names a film project.
+## Reads
+
+In the brief phase, run `motion-studio taste show`; it prints the profile JSON. Recommend from liked entries with relevant notes, and use rejected entries and notes as context. The profile keeps conflicting entries with their dates and notes; explain the conflict when recommending. Never turn an unshown candidate into a rejection.
+
+## Writes
+
+| When | Command | Writes |
+|---|---|---|
+| G1 approved | `taste g1 <film-dir> [--rejected <look-id>]... [--kept <look-id>:<pattern>]...` | `look.id` to `liked`; each `--rejected` look to `rejected`; each `--kept` look to `notes` (its still kept the named template pattern, so the director passed on the execution, not the look); then the snapshot |
+| Any gate note | `taste notes <film-dir> <G1-G5>` | each note of the gate record that the profile does not hold yet, with `terms` |
+| G5 approved | `taste accept <film-dir> [--move <term-id>]... [--pacing <text>]` | `look.id`, each move and the pacing to `liked` |
+
+`taste g1` and `taste accept` need their gate approved and not stale, and `storyboard.json` `look.id` set. `--move` takes a `motion-vocabulary` term id or `custom:<description>`. Record pacing only when acceptance gives pacing evidence. A rerun adds nothing: an entry with the same kind, value and note is kept once, and `taste notes` adds only notes past the count already held for that film and gate. `terms` lists every vocabulary term id the text contains as a whole word, so write a move by its exact id in a gate note. A common word that is also a term id, such as `hold` or `drop`, is tagged too.
+
+## Snapshot
+
+`taste g1` copies the whole profile, after its own write, byte for byte to `films/<slug>/taste-snapshot.json` and sets `storyboard.json` `look.tasteSnapshot` to `taste-snapshot.json`. The snapshot is written after the G1 decision, so G1 hashes the look record without `tasteSnapshot`. Later global writes never replace it; only another `taste g1` run on the film does.
+
+## Without the CLI or a film
+
+For a standalone update with no film project, or without the CLI, edit the JSON by hand with the same shape and rules: create the empty shape `{"version":1,"liked":[],"rejected":[],"notes":[]}` if absent, write through a temporary file and a rename, then check it with `jq -e .`. In a film without the CLI, copy the file to the snapshot after the G1 write. A standalone update changes the global file only.

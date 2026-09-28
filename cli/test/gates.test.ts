@@ -68,12 +68,14 @@ test('approve binds the gate to its input hashes and freezes the approved stills
     expect(g1.decision).toBe('approve');
     expect(g1.notes).toEqual(['keynote minimal']);
     expect(g1.rounds).toBe(0);
-    // G1 hashes the brief, the look-test stills, the style bible file and the storyboard look record.
-    expect(Object.keys(g1.inputHashes).sort()).toEqual(['BRIEF.md','stills/G1/look-a.png','storyboard.json#/look','style-bible.md']);
+    // G1 hashes the brief, the look-test stills, the style bible file and the storyboard look record without its taste
+    // snapshot, which `taste g1` writes after the decision.
+    expect(Object.keys(g1.inputHashes).sort()).toEqual(['BRIEF.md','stills/G1/look-a.png','storyboard.json#/look{id,styleBible,axes}','style-bible.md']);
     expect(g1.inputHashes['BRIEF.md']).toBe(sha(await readFile(join(fixture,'BRIEF.md'),'utf8')));
     expect(g1.inputHashes['stills/G1/look-a.png']).toBe(sha('look A v1'));
     expect(g1.inputHashes['style-bible.md']).toBe(sha('take: hard cuts\ndo not take: lens flares\n'));
-    expect(g1.inputHashes['storyboard.json#/look']).toMatch(/^[0-9a-f]{64}$/);
+    // Canonical JSON: keys sorted, no spaces; the fixture's look has id null and no axes.
+    expect(g1.inputHashes['storyboard.json#/look{id,styleBible,axes}']).toBe(sha('{"axes":{},"id":null,"styleBible":"style-bible.md"}'));
 
     // The frozen copy is a separate read-only file, not a link to the live still.
     const frozenDirs = await readdir(join(dir,'stills/approved'));
@@ -93,6 +95,16 @@ test('approve binds the gate to its input hashes and freezes the approved stills
     await rm(join(dir,'stills/approved'),{recursive:true,force:true});
     expect(status(dir)).toBe(lines('G1 stale (changed: stills/G1/look-a.png)','G2 pending','G3 pending','G4 pending','G5 pending',
       'next: G1 is stale: rerun brief, hero assets and look test, then present G1 again'));
+  });
+});
+
+test('G1 binds the look id and axes, not the taste snapshot written after the decision', async () => {
+  await withFilm(async dir => {
+    ok(['gate',dir,'G1','approve','--note','keynote minimal']);
+    await edit(dir,s => {s.look.tasteSnapshot = 'taste-snapshot.json';});
+    expect(status(dir).split('\n')[0]).toBe('G1 approved');
+    await edit(dir,s => {s.look.axes = {density:'wide'};});
+    expect(status(dir).split('\n')[0]).toBe('G1 stale (changed: storyboard.json#/look{id,styleBible,axes})');
   });
 });
 

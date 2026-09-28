@@ -22,6 +22,8 @@ import {animatic} from './animatic.js';
 import {clearSheetOutputs, sheet} from './sheet.js';
 import {outputsOf, type Outputs} from './outputs.js';
 import {scanFile, scanFilm} from './scan.js';
+import {taste} from './taste.js';
+import {styleBible} from './stylebible.js';
 
 const configuredTimeout = process.env.MOTION_STUDIO_CHILD_TIMEOUT_MS;
 const timeoutMs = configuredTimeout === undefined ? 120_000 : Number(configuredTimeout);
@@ -91,7 +93,7 @@ async function renderShot(shot:Shot, project:Project, format:Format, output:stri
     await verify(output,frameCount,fps,width,height);
   } finally {await rm(temp,{recursive:true,force:true});}
 }
-const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>] | animatic <film-dir> | sheet <film-dir> [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | assets <film-dir> <list|add|resolve> ... | scan <film-dir> [format] | scan <video-file> [--report <file.json>]';
+const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>] | animatic <film-dir> | sheet <film-dir> [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | assets <film-dir> <list|add|resolve> ... | scan <film-dir> [format] | scan <video-file> [--report <file.json>] | taste <show|g1|notes|accept> ... | style-bible <style-bible.md> [--reference <source>]...';
 /** The formats a command works on: one named chosen format, or every chosen format when none is named. */
 function selectFormats(project:Project, named:string|undefined):Format[] {
   const formats = chosenFormats(project.storyboard.meta);
@@ -146,6 +148,11 @@ async function main() {
     const {lines,missingRequired} = await doctor(configuredProviders(process.env,timeoutMs));
     for (const line of lines) console.log(line);
     if (missingRequired) throw new CliError(`doctor: ${missingRequired} required tool${missingRequired === 1 ? '' : 's'} missing`);
+    return;
+  }
+  // Neither needs a film: taste show reads the global profile, style-bible checks a standalone file.
+  if (action === 'taste' || action === 'style-bible') {
+    for (const line of await (action === 'taste' ? taste : styleBible)(process.argv.slice(3))) console.log(line);
     return;
   }
   if (!['init','validate','status','gate','render','stitch','still','stills','animatic','sheet','handoff','mix','safezone','beats','assets','scan'].includes(action) || !target) throw new CliError(usage);
