@@ -129,7 +129,7 @@ for (const runtime of ['bun','node']) test(`${runtime}: declared handoffs: the m
 
     // Color-only mismatch: the title shot's red channel is 24 levels higher; layout is unchanged.
     await writeFile(join(output,'render.json'),marker);
-    await redShift(join(output,'title.mkv'),24,0,join(dir,'red.mkv'));
+    await redShift(join(output,'shots','title.mkv'),24,0,join(dir,'red.mkv'));
     expect(run(runtime,'stitch',dir).status).toBe(0);
     const recolored = run(runtime,'handoff',dir,'slide','title');
     expect(recolored.status).toBe(1);
@@ -231,10 +231,137 @@ test('mix and handoff reject invalid requests', async () => {
     await write({a:[{asset:'early',eventFrame:50,peakOffsetFrames:0}],b:[]});
     expectFailure(mix(),'shot a: sound cue early eventFrame 50 is outside the shot [0, 50)');
     await write(defaultCues);
+    // Narration is not mixed until #19: a film with a voice is refused, and earlier mix outputs do not survive.
+    expect(mix().status).toBe(0);
+    const board = await json(join(dir,'storyboard.json'));
+    await writeFile(join(dir,'storyboard.json'),JSON.stringify({...board,voice:{script:'audio/script.md',tts:'track',wordTimings:'audio/words.json'}}));
+    expectFailure(mix(),'narration mixing arrives with #19');
+    for (const name of ['final.mkv','mix.wav','sync.json']) expect(await exists(join(output,name))).toBe(false);
+    await write(defaultCues);
     expectFailure(run('node','handoff',dir,'b','a'),'shot a does not directly follow shot b');
+    expectFailure(run('node','handoff',dir,'a','b','4:3'),'format 4:3 is not a chosen format');
     expectFailure(run('node','handoff',dir,'a'),'usage: motion-studio handoff');
     await rm(join(output,'render.json'));
     expectFailure(mix(),'successful render and stitch required');
     expectFailure(run('node','handoff',dir,'a','b'),'successful render and stitch required');
   } finally {await rm(dir,{recursive:true,force:true});}
 }, 60000);
+
+/** Decodes every frame of a file as raw RGB, one buffer per frame. */
+const allFrames = (file:string, width:number, height:number) => {
+  const bytes = spawnSync('ffmpeg',['-v','error','-i',file,'-map','0:v:0','-fps_mode','passthrough','-f','rawvideo','-pix_fmt','rgb24','-'],{encoding:null,timeout:30000,maxBuffer:1e9}).stdout;
+  const size = width*height*3;
+  return Array.from({length:bytes.length/size},(_,i) => bytes.subarray(i*size,(i+1)*size));
+};
+const timestamps = (file:string) => spawnSync('ffprobe',['-v','error','-select_streams','v:0','-show_entries','frame=best_effort_timestamp_time','-of','csv=p=0',file],{encoding:'utf8'}).stdout.trim().split('\n').map(Number);
+
+// Four 7-frame shots: 7 frames is not a whole number of milliseconds at 24, 30 or 60 fps (25 fps is the control).
+// Matroska stores milliseconds, so the nearest representable time of frame i is at most 0.5 ms from i/fps.
+for (const fps of [24,25,30,60]) test(`stitch keeps one global frame clock for four 7-frame shots at ${fps} fps`, async () => {
+  const dir = await mkdtemp(join(tmpdir(),`motion-studio-clock-${fps}-`));
+  try {
+    const ids = ['a','b','c','d'], length = 7, total = ids.length*length;
+    const clips = join(dir,'renders','16x9','shots');
+    await mkdir(clips,{recursive:true});
+    const shots = ids.map((id,i) => ({id,startFrame:i*length,endFrame:(i+1)*length,engine:'hyperframes',entrypoint:`shots/${id}/index.html`,description:'',camera:'custom:locked',entry:'cut',exit:'cut',assets:[],soundCues:[],stillFrames:[],protected:[]}));
+    const storyboard = {version:'0',meta:{title:'clock',logline:'',genre:null,formats:{primary:'16:9',extra:[]},fps,durationFrames:total,layouts:{'16:9':{canvas:{width:64,height:36},safe:{x:0,y:0,width:64,height:36},overlay:null}}},look:{id:null,styleBible:null,axes:{},tasteSnapshot:null},
+      audio:{track:null,grid:null,bpm:null,beatFrames:[],downbeatFrames:[],dropFrames:[],confidence:null},voice:null,shots,
+      gates:['G1','G2','G3','G4','G5'].map(id => ({id,state:'pending',inputHashes:{},decision:null,notes:[],rounds:0})),critique:[]};
+    await writeFile(join(dir,'storyboard.json'),JSON.stringify(storyboard));
+    await writeFile(join(dir,'ledger.json'),JSON.stringify({version:'0',assets:[]}));
+    for (const id of ids) {await mkdir(join(dir,'shots',id),{recursive:true}); await writeFile(join(dir,'shots',id,'index.html'),'<!doctype html>');}
+    // Each clip is its own slice of one testsrc sequence (its frame counter differs on every frame), encoded on its own
+    // like a rendered shot; the reference is the whole sequence encoded once.
+    const source = `testsrc=size=64x36:rate=${fps},setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709`;
+    for (const [i,id] of ids.entries()) ffmpeg('-f','lavfi','-i',`${source},trim=start_frame=${i*length}:end_frame=${(i+1)*length},setpts=PTS-STARTPTS`,...ffv1,join(clips,`${id}.mkv`));
+    ffmpeg('-f','lavfi','-i',source,'-frames:v',String(total),...ffv1,join(dir,'reference.mkv'));
+    await writeFile(join(dir,'renders','16x9','render.json'),'{}');
+
+    const stitched = run('node','stitch',dir);
+    expect(stitched.stderr).toBe('');
+    expect(stitched.status).toBe(0);
+    const master = join(dir,'renders','16x9','master.mkv');
+    const times = timestamps(master);
+    expect(times.length).toBe(total);
+    times.forEach((t,i) => expect(Math.abs(t-i/fps)).toBeLessThanOrEqual(0.0005+1e-9));
+    // No frame dropped, duplicated or reordered: the master decodes to exactly the reference sequence.
+    const frames = allFrames(master,64,36), reference = allFrames(join(dir,'reference.mkv'),64,36);
+    expect(frames.length).toBe(total);
+    frames.forEach((f,i) => expect(f.equals(reference[i])).toBe(true));
+  } finally {await rm(dir,{recursive:true,force:true});}
+}, 60000);
+
+// Shot ids `master` and `final` are legal and name pipeline outputs; each format renders at its own canvas,
+// so handoff and mix run on every chosen format.
+for (const runtime of ['bun','node']) test(`${runtime}: shots named master and final render, stitch, hand off and mix in two formats`, async () => {
+  const dir = await copyFilm('two-engine');
+  try {
+    const rename = {remotion:'master',hyperframes:'final'} as const;
+    for (const [from,to] of Object.entries(rename)) await cp(join(dir,'shots',from),join(dir,'shots',to),{recursive:true});
+    for (const from of Object.keys(rename)) await rm(join(dir,'shots',from),{recursive:true});
+    const id = (old:string) => rename[old as keyof typeof rename] ?? old;
+    const path = (p:string) => p.replace(/^shots\/(remotion|hyperframes)\//,(_,old) => `shots/${id(old)}/`);
+    const ledger = await json(join(dir,'ledger.json'));
+    for (const asset of ledger.assets) {asset.localPath = path(asset.localPath); asset.shots = asset.shots.map(id);}
+    await writeFile(join(dir,'ledger.json'),JSON.stringify(ledger));
+    // The fixture's Remotion composition is fixed at 320x180; size it from the layout prop so it renders in 9:16 too.
+    const entry = join(dir,'shots','master','src','index.tsx');
+    const source = await readFile(entry,'utf8');
+    expect(source).toContain('height={180} />');
+    await writeFile(entry,source.replace('height={180} />','height={180} calculateMetadata={({props}: any) => ({width: props.layout.canvas.width, height: props.layout.canvas.height})} />'));
+    const board = await json(join(dir,'storyboard.json'));
+    for (const shot of board.shots) {shot.id = id(shot.id); if (shot.engine === 'hyperframes') shot.entrypoint = path(shot.entrypoint);}
+    board.meta.formats.extra = ['9:16'];
+    board.meta.layouts['9:16'] = {canvas:{width:180,height:320},safe:{x:9,y:16,width:162,height:288},overlay:null};
+    await writeFile(join(dir,'storyboard.json'),JSON.stringify(board));
+    expect(board.shots.map((s:{id:string}) => s.id)).toEqual(['master','final']);
+
+    const rendered = run(runtime,'render',dir);
+    expect(rendered.stderr).toBe('');
+    expect(rendered.status).toBe(0);
+    const stitched = run(runtime,'stitch',dir);
+    expect(stitched.stderr).toBe('');
+    expect(stitched.status).toBe(0);
+    const size = {'16x9':[320,180],'9x16':[180,320]} as const;
+    for (const [folder,[width,height]] of Object.entries(size)) {
+      const output = join(dir,'renders',folder);
+      const master = allFrames(join(output,'master.mkv'),width,height);
+      const shotMaster = allFrames(join(output,'shots','master.mkv'),width,height);
+      const shotFinal = allFrames(join(output,'shots','final.mkv'),width,height);
+      // The stitched master holds both shots in order; neither clip was used as, or replaced by, a pipeline output.
+      expect([master.length,shotMaster.length,shotFinal.length]).toEqual([12,6,6]);
+      master.forEach((f,i) => expect(f.equals(i < 6 ? shotMaster[i] : shotFinal[i-6])).toBe(true));
+    }
+
+    // The fixture's seam is a cut between different pictures, so a forced handoff check fails, but in both formats.
+    const handed = run(runtime,'handoff',dir,'master','final');
+    expect(handed.status).toBe(1);
+    for (const format of ['16:9','9:16']) expect(handed.stderr).toContain(`handoff mismatch master -> final (${format})`);
+    for (const folder of Object.keys(size)) expect(await json(join(dir,'renders',folder,'handoff-master-final.json'))).toMatchObject({from:'master',to:'final',cutFrame:6,status:'mismatch'});
+
+    const mixed = run(runtime,'mix',dir);
+    expect(mixed.stderr).toBe('');
+    expect(mixed.status).toBe(0);
+    expect(mixed.stdout).toContain('mix 16:9 verified 12 frames');
+    expect(mixed.stdout).toContain('mix 9:16 verified 12 frames');
+    for (const folder of Object.keys(size)) {
+      const output = join(dir,'renders',folder);
+      const kinds = streams(join(output,'final.mkv'));
+      expect(kinds.map((s:{codec_type:string}) => s.codec_type).sort()).toEqual(['audio','video']);
+      expect(Number(kinds.find((s:{codec_type:string}) => s.codec_type === 'video').nb_read_frames)).toBe(12);
+      // The delivery file did not overwrite the shot clip of the same name.
+      expect(streams(join(output,'shots','final.mkv')).map((s:{codec_type:string; nb_read_frames:string}) => [s.codec_type,Number(s.nb_read_frames)])).toEqual([['video',6]]);
+    }
+
+    // A named format limits the run to that format.
+    expect(run(runtime,'mix',dir,'9:16').stdout.trim()).toMatch(/^mix 9:16 verified 12 frames/);
+
+    // A refused mix leaves no earlier mix outputs in any format, so no later gate binds a stale delivery file.
+    for (const folder of Object.keys(size)) for (const name of ['final.mkv','mix.wav','sync.json']) expect(await exists(join(dir,'renders',folder,name))).toBe(true);
+    await writeFile(join(dir,'storyboard.json'),JSON.stringify({...board,voice:{script:'audio/script.md',tts:'music-bed',wordTimings:'audio/words.json'}}));
+    const refused = run(runtime,'mix',dir);
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain('narration mixing arrives with #19');
+    for (const folder of Object.keys(size)) for (const name of ['final.mkv','mix.wav','sync.json']) expect(await exists(join(dir,'renders',folder,name))).toBe(false);
+  } finally {await rm(dir,{recursive:true,force:true});}
+}, 600000);

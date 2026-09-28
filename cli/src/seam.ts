@@ -1,6 +1,7 @@
 import {access, readdir, rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {CliError, layoutOf, type Project} from './project.js';
+import type {Outputs} from './outputs.js';
 
 /** Process and media helpers owned by cli.ts, passed in so the seam modules do not import the entry point. */
 export type Tools = {
@@ -21,15 +22,14 @@ export async function clearMixOutputs(output:string) {
   for (const file of mixOutputs) await rm(join(output,file),{force:true});
 }
 
-/** Requires a successful render and a stitched master that still meets the media contract. */
-export async function requireMaster({storyboard}:Project, output:string, tools:Tools):Promise<string> {
+/** Requires a successful render and a stitched master of the format that still meets the media contract. */
+export async function requireMaster({storyboard}:Project, out:Outputs, tools:Tools):Promise<string> {
   const {shots,meta} = storyboard;
-  const {width,height} = layoutOf(storyboard,meta.formats.primary).canvas;
-  const master = join(output,'master.mkv');
-  try {await access(join(output,'render.json')); await access(master);}
-  catch {throw new CliError('successful render and stitch required');}
-  await tools.verify(master,shots.at(-1)!.endFrame,meta.fps,width,height);
-  return master;
+  const {width,height} = layoutOf(storyboard,out.format).canvas;
+  try {await access(out.marker); await access(out.master);}
+  catch {throw new CliError(`successful render and stitch required: ${out.format}`);}
+  await tools.verify(out.master,shots.at(-1)!.endFrame,meta.fps,width,height);
+  return out.master;
 }
 
 export const round3 = (value:number) => Math.round(value*1000)/1000;

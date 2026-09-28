@@ -2,6 +2,7 @@ import {mkdtemp, readFile, rename, rm, writeFile} from 'node:fs/promises';
 import {join, resolve} from 'node:path';
 import {CliError, type Project} from './project.js';
 import {clearMixOutputs, requireMaster, round3, type Tools} from './seam.js';
+import type {Outputs} from './outputs.js';
 
 const RATE = 48_000;
 const CHANNELS = 2;
@@ -32,18 +33,29 @@ async function integratedLufs(tools:Tools, raw:string):Promise<number> {
 }
 
 /**
- * Mixes audio.track and every shot sound cue at 48 kHz stereo, normalizes to -14 LUFS,
- * and writes mix.wav, sync.json and final.mkv (master video plus the mix).
+ * Runs once before the formats are mixed. Earlier mix outputs describe an earlier request, so every run,
+ * even a refused or failed one, removes them from every selected format; no format keeps a stale delivery file.
  */
-export async function mix(project:Project, output:string, tools:Tools):Promise<string> {
+export async function prepareMix(project:Project, outs:Outputs[]) {
+  for (const out of outs) await clearMixOutputs(out.dir);
+  // Narration is not mixed yet. A mix that silently drops it would report success for an incomplete film.
+  if (project.storyboard.voice !== null) throw new CliError('mix does not support narration yet (voice is set); narration mixing arrives with #19. Mix narration manually for now (motion-studio skill, agents/render.md)');
+}
+
+/**
+ * Mixes audio.track and every shot sound cue at 48 kHz stereo, normalizes to -14 LUFS,
+ * and writes mix.wav, sync.json and final.mkv (master video plus the mix) for one format.
+ * Call prepareMix for all selected formats first.
+ */
+export async function mix(project:Project, out:Outputs, tools:Tools):Promise<string> {
   const {root,ledger,storyboard:{shots,audio,meta:{fps}}} = project;
+  const output = out.dir;
   const frames = shots.at(-1)!.endFrame;
   const cues = shots.flatMap(shot => shot.soundCues);
   if (audio.track === null && !cues.length) throw new CliError('nothing to mix: audio.track is null and no shot has sound cues');
   // validate has already checked that every asset id is in the ledger and every file matches its hash.
   const file = (id:string) => resolve(root,ledger.assets.find(a => a.id === id)!.localPath);
-  await clearMixOutputs(output);
-  const master = await requireMaster(project,output,tools);
+  const master = await requireMaster(project,out,tools);
   // Every supported fps (24, 25, 30, 60) divides 48000, so frame starts are whole samples.
   const perFrame = RATE/fps;
   const length = frames*perFrame;
@@ -98,6 +110,6 @@ export async function mix(project:Project, output:string, tools:Tools):Promise<s
     });
     await writeFile(join(temp,'sync.json'),JSON.stringify({fps,sampleRate:RATE,channels:CHANNELS,targetLufs:TARGET_LUFS,integratedLufs:measured,gainDb:round3(gainDb),syncWindowFrames:SYNC_WINDOW_FRAMES,sfx,cuts},null,2)+'\n');
     for (const name of ['mix.wav','final.mkv','sync.json']) await rename(join(temp,name),join(output,name));
-    return `mix verified ${frames} frames at ${measured} LUFS`;
+    return `mix ${out.format} verified ${frames} frames at ${measured} LUFS`;
   } finally {await rm(temp,{recursive:true,force:true});}
 }

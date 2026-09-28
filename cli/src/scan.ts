@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import {CliError, type Format, type Project, type Shot} from './project.js';
 import {round3, type Tools} from './seam.js';
 import type {Report} from './validate.js';
+import type {Outputs} from './outputs.js';
 
 // scan decodes every frame of one video once. Each frame is converted through its color tags to RGB and
 // area-averaged onto a fixed GRID x GRID cell grid, whatever the format, so thresholds do not depend on the canvas
@@ -250,17 +251,16 @@ function print(name:string, output:string, report:ScanReport):number {
   return b;
 }
 
-/** Film mode: scans `renders/<format>/master.mkv` of each format and writes `scan.json` beside it. */
-export async function scanFilm(project:Project, formats:Format[], renders:(format:Format) => string, tools:Tools):Promise<number> {
+/** Film mode: scans the master of each format and writes `scan.json` beside it. */
+export async function scanFilm(project:Project, formats:Format[], outputsOf:(format:Format) => Outputs, tools:Tools):Promise<number> {
   const {root, storyboard:{shots, meta}} = project;
   let failures = 0;
   for (const format of formats) {
-    const output = renders(format);
-    const video = join(output,'master.mkv');
-    try {await access(join(output,'render.json')); await access(video);}
+    const out = outputsOf(format);
+    try {await access(out.marker); await access(out.master);}
     catch {throw new CliError(`successful render and stitch required before scan: ${format}`);}
-    const report = await scanVideo({video, label:relative(root,video), fps:meta.fps, expectedFrames:meta.durationFrames, shots}, tools);
-    const file = join(output,'scan.json');
+    const report = await scanVideo({video:out.master, label:relative(root,out.master), fps:meta.fps, expectedFrames:meta.durationFrames, shots}, tools);
+    const file = join(out.dir,'scan.json');
     await writeFile(file,JSON.stringify({format,...report},null,2)+'\n');
     failures += print(format,relative(root,file),report);
   }

@@ -36,9 +36,12 @@ export type Critique = {
   worstIssues:{shot:string; frame:number; term:string; issue:string; repair:string}[];
   stillMatches:{shot:string; frame:number; status:'match'|'drift'|'departure'; reason:string}[];
 };
+export const sourceKinds = ['heygen','website','stock','code','ai-image','data','video-model'] as const;
+export type SourceKind = typeof sourceKinds[number];
+export const licenseStatuses = ['known','unknown','restricted'] as const;
 export type LedgerAsset = {
-  id:string; type:string; sourceKind:string; sourceUrlOrGenerator:string; providerAssetId:string|null;
-  license:{status:'known'|'unknown'|'restricted'; name:string|null; evidence:string};
+  id:string; type:string; sourceKind:SourceKind; sourceUrlOrGenerator:string; providerAssetId:string|null;
+  license:{status:typeof licenseStatuses[number]; name:string|null; evidence:string};
   localPath:string; sha256:string; shots:string[];
 };
 export type Ledger = {version:'0'; assets:LedgerAsset[]};
@@ -82,17 +85,22 @@ async function readJson(root:string, file:string, errors:string[]):Promise<unkno
   catch (e) {errors.push(`${file}: invalid JSON (${(e as Error).message})`); return undefined;}
 }
 
+/** Schema errors of one project file's parsed value, in the wording `validate` prints. */
+export async function schemaErrors(file:'storyboard.json'|'ledger.json', value:unknown):Promise<string[]> {
+  const validate = await schema(file === 'storyboard.json' ? 'storyboard' : 'ledger');
+  if (validate(value)) return [];
+  // anyOf branches produce one error per branch; keep each message once.
+  return [...new Set((validate.errors ?? []).filter(e => e.keyword !== 'anyOf' && e.keyword !== 'if').map(e => describe(file,e)))];
+}
+
 /** Reads storyboard.json and ledger.json from a film root and checks both against their JSON Schemas. */
 export async function parseProject(filmRoot:string):Promise<ParseResult> {
   const root = resolve(filmRoot);
   const errors:string[] = [];
   const storyboard = await readJson(root,'storyboard.json',errors);
   const ledger = await readJson(root,'ledger.json',errors);
-  for (const [file,value,name] of [['storyboard.json',storyboard,'storyboard'],['ledger.json',ledger,'ledger']] as const) {
-    if (value === undefined) continue;
-    const validate = await schema(name);
-    // anyOf branches produce one error per branch; keep each message once.
-    if (!validate(value)) errors.push(...new Set((validate.errors ?? []).filter(e => e.keyword !== 'anyOf' && e.keyword !== 'if').map(e => describe(file,e))));
+  for (const [file,value] of [['storyboard.json',storyboard],['ledger.json',ledger]] as const) {
+    if (value !== undefined) errors.push(...await schemaErrors(file,value));
   }
   if (errors.length) return {ok:false, errors};
   // Both values passed their schemas above, which define exactly these types.
