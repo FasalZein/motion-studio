@@ -237,6 +237,10 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     await write(dir,'renders/16x9/sync.json','{"sync":1}');
     await write(dir,'renders/16x9/handoff-remotion-hyperframes.json','{"status":"match"}');
     await write(dir,'renders/16x9/mix.wav','mix v1');
+    // sheet writes numbered contact pages; G5 shows them, but not the transition strips or the index map.
+    await write(dir,'renders/16x9/contact-sheet-001.png','contact page 1');
+    await write(dir,'renders/16x9/transition-remotion-hyperframes.png','strip');
+    await write(dir,'renders/16x9/sheet.json','{"index":1}');
     await write(dir,'renders/16x9/.staging/scratch.mkv','scratch');
     await write(dir,'shots/hyperframes/.cache','cache v1');
     await edit(dir,s => {s.meta.layouts['16:9'].overlay = 'youtube';});
@@ -247,6 +251,8 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     expect(g5.inputHashes['storyboard.json#/meta/layouts']).toBe(sha('{"16:9":{"canvas":{"height":180,"width":320},"overlay":"youtube","safe":{"height":162,"width":288,"x":16,"y":9}}}'));
     expect(g5.inputHashes['renders/16x9/safezone.json']).toBe(sha('{"ok":true}'));
     expect(g5.inputHashes['renders/16x9/handoff-remotion-hyperframes.json']).toBe(sha('{"status":"match"}'));
+    expect(g5.inputHashes['renders/16x9/contact-sheet-001.png']).toBe(sha('contact page 1'));
+    expect(Object.keys(g5.inputHashes).filter(k => k.includes('transition-') || k.endsWith('sheet.json'))).toEqual([]);
     // G5 inherits G4's frozen master, not the re-stitched one, and not a master G4 never showed.
     expect(g5.inputHashes['renders/16x9/master.mkv']).toBe(sha('master v1'));
     expect(Object.keys(g5.inputHashes).filter(k => k.startsWith('renders/9x16/') || k.includes('/.'))).toEqual([]);

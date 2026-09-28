@@ -20,6 +20,6 @@
     {"name": "shot sources", "sources": [{"file": "shots/**", "exclude": ["shots/_look/**", "shots/*/snapshots/**", "shots/*/renders/**", "shots/*/beats/**", "shots/*/out/**", "shots/*/outputs/**", "shots/*/build/**", "shots/*/dist/**", "shots/*/coverage/**"]}, {"storyboard": "/shots"}, {"storyboard": "/audio"}]},
     {"name": "ledger", "sources": [{"file": "ledger.json"}]},
     {"name": "layouts", "sources": [{"storyboard": "/meta/layouts"}]},
-    {"name": "delivery checks", "freeze": true, "sources": [{"file": "renders/*/mix.wav"}, {"file": "renders/*/final.mkv"}, {"file": "renders/*/draft.*"}, {"file": "renders/*/sync.json"}, {"file": "renders/*/handoff-*.json"}, {"file": "renders/*/safezone.json"}, {"file": "renders/*/poster.*"}, {"file": "renders/*/contact-sheet.*"}]}
+    {"name": "delivery checks", "freeze": true, "sources": [{"file": "renders/*/mix.wav"}, {"file": "renders/*/final.mkv"}, {"file": "renders/*/draft.*"}, {"file": "renders/*/sync.json"}, {"file": "renders/*/handoff-*.json"}, {"file": "renders/*/safezone.json"}, {"file": "renders/*/poster.*"}, {"file": "renders/*/contact-sheet-*.png"}]}
   ]
 }

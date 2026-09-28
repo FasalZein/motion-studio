@@ -11,16 +11,18 @@ The third column names the v0 route. "Manual" means the dispatcher copies the it
 | Logline, genre and shot descriptions | `BRIEF.md` and `storyboard.json`; note any mismatch. Load the `motion-studio` genre playbook for claims and timing. | Manual |
 | Chosen look or style bible | The approved look, its variation axes and `style-bible.md` if supplied. | Manual |
 | Shared and look-specific pattern → replacement pairs | Load `motion-look`; pass the actual list, not a remembered list. | Manual |
-| Frozen approved still beside its matching rendered frame | Use `stills/approved/<gate>-<hash8>/`, shot id, approved local frame and exact global frame; place both images in the review packet with labels. Verify the frame matches the render revision. | Extract and pair below (#7). For a handoff seam, `motion-studio handoff` writes the seam frame pair and report |
-| Contact sheet | Sample 1 fps across the **entire** rendered clip. Keep numbered pages and timestamps; do not substitute an old sheet. | Tile below (`sheet`, #7) |
-| Transition strips | Full-rate frames around **every** declared cut or handoff, including the preceding and following frame. Record each cut frame and shot pair. Include suspected fast-motion spans if the video reader cannot scrub. | Tile below (`sheet`, #7) |
+| Frozen approved still beside its matching rendered frame | Use `stills/approved/<gate>-<hash8>/`, shot id, approved local frame and exact global frame; place both images in the review packet with labels. Verify the frame matches the render revision. | Manual pairing: extract the rendered frame below. `motion-studio stills` names each still `<shot-id>-f<local-frame>.png`, so the global frame is `startFrame + local-frame`. For a handoff seam, `motion-studio handoff` writes the seam frame pair and report |
+| Contact sheet | Sample 1 fps across the **entire** rendered clip. Keep numbered pages and timestamps; do not substitute an old sheet. | `motion-studio sheet films/<slug> [format]` writes `renders/<format>/contact-sheet-NNN.png` and the index `sheet.json` from the stitched master; for any other video, tile below |
+| Transition strips | Full-rate frames around **every** declared cut or handoff, including the preceding and following frame. Record each cut frame and shot pair. Include suspected fast-motion spans if the video reader cannot scrub. | The same `sheet` run writes `renders/<format>/transition-<a>-<b>.png` for every seam, with its cut frame and tile frames in `sheet.json`; tile fast-motion spans below |
 | Glitch findings | In v0 inspect strips and decoded frame count for blank, pop, stutter, hitch, flash, color jump and ghost. Mark declared cuts and holds before interpreting flags. Verified blank frames, frame-count errors and unintended single-frame pops block review; ambiguous flags are advisory. | Manual scan (`scan`, #8) |
 | Beat grid and sync report | Beat grid from `storyboard.json` `audio` (`beats.json` in the v0 manual flow), storyboard beat and cut/event frames, measured integrated LUFS and measured SFX peaks. Note low-confidence or corrected grids. | `motion-studio mix` writes `sync.json`; otherwise measure below |
 | Draft clip | Give the actual video path if the harness can read video. Otherwise state that continuous motion and audio listening are not directly verified; strips cannot prove continuous easing. | Manual |
 
 In standalone mode, the video is the only required input. Generate sheets and strips where possible. Record each missing brief, board, look, beat grid and ledger; pass unverified checks to the reviewer. Never fill absent evidence with a guess.
 
-## Image commands (CLI: `sheet`, #7)
+## Image commands
+
+For a film master, `motion-studio sheet` makes the contact pages and strips with the layout below (tiles at most 320 pixels wide, 4-pixel margin and padding, frames at each whole second picked by frame index) and writes the index map as `sheet.json`: every page and strip with the global frame of each tile. It checks the master's frame count and timestamps first. Use the commands below for a video outside a film, for extra spans and for single frames.
 
 Use `ffprobe` to verify fps and frame count before extracting. The examples assume a constant-frame-rate video whose first decoded frame is global frame 0. If timestamps or variable frame rate differ, reconcile them with the project timeline before comparing stills or reporting offsets. Use a unique output directory for each render and format. Set `VIDEO` to the actual render and `OUT` to that directory.
 

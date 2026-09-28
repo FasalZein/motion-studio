@@ -27,7 +27,7 @@ Repeat this section for **every** reference. Distinguish conflicting references 
 
 ### Video extraction in v0
 
-Use ffmpeg directly (CLI: `motion-studio sheet`, #7). Set `REF` to a local video and `OUT` to a writable folder. Extract every half-second, then assemble contact sheets in time order. Quote paths and keep one source per folder so frame numbers do not mix.
+Use ffmpeg directly. `motion-studio sheet` works only on a film's stitched master, not on a reference video. Set `REF` to a local video and `OUT` to a writable folder. Extract every half-second, then assemble contact sheets in time order. Quote paths and keep one source per folder so frame numbers do not mix.
 
 ```sh
 mkdir -p "$OUT/frames"

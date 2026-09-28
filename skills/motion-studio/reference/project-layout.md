@@ -14,10 +14,11 @@ films/<slug>/
   shots/<shot-id>/          one engine project per shot
   shots/_look/<look-id>/    one G1 look-test project per candidate; not a film shot
   stills/<gate>/            engine-rendered review frames; G1 look tests at stills/G1/<look-id>.png
-  stills/G2/sheet.png       G2 contact sheet built from the stills/G2/ frames; hashed with them
+  stills/G2/<format>/       board stills <shot-id>-f<frame>.png per format (16x9, 9x16, 1x1), from `motion-studio stills`
+  stills/G2/<format>/sheet.png   G2 contact sheet of those stills, with its tile index sheet.json; hashed with them
   stills/approved/<gate>-<hash8>/   immutable approval copies
-  animatic.mp4
-  renders/<format>/         render.json, master picture, safezone.json, handoff reports, delivery files (16x9, 9x16, 1x1)
+  animatic.mp4              G3 animatic from the frozen G2 stills and the track (`motion-studio animatic`)
+  renders/<format>/         render.json, master picture, safezone.json, handoff reports, contact sheets and transition strips, delivery files (16x9, 9x16, 1x1)
   renders/<format>/shots/   one clip (and still) per shot id, apart from pipeline outputs
   audio/                    track, voice and SFX sources; master mix; beats.detected.json (CLI grid proposal, seconds)
   critique/loop-<n>.md      each reviewer output and evidence references

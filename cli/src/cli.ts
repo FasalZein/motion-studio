@@ -17,6 +17,9 @@ import {clearSeamOutputs} from './seam.js';
 import {assets} from './assets.js';
 import {doctor} from './doctor.js';
 import {configuredProviders} from './providers.js';
+import {boardStills, captureStills} from './stills.js';
+import {animatic} from './animatic.js';
+import {clearSheetOutputs, sheet} from './sheet.js';
 import {outputsOf, type Outputs} from './outputs.js';
 
 const configuredTimeout = process.env.MOTION_STUDIO_CHILD_TIMEOUT_MS;
@@ -87,7 +90,7 @@ async function renderShot(shot:Shot, project:Project, format:Format, output:stri
     await verify(output,frameCount,fps,width,height);
   } finally {await rm(temp,{recursive:true,force:true});}
 }
-const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | assets <film-dir> <list|add|resolve> ...';
+const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>] | animatic <film-dir> | sheet <film-dir> [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | assets <film-dir> <list|add|resolve> ...';
 /** The formats a command works on: one named chosen format, or every chosen format when none is named. */
 function selectFormats(project:Project, named:string|undefined):Format[] {
   const formats = chosenFormats(project.storyboard.meta);
@@ -95,34 +98,28 @@ function selectFormats(project:Project, named:string|undefined):Format[] {
   if (!(formats as string[]).includes(named)) throw new CliError(`format ${named} is not a chosen format (${formats.join(', ')})`);
   return [named as Format];
 }
-/** Renders every shot clip (or one still) of one format into renders/<format>/shots/. */
-async function renderFormat(action:'render'|'still', project:Project, out:Outputs) {
+/** Renders every shot clip of one format into renders/<format>/shots/. */
+async function renderFormat(project:Project, out:Outputs) {
   const {format} = out;
   const {root:base, storyboard:{shots}} = project;
-  const selected = action === 'still' ? shots.filter(s => s.id === process.argv[4]) : shots;
-  if (!selected.length) throw new CliError('unknown shot');
-  const stillFrame = action === 'still' ? Number(process.argv[5] ?? '0') : 0;
-  if (!Number.isInteger(stillFrame) || stillFrame < 0 || (action === 'still' && stillFrame >= selected[0].endFrame-selected[0].startFrame)) throw new CliError('still frame outside shot');
   // The success marker must be absent throughout a rerender, even if old clips remain.
-  if (action === 'render') {
-    await rm(out.marker,{force:true});
-    await rm(out.master,{force:true});
-  }
+  await rm(out.marker,{force:true});
+  await rm(out.master,{force:true});
   const staging = await mkdtemp(join(base,'.motion-render-'));
   try {
-    for (const shot of selected) await renderShot(shot,project,format,join(staging,`${shot.id}.mkv`));
-    if (action === 'still') {
-      const shot = selected[0];
-      await command('ffmpeg',['-hide_banner','-loglevel','error','-y','-i',join(staging,`${shot.id}.mkv`),'-vf',`select=eq(n\\,${stillFrame})`,'-vsync','0','-frames:v','1',join(staging,`${shot.id}.png`)]);
-      await rm(join(staging,`${shot.id}.mkv`));
-    }
+    for (const shot of shots) await renderShot(shot,project,format,join(staging,`${shot.id}.mkv`));
     await mkdir(out.shots,{recursive:true});
-    for (const shot of selected) {
-      const [staged,target] = action === 'still' ? [`${shot.id}.png`,out.still(shot.id)] : [`${shot.id}.mkv`,out.clip(shot.id)];
-      await rename(join(staging,staged),target);
-    }
-    if (action === 'render') await writeFile(out.marker, JSON.stringify({format, shots:shots.map(s => ({id:s.id, startFrame:s.startFrame, endFrame:s.endFrame}))}));
+    for (const shot of shots) await rename(join(staging,`${shot.id}.mkv`),out.clip(shot.id));
+    await writeFile(out.marker, JSON.stringify({format, shots:shots.map(s => ({id:s.id, startFrame:s.startFrame, endFrame:s.endFrame}))}));
   } finally {await rm(staging,{recursive:true,force:true});}
+}
+/** Captures one shot-local frame of one shot (default 0) into renders/<format>/shots/<shot-id>.png. */
+async function stillFormat(project:Project, out:Outputs) {
+  const shot = project.storyboard.shots.find(s => s.id === process.argv[4]);
+  if (!shot) throw new CliError('unknown shot');
+  const frame = Number(process.argv[5] ?? '0');
+  if (!Number.isInteger(frame) || frame < 0 || frame >= shot.endFrame-shot.startFrame) throw new CliError('still frame outside shot');
+  await captureStills(project,shot,out.format,[{frame, output:out.still(shot.id)}],{command,verify});
 }
 async function stitchFormat(project:Project, out:Outputs) {
   const {storyboard:{shots, meta:{fps}}} = project;
@@ -150,7 +147,7 @@ async function main() {
     if (missingRequired) throw new CliError(`doctor: ${missingRequired} required tool${missingRequired === 1 ? '' : 's'} missing`);
     return;
   }
-  if (!['init','validate','status','gate','render','stitch','still','handoff','mix','safezone','beats','assets'].includes(action) || !target) throw new CliError(usage);
+  if (!['init','validate','status','gate','render','stitch','still','stills','animatic','sheet','handoff','mix','safezone','beats','assets'].includes(action) || !target) throw new CliError(usage);
   if (action === 'init') {
     console.log(`created ${await initProject(process.cwd(),target)}`);
     return;
@@ -228,6 +225,19 @@ async function main() {
     for (const out of outs) console.log(await mix(project,out,{command,verify}));
     return;
   }
+  if (action === 'stills') {
+    for (const line of await boardStills(project,process.argv.slice(4),{command,verify})) console.log(line);
+    return;
+  }
+  if (action === 'animatic') {
+    if (process.argv.length > 4) throw new CliError(usage);
+    for (const line of await animatic(project,{command,verify})) console.log(line);
+    return;
+  }
+  if (action === 'sheet') {
+    for (const format of selectFormats(project,process.argv[4])) console.log(await sheet(project,outputs(format),{command,verify}));
+    return;
+  }
   if (action === 'safezone') {
     const failures = await safezone(project,selectFormats(project,process.argv[4]),f => outputs(f).dir,{command,verify});
     if (failures) process.exitCode = 1;
@@ -237,8 +247,10 @@ async function main() {
   for (const format of formats) {
     const out = outputs(format);
     // Handoff and mix evidence describes one master; a new render or stitch makes it stale.
-    if (action === 'render' || action === 'stitch') await clearSeamOutputs(out.dir);
-    if (action === 'render' || action === 'still') await renderFormat(action,project,out);
+    // Sheets show one master too.
+    if (action === 'render' || action === 'stitch') {await clearSeamOutputs(out.dir); await clearSheetOutputs(out.dir);}
+    if (action === 'render') await renderFormat(project,out);
+    else if (action === 'still') {await stillFormat(project,out); console.log(`still ${format} ${process.argv[4]} frame ${process.argv[5] ?? '0'} -> ${out.still(process.argv[4])}`); continue;}
     else await stitchFormat(project,out);
     console.log(`${action} ${format} verified ${action === 'stitch' ? shots.at(-1)!.endFrame : shots.map(s=>s.endFrame-s.startFrame).join('+')} frames`);
   }
