@@ -17,8 +17,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "pretest": "npm run build && npm pack --silent",
-    "test": "npm run test:node && npm run test:bun",
+    "test": "npm run test:prepare && npm run test:node && npm run test:bun",
+    "test:prepare": "npm run build && npm pack --silent",
     "test:node": "node --experimental-strip-types --test test/cli.test.ts",
     "test:bun": "bun test test/cli.test.ts"
   },
