@@ -10,11 +10,11 @@
   "audio": {"track":"music-01", "grid":"corrected", "bpm":120, "beatFrames":[0,15,30,45,60,75,90,105], "downbeatFrames":[0,60], "dropFrames":[], "confidence":"high"},
   "voice": {"script":"audio/voice-script.txt", "tts":"voice-01", "wordTimings":"audio/word-times.json"},
   "shots": [
-    {"id":"s01", "startFrame":0, "endFrame":60, "engine":"hyperframes", "entrypoint":"shots/s01/index.html", "description":"Query becomes a search field", "camera":"custom:slow push", "entry":"cut", "exit":"cut", "assets":["music-01","logo-01"], "soundCues":[{"asset":"sfx-01","eventFrame":30,"peakOffsetFrames":0}], "stillFrames":[0,30,59], "protected":[{"id":"query","bounds":"shots/s01/protected.json","heldFrames":[15,45]}]},
-    {"id":"s02", "startFrame":60, "endFrame":120, "engine":"remotion", "entrypoint":"AtlasResult", "description":"Real results and claim", "camera":"custom:locked", "entry":"cut", "exit":"cut", "assets":["logo-01","ui-01"], "soundCues":[], "stillFrames":[0,30,59], "protected":[{"id":"claim","bounds":"shots/s02/protected.json","heldFrames":[20,45]}]}
+    {"id":"s01", "startFrame":0, "endFrame":60, "engine":"hyperframes", "entrypoint":"shots/s01/index.html", "description":"Query becomes a search field", "camera":"push-in", "entry":"cut", "exit":"cut", "assets":["music-01","logo-01"], "soundCues":[{"asset":"sfx-01","eventFrame":30,"peakOffsetFrames":0}], "stillFrames":[0,30,59], "protected":[{"id":"query","bounds":"shots/s01/protected.json","heldFrames":[15,45]}]},
+    {"id":"s02", "startFrame":60, "endFrame":120, "engine":"remotion", "entrypoint":"AtlasResult", "description":"Real results and claim", "camera":"locked-off", "transition":"straight-cut", "entry":"cut", "exit":"cut", "assets":["logo-01","ui-01"], "soundCues":[], "stillFrames":[0,30,59], "protected":[{"id":"claim","bounds":"shots/s02/protected.json","heldFrames":[20,45]}]}
   ],
   "gates": [
-    {"id":"G1", "state":"approved", "inputHashes":{"BRIEF.md":"<64 hex SHA-256 of the actual file>","stills/G1/hero.png":"<64 hex SHA-256 of the actual file>"}, "decision":"approved keynote minimal", "notes":[], "rounds":0},
+    {"id":"G1", "state":"approved", "inputHashes":{"BRIEF.md":"<64 hex SHA-256 of the actual file>","stills/G1/keynote-minimal.png":"<64 hex SHA-256 of the actual file>"}, "decision":"approved keynote minimal", "notes":[], "rounds":0},
     {"id":"G2", "state":"pending", "inputHashes":{}, "decision":null, "notes":[], "rounds":0},
     {"id":"G3", "state":"pending", "inputHashes":{}, "decision":null, "notes":[], "rounds":0},
     {"id":"G4", "state":"pending", "inputHashes":{}, "decision":null, "notes":[], "rounds":0},
