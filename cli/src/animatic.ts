@@ -8,8 +8,8 @@ import type {Tools} from './seam.js';
 
 /**
  * `animatic <film-dir>`: assembles the frozen G2 stills of the primary format on the real track into `animatic.mp4`
- * (G3 shows it). Each still holds from its shot-local frame until the next still of the shot; the exit still (the
- * shot's last frame) holds for that one frame. Every shot needs a still at its entry (0) and exit frame.
+ * (G3 shows it). Each frame shows the nearest still of its shot, switching at the midpoint between two consecutive
+ * stills. Every shot needs a still at its entry (0) and exit (last) frame.
  * Audio is `audio.track`, cut or padded with silence to the film length; without a track the animatic is silent.
  */
 export async function animatic(project:Project, tools:Tools):Promise<string[]> {
@@ -32,12 +32,14 @@ export async function animatic(project:Project, tools:Tools):Promise<string[]> {
   }
   if (missing.length) throw new CliError(`frozen G2 stills (${frozen}) miss ${missing.join(', ')}; render them with stills and approve G2 again`);
 
-  // One concat entry per film frame: the frozen still that holds on that frame.
+  // One concat entry per film frame: the nearest still of the shot. It switches at the midpoint between two
+  // consecutive stills (an exact midpoint frame shows the later still), so the entry still starts on the shot's
+  // first frame and the exit still holds the second half of the last interval up to the shot's last frame.
   const entries:string[] = [];
   for (const shot of shots) {
     const frames = byShot.get(shot.id)!.sort((a,b) => a-b).filter(f => f < shot.endFrame-shot.startFrame);
     for (let local=0, i=0; local<shot.endFrame-shot.startFrame; local++) {
-      while (i+1 < frames.length && frames[i+1] <= local) i++;
+      while (i+1 < frames.length && 2*local >= frames[i]+frames[i+1]) i++;
       entries.push(`file '${join(frozen,boardStillName(shot.id,frames[i])).replaceAll("'", "'\\''")}'`);
     }
   }

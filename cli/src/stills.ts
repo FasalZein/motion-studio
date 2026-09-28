@@ -1,6 +1,5 @@
 import {mkdir, mkdtemp, readdir, rename, rm, writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
-import {tmpdir} from 'node:os';
 
 import {chosenFormats, CliError, formatDir, layoutOf, type Format, type Project, type Shot} from './project.js';
 import {framePngs, remotionBundle, renderHyperframesFrames, renderRemotionStills} from './engines.js';
@@ -34,7 +33,9 @@ function checkFrames(shot:Shot, frames:number[]) {
 export async function captureStills(project:Project, shot:Shot, format:Format, requests:{frame:number; output:string}[], tools:Tools) {
   checkFrames(shot,requests.map(r => r.frame));
   const {width,height} = layoutOf(project.storyboard,format).canvas;
-  const temp = await mkdtemp(join(tmpdir(),'motion-still-'));
+  // Inside the film, not the OS temp folder: the final rename must stay on one file system (a tmpfs /tmp or an
+  // external film drive would fail with EXDEV). Hidden folders are never gate inputs.
+  const temp = await mkdtemp(join(project.root,'.motion-still-'));
   try {
     const raw = requests.map((r,i) => ({...r, raw:join(temp,`raw-${i}.png`)}));
     if (shot.engine === 'remotion') {

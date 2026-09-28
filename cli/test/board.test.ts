@@ -73,6 +73,20 @@ test('stills render named shots at shot-local frames in both engines and match t
     expect(diff(rgb(join(g2,'remotion-f003.png')),rgb(remotionClip,3))).toBeLessThan(PARITY);
     expect(JSON.parse(await readFile(join(g2,'sheet.json'),'utf8')).tiles).toEqual(['remotion-f001.png','remotion-f003.png','hyperframes-f000.png','hyperframes-f005.png']);
 
+    // Capture temp files stay inside the film folder, so the final rename never crosses file systems (EXDEV with
+    // a tmpfs /tmp). A PATH shim logs every ffmpeg argument; each PNG ffmpeg reads or writes must be in the film.
+    const shimDir = await mkdtemp(join(tmpdir(),'motion-studio-board-shim-'));
+    try {
+      const log = join(shimDir,'ffmpeg.log');
+      const realFfmpeg = spawnSync('which',['ffmpeg'],{encoding:'utf8'}).stdout.trim();
+      await writeFile(join(shimDir,'ffmpeg'),`#!/bin/sh\nfor a in "$@"; do printf '%s\\n' "$a" >> '${log}'; done\nexec '${realFfmpeg}' "$@"\n`,{mode:0o755});
+      const shimmed = spawnSync('node',[cli,'still',dir,'remotion','2'],{encoding:'utf8',timeout:180000,env:{...process.env,PATH:`${shimDir}:${process.env.PATH}`}});
+      expect(shimmed.status).toBe(0);
+      const pngs = (await readFile(log,'utf8')).split('\n').filter(a => a.endsWith('.png'));
+      expect(pngs.length).toBeGreaterThan(0);
+      for (const png of pngs) expect(png.startsWith(dir+'/')).toBe(true);
+    } finally {await rm(shimDir,{recursive:true,force:true});}
+
     // `still` captures one frame directly into renders/<format>/shots/.
     ok('node','still',dir,'hyperframes','4');
     const hyperClip = join(dir,'renders','16x9','shots','hyperframes.mkv');
@@ -106,7 +120,7 @@ test('stills reframe every chosen format and take the requested frame of a movin
 });
 
 // Board stills with one distinct solid color each, so every animatic frame shows which still it holds.
-const colors:Record<string,string> = {'remotion-f000':'0xE02020','remotion-f005':'0x20E020','hyperframes-f000':'0x2020E0','hyperframes-f005':'0xE0E020'};
+const colors:Record<string,string> = {'remotion-f000':'0xE02020','remotion-f002':'0xE020E0','remotion-f005':'0x20E020','hyperframes-f000':'0x2020E0','hyperframes-f005':'0xE0E020'};
 function paint(file:string, color:string) {
   const made = spawnSync('ffmpeg',['-v','error','-y','-f','lavfi','-i',`color=c=${color}:s=320x180`,'-frames:v','1','-pix_fmt','rgb24',file],{encoding:'utf8',timeout:15000});
   expect(made.status).toBe(0);
@@ -118,7 +132,7 @@ function held(pixels:Uint8Array):[string,number] {
   return Object.entries(colors).map(([name,color]) => [name,Math.max(...solid(color).map((v,c) => Math.abs(v-mean[c])))] as [string,number]).sort((a,b) => a[1]-b[1])[0];
 }
 
-test('animatic holds the frozen G2 stills on the real track, with each shot entry and exit frame', async () => {
+test('animatic shows the nearest frozen G2 still on the real track, from each shot entry to its exit frame', async () => {
   const dir = await copyFilm();
   try {
     const g2 = join(dir,'stills','G2','16x9');
@@ -146,9 +160,15 @@ test('animatic holds the frozen G2 stills on the real track, with each shot entr
     // The track is the fixture's music bed, not silence.
     const peak = spawnSync('ffmpeg',['-hide_banner','-nostats','-i',video,'-map','0:a:0','-af','astats=measure_overall=Peak_level:measure_perchannel=none','-f','null','-'],{encoding:'utf8',timeout:15000}).stderr;
     expect(Number(/Peak level dB:\s*(-?[\d.]+|-inf)/.exec(peak)?.[1])).toBeGreaterThan(-40);
-    // Stills hold until the next still of the shot; each shot's exit still shows on its last frame (5 and 11).
-    const expected = ['remotion-f000','remotion-f000','remotion-f000','remotion-f000','remotion-f000','remotion-f005',
-      'hyperframes-f000','hyperframes-f000','hyperframes-f000','hyperframes-f000','hyperframes-f000','hyperframes-f005'];
+    // Each frame shows the nearest still of its shot; an exact midpoint shows the later still. Remotion has stills
+    // 0, 2 and 5 (frame 1 is the midpoint of 0 and 2), HyperFrames 0 and 5; shots start at film frames 0 and 6.
+    const stillsOf:Record<string,number[]> = {remotion:[0,2,5], hyperframes:[0,5]};
+    const expected = [['remotion',0,6],['hyperframes',6,12]].flatMap(([id,start,end]) => Array.from({length:(end as number)-(start as number)},(_,local) => {
+      const nearest = stillsOf[id as string].reduce((best,f) => Math.abs(local-f) <= Math.abs(local-best) ? f : best);
+      return `${id}-f${String(nearest).padStart(3,'0')}`;
+    }));
+    // The exit stills hold more than their last frame: the pacing of the cut is visible.
+    expect(expected.filter(n => n.endsWith('f005')).length).toBe(5);
     const shown = expected.map((_,frame) => held(rgb(video,frame)));
     expect(shown.map(s => s[0])).toEqual(expected);
     for (const [,distance] of shown) expect(distance).toBeLessThan(8);
