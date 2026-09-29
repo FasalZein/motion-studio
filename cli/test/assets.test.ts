@@ -158,6 +158,28 @@ test('assets add records website, code and data files and lists them with rights
   });
 });
 
+test('assets add records a site or screen capture and a file reused from another film', async () => {
+  for (const runtime of runtimes) await withFilm(async (dir,film) => {
+    const capture = join(dir,'panel.png');
+    await writeFile(capture,'capture-bytes');
+    const reused = join(dir,'logo.svg');
+    await writeFile(reused,'<svg id="reused"/>');
+    const common = ['--license','unknown','--shot','intro'];
+    const addedCapture = run(runtime,['assets',film,'add','panel','--file',capture,'--type','screenshot','--source-kind','capture','--source','https://www.raycast.com/','--evidence','captured 2026-09-29 with hyperframes capture',...common]);
+    expect(addedCapture.stderr).toBe('');
+    expect(addedCapture.status).toBe(0);
+    const addedReuse = run(runtime,['assets',film,'add','logo','--file',reused,'--type','logo','--source-kind','reuse','--source','films/earlier/ledger.json#logo','--evidence','copied from earlier film entry logo',...common]);
+    expect(addedReuse.stderr).toBe('');
+    expect(addedReuse.status).toBe(0);
+    const ledger = JSON.parse(await readFile(join(film,'ledger.json'),'utf8'));
+    expect(ledger.assets.map((a:{id:string,sourceKind:string,sourceUrlOrGenerator:string}) => [a.id,a.sourceKind,a.sourceUrlOrGenerator])).toEqual([
+      ['panel','capture','https://www.raycast.com/'],
+      ['logo','reuse','films/earlier/ledger.json#logo'],
+    ]);
+    expect(run(runtime,['validate',film]).status).toBe(0);
+  });
+});
+
 test('assets add refuses bad entries without changing the ledger or leaving a file', async () => {
   for (const runtime of runtimes) await withFilm(async (dir,film) => {
     const outside = join(dir,'logo.svg');
@@ -169,7 +191,7 @@ test('assets add refuses bad entries without changing the ledger or leaving a fi
       [['add','logo',...base,'--license','unknown'],'error: assets: id logo is already in ledger.json'],
       [['add','logo-2',...base,'--license','known'],'error: ledger.json /assets/1/license: a known license needs a non-empty name'],
       [['add','logo-3',...base,'--license','public'],'error: assets: --license must be one of known, unknown, restricted'],
-      [['add','logo-4',...base.slice(0,4),'--source-kind','scraped','--source','x','--evidence','x','--license','unknown'],'error: assets: --source-kind must be one of heygen, website, stock, code, ai-image, data, video-model'],
+      [['add','logo-4',...base.slice(0,4),'--source-kind','scraped','--source','x','--evidence','x','--license','unknown'],'error: assets: --source-kind must be one of heygen, website, capture, reuse, stock, code, ai-image, data, video-model'],
       [['add','logo-5',...base.filter(a => a !== '--evidence' && a !== 'press kit page'),'--license','unknown'],'error: assets: --evidence is required'],
       [['add','bad id',...base,'--license','unknown'],'error: ledger.json /assets/1/id: must match pattern'],
       [['add','logo-6','--file',join(dir,'missing.svg'),...base.slice(2),'--license','unknown'],`error: assets: file ${join(dir,'missing.svg')} not found`],

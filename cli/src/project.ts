@@ -47,7 +47,7 @@ export type Critique = {
   worstIssues:{shot:string; frame:number; term:string; issue:string; repair:string}[];
   stillMatches:{shot:string; frame:number; status:'match'|'drift'|'departure'; reason:string}[];
 };
-export const sourceKinds = ['heygen','website','stock','code','ai-image','data','video-model'] as const;
+export const sourceKinds = ['heygen','website','capture','reuse','stock','code','ai-image','data','video-model'] as const;
 export type SourceKind = typeof sourceKinds[number];
 export const licenseStatuses = ['known','unknown','restricted'] as const;
 export type LedgerAsset = {

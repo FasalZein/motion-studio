@@ -14,7 +14,7 @@
         "properties": {
           "id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
           "type": {"type": "string", "minLength": 1},
-          "sourceKind": {"enum": ["heygen", "website", "stock", "code", "ai-image", "data", "video-model"]},
+          "sourceKind": {"enum": ["heygen", "website", "capture", "reuse", "stock", "code", "ai-image", "data", "video-model"]},
           "sourceUrlOrGenerator": {"type": "string", "minLength": 1},
           "providerAssetId": {"type": ["string", "null"]},
           "license": {
