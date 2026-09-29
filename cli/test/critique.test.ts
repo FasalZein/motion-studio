@@ -4,6 +4,7 @@ import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
+import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 
 // Black-box checks of the deterministic parts of motion-critique: the evidence packet (packet), the dimension 7 rule
@@ -33,8 +34,19 @@ function draw(f:number, g = f):Buffer {
 // then the box moves again. Liveness samples at 12 fps, so the span it locates lies within one sample (2.5 frames) of these.
 const HOLD_FRAMES = 66, HOLD_FIRST = 28, HOLD_LAST = 51;
 const drawHold = (f:number) => draw(f,f <= HOLD_FIRST ? f : f <= HOLD_LAST ? HOLD_FIRST : f-(HOLD_LAST-HOLD_FIRST));
+/**
+ * Runs ffmpeg with raw input from a temp file instead of stdin: under load, spawnSync with a large `input` hung
+ * twice with ffmpeg waiting on stdin and the test process idle (full suite, 2026-09-29).
+ */
+function ffmpegWithInput(args:string[], input:Buffer) {
+  const file = join(mkdtempSync(join(tmpdir(),'motion-studio-raw-')),'input.raw');
+  writeFileSync(file,input);
+  try {return spawnSync('ffmpeg',args.map((a,i) => a === '-' && args[i-1] === '-i' ? file : a),{maxBuffer:1<<30});}
+  finally {rmSync(dirname(file),{recursive:true,force:true});}
+}
 function ffmpeg(args:string[], input?:Buffer) {
-  const r = spawnSync('ffmpeg',['-hide_banner','-loglevel','error','-y',...args],{input,maxBuffer:1<<28});
+  const full = ['-hide_banner','-loglevel','error','-y',...args];
+  const r = input ? ffmpegWithInput(full,input) : spawnSync('ffmpeg',full,{maxBuffer:1<<28});
   if (r.status !== 0) throw Error(`ffmpeg failed: ${r.stderr}`);
   return r.stdout;
 }

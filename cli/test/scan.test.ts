@@ -4,6 +4,7 @@ import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {cp, mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
+import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 
 // Black-box scan fixtures (spec seam 1). Each video is drawn frame by frame in this file and encoded with ffmpeg into
@@ -46,10 +47,20 @@ function draw({bg,box,x,blur}:Scene):Buffer {
   return frame;
 }
 const blend = (a:Buffer, b:Buffer, weight:number) => Buffer.from(a.map((v,i) => Math.round(v*weight + b[i]*(1-weight))));
+/**
+ * Runs ffmpeg with raw input from a temp file instead of stdin: under load, spawnSync with a large `input` hung
+ * twice with ffmpeg waiting on stdin and the test process idle (full suite, 2026-09-29).
+ */
+function ffmpegWithInput(args:string[], input:Buffer) {
+  const file = join(mkdtempSync(join(tmpdir(),'motion-studio-raw-')),'input.raw');
+  writeFileSync(file,input);
+  try {return spawnSync('ffmpeg',args.map((a,i) => a === '-' && args[i-1] === '-i' ? file : a),{maxBuffer:1<<30});}
+  finally {rmSync(dirname(file),{recursive:true,force:true});}
+}
 /** Encodes RGB frames into the master format: FFV1, yuv444p, BT.709 tags, 30 fps. */
 async function encode(frames:Buffer[], file:string) {
   await mkdir(dirname(file),{recursive:true});
-  const result = spawnSync('ffmpeg',['-hide_banner','-loglevel','error','-y','-f','rawvideo','-pix_fmt','rgb24','-s',`${W}x${H}`,'-r','30','-i','-','-vf','scale=out_color_matrix=bt709,format=yuv444p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709','-c:v','ffv1','-level','3','-colorspace','bt709','-color_trc','bt709','-color_primaries','bt709',file],{input:Buffer.concat(frames),maxBuffer:1<<28});
+  const result = ffmpegWithInput(['-hide_banner','-loglevel','error','-y','-f','rawvideo','-pix_fmt','rgb24','-s',`${W}x${H}`,'-r','30','-i','-','-vf','scale=out_color_matrix=bt709,format=yuv444p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709','-c:v','ffv1','-level','3','-colorspace','bt709','-color_trc','bt709','-color_primaries','bt709',file],Buffer.concat(frames));
   if (result.status !== 0) throw Error(`ffmpeg failed: ${result.stderr}`);
 }
 /** A film of two shots cut on the beat at frame 20, with a stitched master built from the given frames. */
