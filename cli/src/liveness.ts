@@ -214,7 +214,7 @@ export async function measureLiveness(tools:Tools, video:string, label:string, f
   };
 }
 
-async function sha256(file:string):Promise<string> {
+export async function sha256(file:string):Promise<string> {
   const hash = createHash('sha256');
   for await (const chunk of createReadStream(file)) hash.update(chunk);
   return hash.digest('hex');

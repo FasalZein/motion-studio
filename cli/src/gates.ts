@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import AjvModule from 'ajv';
 import {CliError, gateIds, writeStoryboard, type Gate, type GateId, type GateState, type Project, type Waivable} from './project.js';
 import {livenessRefusals} from './liveness.js';
+import {lookTestRefusals} from './looktest.js';
 
 /** Note rounds allowed per gate before the user must accept, rescope or stop. */
 export const noteRounds = 3;
@@ -223,6 +224,10 @@ export async function recordGate(project:Project, id:GateId, decision:Decision, 
   if (decision !== 'approve' && !notes.length) throw new CliError(`${decision} needs at least one --note`);
   if (waive && (id !== 'G4' || decision !== 'approve')) throw new CliError(`--waive ${waive} applies only to G4 approve`);
   if (waive && !notes.length) throw new CliError(`--waive ${waive} needs a --note with the reason`);
+  if (id === 'G1' && decision === 'approve') {
+    const refusals = await lookTestRefusals(project.root);
+    if (refusals.length) throw new CliError(`cannot approve G1: ${refusals.join('; ')}; run motion-studio looktest ${project.root} <look-id> for each look test`);
+  }
   if (id === 'G4' && decision === 'approve' && !waive) {
     const refusals = await livenessRefusals(project);
     if (refusals.length) throw new CliError(`cannot approve G4: ${refusals.join('; ')}; run motion-studio liveness ${project.root}, or approve with --waive liveness --note <reason>`);

@@ -1,9 +1,9 @@
-import {mkdir, mkdtemp, readFile, rename, rm, stat, writeFile} from 'node:fs/promises';
+import {mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile} from 'node:fs/promises';
 import {join, relative, resolve} from 'node:path';
 
 import {CliError, layoutOf, type Engine, type Format, type Project, type Shot} from './project.js';
 import {shotDeterminismErrors} from './determinism.js';
-import {measureLiveness, printLiveness} from './liveness.js';
+import {measureLiveness, printLiveness, sha256} from './liveness.js';
 import type {Tools} from './seam.js';
 
 /**
@@ -91,4 +91,25 @@ export async function looktest(project:Project, args:string[], tools:Tools, rend
     console.log(`looktest ${lookId}: ${spec.engine} ${format} ${spec.frames} frames -> ${label}, poster frame ${spec.posterFrame} -> ${relative(root,outputs.poster)}`);
     return true;
   } finally {await rm(stage,{recursive:true,force:true});}
+}
+
+/**
+ * Why G1 approval must wait (D77 follow-up): each clip `<name>.mkv` in `stills/G1/` or a subfolder needs the report
+ * `<name>.liveness.json` beside it with `pass: true` and the clip's SHA-256, the pair `looktest` writes. A clip copied in
+ * by hand, a report of an older render or a failing report is refused. Hidden files and folders are skipped, as gate
+ * hashing skips them.
+ */
+export async function lookTestRefusals(root:string):Promise<string[]> {
+  const names = await readdir(join(root,'stills','G1'),{recursive:true}).catch(() => [] as string[]);
+  const refusals:string[] = [];
+  for (const name of names.filter(n => n.endsWith('.mkv') && !n.split('/').some(part => part.startsWith('.'))).sort()) {
+    const clip = `stills/G1/${name}`, report = clip.replace(/\.mkv$/,'.liveness.json');
+    if (!(await stat(join(root,clip))).isFile()) continue;
+    let parsed:{pass?:unknown; sha256?:unknown}|null;
+    try {parsed = JSON.parse(await readFile(join(root,report),'utf8'));}
+    catch {refusals.push(`${clip} has no readable look-test report ${report}`); continue;}
+    if (parsed?.sha256 !== await sha256(join(root,clip))) refusals.push(`${report} describes another clip than ${clip}`);
+    else if (parsed?.pass !== true) refusals.push(`${report} does not pass`);
+  }
+  return refusals;
 }
