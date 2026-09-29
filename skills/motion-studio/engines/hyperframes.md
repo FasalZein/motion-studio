@@ -19,6 +19,10 @@ This contract owns the shot. Work only inside `shots/<id>/`, or `shots/_look/<lo
 
 `motion-studio render` renders every chosen format. It sets the root's `data-width` and `data-height` to the format canvas in a staged copy of the shot folder and passes the layout as variables: `format`, `canvasWidth`, `canvasHeight`, `safeX`, `safeY`, `safeWidth`, `safeHeight`, `overlay` (empty when none). Declare all eight in `data-composition-variables` on `<html>` with the primary layout as defaults. Read them once with `window.__hyperframes.getVariables()` or use `var(--safeX)` and the other CSS properties. Place every held text, logo and key UI element inside the safe rectangle; let text wrap to the safe width. Reframe for each format; never assume 16:9.
 
+## Handoff seams
+
+At a seam declared `handoff`, motion continues through the seam (D63). Shot A's motion continues one frame past its end, and that frame equals shot B's first frame; B then moves on at the same velocity. `motion-studio handoff` renders that frame: it sets the staged root's `data-duration` one frame longer (`(length + 1) / fps`) and keeps the last rendered frame. Keep every tween, seek function and clip that carries an element across the seam running past the shot's end: a clip whose `data-start` + `data-duration` ends at the shot end is hidden in that frame, so give it a `data-duration` that reaches past the end. When this shot is B, its frame 0 is the pose and motion step the previous shot shows one frame past its end.
+
 ## Fonts
 
 Load pinned local font files with `@font-face` (a path relative to the shot, for example `url('Inter.ttf')`), and build the timeline inside `document.fonts.ready`. In each still, check the font family and the actual glyph shapes: a fallback font shows as different letterforms and line breaks.

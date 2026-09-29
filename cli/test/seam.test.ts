@@ -55,10 +55,16 @@ for (const runtime of ['bun','node']) test(`${runtime}: real two-engine fixture 
     const output = join(dir,'renders','16x9');
     expect(run(runtime,'render',dir).status).toBe(0);
     expect(run(runtime,'stitch',dir).status).toBe(0);
-    // This film declares only a cut, so there is no handoff to check.
+    // This film declares only a cut, so there is no handoff to check: one line, success, no report.
     const none = run(runtime,'handoff',dir);
-    expect(none.status).toBe(1);
-    expect(none.stderr).toContain('no handoff seams declared');
+    expect(none.stderr).toBe('');
+    expect(none.status).toBe(0);
+    expect(none.stdout).toBe('no handoff seams; nothing to check\n');
+    // Naming the declared cut is refused, and no report is written.
+    const cut = run(runtime,'handoff',dir,'remotion','hyperframes');
+    expect(cut.status).toBe(1);
+    expect(cut.stderr).toContain('seam remotion -> hyperframes is a declared cut');
+    expect((await readdir(output)).filter(f => f.startsWith('handoff-'))).toEqual([]);
 
     const mixed = run(runtime,'mix',dir);
     expect(mixed.stderr).toBe('');
@@ -89,33 +95,36 @@ for (const runtime of ['bun','node']) test(`${runtime}: real two-engine fixture 
   } finally {await rm(dir,{recursive:true,force:true});}
 }, 360000);
 
-for (const runtime of ['bun','node']) test(`${runtime}: declared handoffs: the matching one passes, the intentional mismatch fails, and master and color defects are caught`, async () => {
+// fixtures/handoff: a block moves right at 5 px per film frame through two handoff seams, Remotion (slide) to
+// HyperFrames (glide) to Remotion (land), in 16:9 and 9:16. Each shot places it at x = 12 + 5 * (START + local frame),
+// where START is the shot's first film frame, so each shot's frame one past its end is the next shot's first frame.
+for (const runtime of ['bun','node']) test(`${runtime}: handoff through motion: constant velocity passes in every format; a stop, a pose mismatch and master and color defects fail`, async () => {
   const dir = await copyFilm('handoff');
   try {
     const output = join(dir,'renders','16x9');
+    const folders = ['16x9','9x16'];
+    const seams = [['slide','glide',6],['glide','land',12]] as const;
     expect(run(runtime,'render',dir).status).toBe(0);
     expect(run(runtime,'stitch',dir).status).toBe(0);
     const all = run(runtime,'handoff',dir);
-    expect(all.status).toBe(1);
-    expect(all.stdout).toContain('handoff verified slide -> title');
-    expect(all.stderr).toContain('handoff mismatch title -> drift');
-    const matched = await json(join(output,'handoff-slide-title.json'));
-    expect(matched).toMatchObject({cutFrame:6,declared:true,status:'match',strip:{frames:[5,6],identicalToShots:[true,true]}});
-    const mismatched = await json(join(output,'handoff-title-drift.json'));
-    expect(mismatched).toMatchObject({cutFrame:12,declared:true,status:'mismatch',strip:{identicalToShots:[true,true]}});
-    expect(mismatched.pair.structure).toBeGreaterThan(mismatched.thresholds.structure);
-    expect(await exists(join(output,'handoff-title-drift.png'))).toBe(true);
-    const pair = run(runtime,'handoff',dir,'slide','title');
-    expect(pair.stderr).toBe('');
-    expect(pair.status).toBe(0);
+    expect(all.stderr).toBe('');
+    expect(all.status).toBe(0);
+    for (const format of ['16:9','9:16']) for (const [a,b] of seams) expect(all.stdout).toContain(`handoff verified ${a} -> ${b} (${format})`);
+    for (const folder of folders) for (const [a,b,cut] of seams) {
+      const report = await json(join(dir,'renders',folder,`handoff-${a}-${b}.json`));
+      // Shot A's frame 6 is one past its last frame 5; it is compared with shot B's frame 0.
+      expect(report).toMatchObject({from:a,to:b,cutFrame:cut,status:'match',pair:{frames:{from:6,to:0}},strip:{frames:[cut-1,cut],identicalToShots:[true,true]}});
+      expect(await exists(join(dir,'renders',folder,`handoff-${a}-${b}.png`))).toBe(true);
+    }
+    const matched = await json(join(output,'handoff-slide-glide.json'));
 
     // Encoded color jump: re-encode the master with a red shift of 3 levels from the seam on. The shot clips are unchanged.
     // The shift is below both pair limits, so only the exact master-to-shot comparison catches it.
     await redShift(join(output,'master.mkv'),3,6,join(dir,'jump.mkv'));
-    const jumped = run(runtime,'handoff',dir,'slide','title');
+    const jumped = run(runtime,'handoff',dir,'slide','glide','16:9');
     expect(jumped.status).toBe(1);
-    expect(jumped.stderr).toContain('encoded color jump in master strip at frame 6');
-    const jumpReport = await json(join(output,'handoff-slide-title.json'));
+    expect(jumped.stderr).toContain('encoded color jump in master strip at frame 6 (16:9)');
+    const jumpReport = await json(join(output,'handoff-slide-glide.json'));
     expect(jumpReport.status).toBe('encoded-color-jump');
     expect(jumpReport.pair).toEqual(matched.pair);
     expect(jumpReport.strip.identicalToShots).toEqual([true,false]);
@@ -125,24 +134,44 @@ for (const runtime of ['bun','node']) test(`${runtime}: declared handoffs: the m
     // A run that fails before measuring leaves no report from the earlier runs.
     const marker = await readFile(join(output,'render.json'));
     await rm(join(output,'render.json'));
-    const unrendered = run(runtime,'handoff',dir);
+    const unrendered = run(runtime,'handoff',dir,'16:9');
     expect(unrendered.status).toBe(1);
     expect(unrendered.stderr).toContain('successful render and stitch required');
     expect((await readdir(output)).filter(f => f.startsWith('handoff-'))).toEqual([]);
 
-    // Color-only mismatch: the title shot's red channel is 24 levels higher; layout is unchanged.
+    // Color-only mismatch: the glide shot's red channel is 24 levels higher; layout and motion are unchanged.
     await writeFile(join(output,'render.json'),marker);
-    await redShift(join(output,'shots','title.mkv'),24,0,join(dir,'red.mkv'));
-    expect(run(runtime,'stitch',dir).status).toBe(0);
-    const recolored = run(runtime,'handoff',dir,'slide','title');
+    await redShift(join(output,'shots','glide.mkv'),24,0,join(dir,'red.mkv'));
+    expect(run(runtime,'stitch',dir,'16:9').status).toBe(0);
+    const recolored = run(runtime,'handoff',dir,'slide','glide','16:9');
     expect(recolored.status).toBe(1);
-    expect(recolored.stderr).toContain('handoff mismatch slide -> title');
-    const colorReport = await json(join(output,'handoff-slide-title.json'));
+    expect(recolored.stderr).toContain('handoff mismatch slide -> glide (16:9)');
+    const colorReport = await json(join(output,'handoff-slide-glide.json'));
     expect(colorReport.pair.structure).toBeLessThanOrEqual(colorReport.thresholds.structure);
     // 24 of 255 levels in one channel is a mean color change of about 0.094.
     expect(Math.abs(colorReport.pair.color-24/255)).toBeLessThan(0.01);
+
+    // A stop at the seam: glide starts where slide's last frame is (START 5), while slide still moves. land continues
+    // glide's move (START 11), so x carries across the second seam, but land's mover is 40 px higher: a pose mismatch.
+    const glide = join(dir,'shots','glide','index.html'), land = join(dir,'shots','land','src','index.tsx');
+    const glideSource = await readFile(glide,'utf8'), landSource = await readFile(land,'utf8');
+    expect(glideSource).toContain('const START = 6,');
+    expect(landSource).toContain('const START = 12;');
+    expect(landSource).toContain('layout.canvas.height / 2 - 12,');
+    await writeFile(glide,glideSource.replace('const START = 6,','const START = 5,'));
+    await writeFile(land,landSource.replace('const START = 12;','const START = 11;').replace('layout.canvas.height / 2 - 12,','layout.canvas.height / 2 - 52,'));
+    expect(run(runtime,'render',dir).status).toBe(0);
+    expect(run(runtime,'stitch',dir).status).toBe(0);
+    const stopped = run(runtime,'handoff',dir);
+    expect(stopped.status).toBe(1);
+    for (const format of ['16:9','9:16']) for (const [a,b] of seams) expect(stopped.stderr).toContain(`handoff mismatch ${a} -> ${b} (${format})`);
+    for (const folder of folders) for (const [a,b] of seams) {
+      const report = await json(join(dir,'renders',folder,`handoff-${a}-${b}.json`));
+      expect(report.status).toBe('mismatch');
+      expect(report.pair.structure).toBeGreaterThan(report.thresholds.structure);
+    }
   } finally {await rm(dir,{recursive:true,force:true});}
-}, 360000);
+}, 600000);
 
 const sha256 = async (file:string) => createHash('sha256').update(await readFile(file)).digest('hex');
 type Cue = {asset:string; eventFrame:number; peakOffsetFrames:number; gainDb?:number};
@@ -270,7 +299,7 @@ test('mix and handoff reject invalid requests', async () => {
     expectFailure(run('node','handoff',dir,'a'),'usage: motion-studio handoff');
     await rm(join(output,'render.json'));
     expectFailure(mix(),'successful render and stitch required');
-    expectFailure(run('node','handoff',dir,'a','b'),'successful render and stitch required');
+    expectFailure(run('node','handoff',dir,'a','b'),'seam a -> b is a declared cut');
   } finally {await rm(dir,{recursive:true,force:true});}
 }, 60000);
 
@@ -320,7 +349,7 @@ for (const fps of [24,25,30,60]) test(`stitch keeps one global frame clock for f
 
 // Shot ids `master` and `final` are legal and name pipeline outputs; each format renders at its own canvas,
 // so handoff and mix run on every chosen format.
-for (const runtime of ['bun','node']) test(`${runtime}: shots named master and final render, stitch, hand off and mix in two formats`, async () => {
+for (const runtime of ['bun','node']) test(`${runtime}: shots named master and final render, stitch and mix in two formats; a handoff check on their cut is refused`, async () => {
   const dir = await copyFilm('two-engine');
   try {
     const rename = {remotion:'master',hyperframes:'final'} as const;
@@ -362,11 +391,11 @@ for (const runtime of ['bun','node']) test(`${runtime}: shots named master and f
       master.forEach((f,i) => expect(f.equals(i < 6 ? shotMaster[i] : shotFinal[i-6])).toBe(true));
     }
 
-    // The fixture's seam is a cut between different pictures, so a forced handoff check fails, but in both formats.
+    // The fixture's seam is a declared cut, so naming it for a handoff check is refused once, in no format.
     const handed = run(runtime,'handoff',dir,'master','final');
     expect(handed.status).toBe(1);
-    for (const format of ['16:9','9:16']) expect(handed.stderr).toContain(`handoff mismatch master -> final (${format})`);
-    for (const folder of Object.keys(size)) expect(await json(join(dir,'renders',folder,'handoff-master-final.json'))).toMatchObject({from:'master',to:'final',cutFrame:6,status:'mismatch'});
+    expect(handed.stderr).toBe('error: seam master -> final is a declared cut, not a handoff; handoff checks only seams declared exit: handoff\n');
+    for (const folder of Object.keys(size)) expect(await exists(join(dir,'renders',folder,'handoff-master-final.json'))).toBe(false);
 
     const mixed = run(runtime,'mix',dir);
     expect(mixed.stderr).toBe('');

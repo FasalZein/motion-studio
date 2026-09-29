@@ -4,7 +4,7 @@ import {useEffect, useState} from 'react';
 
 // The mover travels right at a constant SPEED px per film frame: left = 12 + SPEED * (START + local frame).
 // START is the shot's first film frame, so the frame one past the end is the next shot's first pose.
-const START = 0;
+const START = 12;
 const SPEED = 5;
 type Layout = {layout: {canvas: {width: number; height: number}}};
 const Mover = ({layout}: Layout) => {

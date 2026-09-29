@@ -10,7 +10,7 @@ import {framePngs, remotionBundle, renderHyperframesFrames, renderRemotionFrames
 import {safezone, safezoneArgs} from './safezone.js';
 import {statusLines} from './status.js';
 import {decisions, gateViews, recordGate} from './gates.js';
-import {handoff} from './handoff.js';
+import {handoffFilm} from './handoff.js';
 import {mix, prepareMix} from './mix.js';
 import {beats} from './beats.js';
 import {clearSeamOutputs} from './seam.js';
@@ -253,13 +253,7 @@ async function main() {
     // A trailing argument that is not a shot id names the format: handoff <dir> [<a> <b>] [format].
     const args = process.argv.slice(4);
     const named = args.length % 2 === 1 && !shots.some(s => s.id === args.at(-1)) ? args.pop() : undefined;
-    // Each format renders at its own canvas, so a seam can pass in one format and fail in another: check every format.
-    const failures:string[] = [];
-    for (const format of selectFormats(project,named)) {
-      try {await handoff(project,outputs(format),args,{command,verify});}
-      catch (e) {if (!(e instanceof CliError)) throw e; failures.push(e.message);}
-    }
-    if (failures.length) throw new CliError(failures.join('\nerror: '));
+    for (const line of await handoffFilm(project,selectFormats(project,named).map(outputs),args,{command,verify})) console.log(line);
     return;
   }
   if (action === 'mix') {

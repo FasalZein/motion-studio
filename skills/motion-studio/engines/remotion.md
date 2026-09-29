@@ -18,6 +18,10 @@ This contract owns the shot. Work only inside `shots/<id>/`, or `shots/_look/<lo
 
 `motion-studio render` renders every chosen format and passes the input props `{layout:{format, canvas:{width,height}, safe:{x,y,width,height}, overlay}}` (`overlay` is a preset name or `null`). Give the composition `defaultProps` with the primary layout and set its size from the props: `calculateMetadata={({props}) => ({width: props.layout.canvas.width, height: props.layout.canvas.height})}`. The CLI fails when the size, fps or length differs from the storyboard. Place every held text, logo and key UI element inside `layout.safe`; let text wrap to the safe width. Reframe for each format; never assume 16:9.
 
+## Handoff seams
+
+At a seam declared `handoff`, motion continues through the seam (D63). Shot A's motion continues one frame past its end, and that frame equals shot B's first frame; B then moves on at the same velocity. `motion-studio handoff` renders that frame: it passes the selected composition to `renderStill` with `durationInFrames` one larger and renders frame `durationInFrames`, with the same component and props. Drive every element that carries across the seam from `useCurrentFrame()` so it keeps moving at that frame: its `interpolate()` extrapolates or its range reaches past the end, and its `<Sequence>` lasts past the end. When this shot is B, its frame 0 is the pose and motion step the previous shot shows one frame past its end.
+
 ## Fonts
 
 Keep pinned font files in `public/`. Declare them with `@font-face` and `staticFile('<file>')`, hold the render with `delayRender()` until `document.fonts.load('<size> <family>')` resolves, then call `continueRender()` (`cancelRender()` on failure). In each still, check the font family and the actual glyph shapes: a fallback font shows as different letterforms and line breaks.
