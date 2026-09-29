@@ -20,6 +20,7 @@ import {doctor} from './doctor.js';
 import {configuredProviders} from './providers.js';
 import {boardStills, captureStills, stillsArgs} from './stills.js';
 import {animatic} from './animatic.js';
+import {renderSources} from './sources.js';
 import {clearSheetOutputs, sheet} from './sheet.js';
 import {outputsOf, type Outputs} from './outputs.js';
 import {scanFile, scanFilm} from './scan.js';
@@ -115,12 +116,14 @@ async function renderFormat(project:Project, out:Outputs) {
   // The success marker must be absent throughout a rerender, even if old clips remain.
   await rm(out.marker,{force:true});
   await rm(out.master,{force:true});
+  // Hashed before rendering, so a source edit during the render leaves the render stale.
+  const sources = await renderSources(project,format);
   const staging = await mkdtemp(join(base,'.motion-render-'));
   try {
     for (const shot of shots) await renderShot(shot,project,format,join(staging,`${shot.id}.mkv`));
     await mkdir(out.shots,{recursive:true});
     for (const shot of shots) await rename(join(staging,`${shot.id}.mkv`),out.clip(shot.id));
-    await writeFile(out.marker, JSON.stringify({format, renderer:{remotionGl:glBackend, hyperframesGpu}, shots:shots.map(s => ({id:s.id, startFrame:s.startFrame, endFrame:s.endFrame}))}));
+    await writeFile(out.marker, JSON.stringify({format, renderer:{remotionGl:glBackend, hyperframesGpu}, shots:shots.map(s => ({id:s.id, startFrame:s.startFrame, endFrame:s.endFrame})), sources}));
   } finally {await rm(staging,{recursive:true,force:true});}
 }
 /** Captures one shot-local frame of one shot (default 0) into renders/<format>/shots/<shot-id>.png. */

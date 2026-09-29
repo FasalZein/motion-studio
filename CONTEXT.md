@@ -83,7 +83,7 @@ _Avoid_: rough cut, previz
 The finished build of a shot, extended from its blocking source.
 
 **Moving animatic**:
-The stitched blocking renders of the primary format with the real track, shown at G3.
+The stitched blocking renders of the primary format with the real track (and the narration when the film has a voice), shown at G3.
 _Avoid_: still animatic, storyboard video
 
 **3D declaration**:

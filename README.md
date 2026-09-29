@@ -24,7 +24,7 @@ Agent skills for directed motion-graphics films. You act as the director. The ag
 1. **Brief.** The agent interviews you for up to 3 rounds, and each question comes with a recommended answer. Reply `use defaults` at any time to skip.
 2. **G1: look test.** You see one still for each of 2 or 3 candidate looks, rendered with your real logo, type and palette.
 3. **G2: beat map and stills.** You see every beat on the music grid, with one real engine still per beat.
-4. **G3: animatic.** You see the entry and exit frames of each shot, timed to the track.
+4. **G3: moving animatic.** You see every beat move with its real timing at placeholder fidelity, on the real track and narration, with a liveness verdict as advice.
 5. **G4: full pass.** You see the full MP4 with a reviewer scorecard. A fresh-context reviewer scores 8 dimensions, and the builder fixes the 3 worst issues until every score is 8 or more (at most 3 loops).
 6. **G5: delivery check.** You see the poster, the contact sheet, the safe-zone report, and each asset with an unknown license. You approve the final render.
 

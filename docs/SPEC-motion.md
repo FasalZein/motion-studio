@@ -135,7 +135,7 @@ Moving share is the whole-film value in the study; the content basis only remove
 
 ### Blocking mode and animatic (D62)
 - Build modes are keyframe (static poses for G2 stills), blocking (full timing, camera paths, seams and living holds at placeholder fidelity) and full. Each mode extends the same shot source.
-- `animatic` takes the current stitched master of the primary format, verifies each shot render is newer than its source, muxes the real track and narration, and writes the animatic. It prints the animatic's liveness verdict as advice. D49 is superseded.
+- `animatic` takes the current stitched master of the primary format, verifies that no shot render is older than its source (`render` records a SHA-256 of each shot's source in `render.json`; a different current hash is stale), muxes the real track and narration, and writes the animatic. It prints the animatic's liveness verdict as advice. D49 is superseded.
 
 ### Seams (D63, D64)
 - `handoff` compares B's first frame with A rendered one frame past its end. The comparison keeps the current structure and color thresholds and the stitched-master check. Pose and velocity both carry, because A's next frame must equal B's first frame.

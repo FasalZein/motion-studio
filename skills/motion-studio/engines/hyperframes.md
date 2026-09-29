@@ -50,13 +50,25 @@ Mark each protected element with `data-protected="<id>"` (the `protected[].id` i
 
 ## Keyframe mode
 
-Build the poses on the codebase that full mode will extend. Each pose is a local frame: entry (frame 0), each beat, and exit (the last frame). At each pose frame the element positions are final values, not mid-tween values. Put the pose frames in the shot's `stillFrames` and the held pose frames in `heldFrames`.
+Build the poses on the codebase that blocking and full mode will extend. Each pose is a local frame: entry (frame 0), each beat, and exit (the last frame). At each pose frame the element positions are final values, not mid-tween values. Put the pose frames in the shot's `stillFrames` and the held pose frames in `heldFrames`.
 
 Completion for a film shot: `motion-studio stills films/<slug> <shot-ids>` and `motion-studio safezone films/<slug> --shots <shot-ids>` both exit 0 for your assigned shots, which proves engine-rendered, opaque stills in every chosen format and protected bounds inside each safe rectangle. Both commands check only the named shots, so they pass while the other engine's shots are unbuilt; the board phase runs the film-wide checks after every builder finishes. A look test is not in the storyboard: render it with `npx hyperframes check <shot-folder> --at <shot-local-seconds> --snapshots`, inspect the overview frames, and save the chosen frame as `stills/G1/<look-id>.png`. `snapshot --at` is not documented in the installed skill; verify it before use.
 
+## Blocking mode
+
+Extend the approved keyframe source into moving blocking. Keep its files, element ids, pose values, layout inputs and shot timing; change an approved pose only for a named gate note. Every beat moves with its real timing: its motion event runs from its start pose to its end pose on the beat-contract frames, the camera follows its path, each seam carries its thread (a handoff keeps moving through the cut), and each hold is a living hold. Work at placeholder fidelity in the approved layout: flat fills, draft type and stand-in shapes for fill assets. Texture, fill assets and polish wait for full mode. The G3 animatic is the stitched blocking renders on the real track, so the timing you block is the timing the director judges.
+
+Completion for a film shot:
+1. `motion-studio stills films/<slug> <shot-ids> --frames <approved still frames>` exits 0, and each new still shows the pose of its frozen copy under `stills/approved/G2-<hash8>/`.
+2. Capture one frame inside each beat's motion event and one inside each hold, each with the frame 2 frames before it, using `motion-studio still films/<slug> <shot-id> <local-frame>` (it writes `renders/<format>/shots/<shot-id>.png`; copy each capture aside before the next). Each pair differs: every beat and every hold moves.
+3. `motion-studio safezone films/<slug> --shots <shot-ids>` exits 0.
+4. A shot that declares `threeD` also passes `motion-studio repro films/<slug> <shot-id>`.
+
+These checks cover only your shots. The render phase renders and stitches the primary format after every builder finishes and runs `motion-studio animatic`, whose liveness advice locates still spans by shot.
+
 ## Full mode
 
-Open the approved keyframe source and add motion between its poses. Keep its files, element ids, pose values and timing; change an approved pose only for a named gate note. Seek frames out of order (for example the last pose, then frame 0, then a middle beat) and check that each frame matches a clean render. Completion: `motion-studio stills films/<slug> <shot-id> --frames <approved still frames>` exits 0, each new still is compared with its frozen copy under `stills/approved/`, and each visible difference cites a named gate note.
+Open the blocking source that G3 approved and bring it to final fidelity: fill assets, texture, final easing and polish. Keep its files, element ids, pose values and timing; change an approved pose only for a named gate note. Seek frames out of order (for example the last pose, then frame 0, then a middle beat) and check that each frame matches a clean render. Completion: `motion-studio stills films/<slug> <shot-id> --frames <approved still frames>` exits 0, each new still is compared with its frozen copy under `stills/approved/`, and each visible difference cites a named gate note.
 
 ## Render
 
