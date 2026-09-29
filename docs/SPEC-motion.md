@@ -113,7 +113,7 @@ Motion becomes a first-class, measured part of the studio.
 - Exit status is non-zero when a limit fails. `status` shows the verdict per format.
 - `gate G4 approve` refuses while any chosen format's report is missing, stale against the current master or failing, unless the director passes a liveness waiver with a note. G5 binds each final draft's report as a delivery check.
 
-Reference distribution (18 world-class pieces, content basis, from the 2026-09-29 study; ours = the first Raycast film):
+Reference distribution (18 world-class pieces, from the 2026-09-29 study; the moving share row is whole-film, the still rows are content basis; ours = the first Raycast film). The gate checks the moving share on the content basis, which is never lower than the whole-film value (D72):
 
 | Metric | min | p10 | median | p90 | max | Limit | Ours |
 |---|---|---|---|---|---|---|---|

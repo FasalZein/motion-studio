@@ -238,7 +238,9 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
   await withFilm(async dir => {
     await write(dir,'animatic.mp4','animatic v1');
     await write(dir,'renders/16x9/master.mkv','master v1');
-    for (const id of ['G1','G2','G3','G4']) ok(['gate',dir,id,'approve']);
+    for (const id of ['G1','G2','G3']) ok(['gate',dir,id,'approve']);
+    // The fake master cannot be measured, so G4 is approved with a liveness waiver (D60).
+    ok(['gate',dir,'G4','approve','--waive','liveness','--note','fake master']);
     const gates = (await storyboard(dir)).gates;
     // G3 and G4 bind the frozen copies of what they showed, recorded under the live paths.
     expect(gates[2].inputHashes['stills/G2/b01.png']).toBe(sha('beat 1 v1'));
@@ -260,7 +262,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     await write(dir,'animatic.mp4','animatic v2');
     await write(dir,'stills/G2/b01.png','beat 1 v2');
     expect(status(dir)).toBe(lines('G1 approved','G2 approved','G3 approved','G4 approved','G5 pending',
-      'next: polish, mix, draft renders per format, critique loop B and license check, then present G5'));
+      'next: polish, mix, draft renders per format, critique loop B and license check, then present G5','liveness 16:9 missing (no readable renders/16x9/liveness.json)'));
 
     await write(dir,'renders/16x9/safezone.json','{"ok":true}');
     await write(dir,'renders/16x9/scan.json','{"counts":{"blocking":0}}');
@@ -297,7 +299,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     for (const out of ['snapshots/frame-0.png','renders/preview_1.mp4','beats/track.json','out/still.png','build/index.html'])
       await write(dir,`shots/hyperframes/${out}`,'engine output');
     await write(dir,'shots/_look/keynote/index.html','look test v2');
-    const allApproved = lines('G1 approved','G2 approved','G3 approved','G4 approved','G5 approved','next: final render, then user acceptance of the files');
+    const allApproved = lines('G1 approved','G2 approved','G3 approved','G4 approved','G5 approved','next: final render, then user acceptance of the files','liveness 16:9 missing (no readable renders/16x9/liveness.json)');
     expect(status(dir)).toBe(allApproved);
     expect(ok(['validate',dir])).toBe(`valid ${dir}\n`);
 
@@ -305,7 +307,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     // music bed stales G5 only.
     const approvedStoryboard = await readFile(join(dir,'storyboard.json'),'utf8');
     const g5Only = (key:string) => lines('G1 approved','G2 approved','G3 approved','G4 approved',`G5 stale (changed: ${key})`,
-      'next: G5 is stale: rerun polish, mix, draft renders per format, critique loop B and license check, then present G5 again');
+      'next: G5 is stale: rerun polish, mix, draft renders per format, critique loop B and license check, then present G5 again','liveness 16:9 missing (no readable renders/16x9/liveness.json)');
     await edit(dir,s => {s.shots[1].soundCues = [];});
     expect(status(dir)).toBe(g5Only('storyboard.json#/shots'));
     await writeFile(join(dir,'storyboard.json'),approvedStoryboard);
@@ -315,7 +317,20 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     expect(status(dir)).toBe(allApproved);
     await appendFile(join(dir,'shots/hyperframes/index.html'),'<!-- late -->\n');
     expect(status(dir)).toBe(lines('G1 approved','G2 approved','G3 approved','G4 approved','G5 stale (changed: shots/hyperframes/index.html)',
-      'next: G5 is stale: rerun polish, mix, draft renders per format, critique loop B and license check, then present G5 again'));
+      'next: G5 is stale: rerun polish, mix, draft renders per format, critique loop B and license check, then present G5 again','liveness 16:9 missing (no readable renders/16x9/liveness.json)'));
+  });
+});
+
+test('G5 binds each liveness report live, so a changed report after G5 stales G5', async () => {
+  await withFilm(async dir => {
+    await write(dir,'renders/16x9/master.mkv','master v1');
+    for (const id of ['G1','G2','G3']) ok(['gate',dir,id,'approve']);
+    ok(['gate',dir,'G4','approve','--waive','liveness','--note','fake master']);
+    await write(dir,'renders/16x9/liveness.json','{"pass":false}');
+    ok(['gate',dir,'G5','approve']);
+    expect((await storyboard(dir)).gates[4].inputHashes['renders/16x9/liveness.json']).toBe(sha('{"pass":false}'));
+    await write(dir,'renders/16x9/liveness.json','{"pass":true}');
+    expect(status(dir).split('\n')[4]).toBe('G5 stale (changed: renders/16x9/liveness.json)');
   });
 });
 
