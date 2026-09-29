@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {cp, mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {spawn, spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 
 // Black-box taste and style-bible checks: each case runs the built CLI as a process with HOME pointed at a scratch
 // folder, so no run reads or writes the real ~/.motion-studio/taste.json. Expected profiles are built from the notes and
@@ -157,6 +158,8 @@ test('taste g1 accepts a look shown by its look-test clip or its poster, not by 
     await mkdir(join(film,'stills','G1'),{recursive:true});
     // The names motion-studio looktest writes: <look-id>.mkv (clip), <look-id>.png (poster), <look-id>.liveness.json.
     await writeFile(join(film,'stills','G1','swiss-grid.mkv'),'clip only');
+    // G1 approve needs a passing look-test report that holds the clip's SHA-256 (D77 follow-up, #49).
+    await writeFile(join(film,'stills','G1','swiss-grid.liveness.json'),JSON.stringify({sha256:createHash('sha256').update('clip only').digest('hex'), pass:true}));
     await writeFile(join(film,'stills','G1','paper-collage.png'),'poster only');
     await writeFile(join(film,'stills','G1','brutalist-mono.liveness.json'),'{}');
     ok(home,['gate',film,'G1','approve','--note','keynote']);
