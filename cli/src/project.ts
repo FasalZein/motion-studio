@@ -31,9 +31,14 @@ export type FrameSpan = {start:number; frames:number};
 export type Rect = {x:number; y:number; width:number; height:number};
 /** Layout inputs of one format. Both engines receive the same values (Remotion as props, HyperFrames as variables). */
 export type Layout = {canvas:{width:number; height:number}; safe:Rect; overlay:string|null};
-/** A check the director may waive at a gate with a written reason (D60). */
-export type Waivable = 'liveness';
-export type Gate = {id:GateId; state:GateState; inputHashes:Record<string,string>; decision:string|null; notes:string[]; rounds:number; waiver?:{check:Waivable; reason:string}};
+/** A check the director may waive at G4 approval with a written reason: liveness (D60) or critique independence (D79). */
+export const waivable = ['liveness','critique'] as const;
+export type Waivable = typeof waivable[number];
+export type Waiver = {check:Waivable; reason:string};
+/** `waiver` is the older single-waiver shape; new records write `waivers`. Read both through `gateWaivers`. */
+export type Gate = {id:GateId; state:GateState; inputHashes:Record<string,string>; decision:string|null; notes:string[]; rounds:number; waiver?:Waiver; waivers?:Waiver[]};
+/** Every waiver a gate record holds, in either the older single shape or the list shape. */
+export const gateWaivers = (gate:Gate):Waiver[] => [...(gate.waiver ? [gate.waiver] : []), ...(gate.waivers ?? [])];
 export type Storyboard = {
   version:'0';
   meta:{title:string; logline:string; genre:string|null; formats:{primary:Format; extra:Format[]}; fps:Fps; durationFrames:number; layouts:Partial<Record<Format,Layout>>};

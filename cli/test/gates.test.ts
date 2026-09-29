@@ -338,7 +338,10 @@ test('G4 approve refuses without a current independent critique report and accep
     await write(dir,'renders/16x9/master.mkv','master v2');
     for (const id of ['G1','G2','G3']) ok(['gate',dir,id,'approve']);
     const approve = ['G4','approve','--waive','liveness','--note','fake master'];
-    const hint = `; run motion-studio packet ${dir} and dispatch a fresh motion-critique reviewer (its report header names the packet and master sha256)`;
+    const hint = `; run motion-studio packet ${dir} and dispatch a fresh motion-critique reviewer (its report header names the packet and master sha256), or, with no subagent available, approve a non-independent report with --waive critique --note <reason>`;
+    await refused(dir,approve,`cannot approve G4: critique 16:9 missing (no readable critique/packet-16x9/packet.json)${hint}`);
+    // A malformed packet is refused with an error line, not a stack trace.
+    await write(dir,'critique/packet-16x9/packet.json','{bad');
     await refused(dir,approve,`cannot approve G4: critique 16:9 missing (no readable critique/packet-16x9/packet.json)${hint}`);
     // A packet of an earlier master is not current evidence, even when a report names the current master.
     await critique(dir,'master v2',{packetMaster:'master v1'});
@@ -349,12 +352,46 @@ test('G4 approve refuses without a current independent critique report and accep
     // The builder's inline review is not the fresh reviewer the gate needs.
     await critique(dir,'master v2',{independence:'non-independent'});
     await refused(dir,approve,`cannot approve G4: critique 16:9 non-independent (critique/loop-1.md; dispatch a fresh reviewer)${hint}`);
+    // Only the header counts: a body line after the first `## ` heading does not make the report independent.
+    await appendFile(join(dir,'critique/loop-1.md'),'\n## Film scores\nMode: in-studio; independence: independent\n');
+    await refused(dir,approve,`cannot approve G4: critique 16:9 non-independent (critique/loop-1.md; dispatch a fresh reviewer)${hint}`);
     // The liveness waiver does not lift the critique check; notes and rescope need no report.
     ok(['gate',dir,'G4','changes','--note','tighten the hold']);
     await critique(dir,'master v2',{loop:2});
     const out = ok(['gate',dir,...approve]);
     expect(out).toContain('recorded G4 approve');
     expect((await storyboard(dir)).gates[3].inputHashes['critique/loop-2.md']).toBe(sha(await readFile(join(dir,'critique/loop-2.md'),'utf8')));
+  });
+});
+
+test('G4 approve with --waive critique accepts a current non-independent report and keeps each waiver with its reason', async () => {
+  await withFilm(async dir => {
+    await write(dir,'renders/16x9/master.mkv','master v2');
+    for (const id of ['G1','G2','G3']) ok(['gate',dir,id,'approve']);
+    const both = ['G4','approve','--waive','liveness','--note','fake master','--waive','critique','--note','no subagent tool in this harness'];
+    const hint = `; run motion-studio packet ${dir} and dispatch a fresh motion-critique reviewer (its report header names the packet and master sha256), or, with no subagent available, approve a non-independent report with --waive critique --note <reason>`;
+    // The critique waiver lifts only independence: a current packet and a report of the current master are still needed.
+    await refused(dir,both,`cannot approve G4: critique 16:9 missing (no readable critique/packet-16x9/packet.json)${hint}`);
+    await critique(dir,'master v1',{packetMaster:'master v2', independence:'non-independent'});
+    await refused(dir,both,`cannot approve G4: critique 16:9 missing (no critique/loop-*.md names critique/packet-16x9/packet.json with the current master sha256)${hint}`);
+    await critique(dir,'master v2',{packetMaster:'master v1', independence:'non-independent'});
+    await refused(dir,both,`cannot approve G4: critique 16:9 stale (critique/packet-16x9/packet.json describes another master)${hint}`);
+    // A current non-independent report: refused without the critique waiver, approved with it.
+    await critique(dir,'master v2',{independence:'non-independent'});
+    await refused(dir,both.slice(0,6),`cannot approve G4: critique 16:9 non-independent (critique/loop-1.md; dispatch a fresh reviewer)${hint}`);
+    expect(run(['gate',dir,'G4','approve','--waive','critique','--note','a','--waive','critique','--note','b']).stderr).toBe('error: --waive critique given twice\n');
+    expect(run(['gate',dir,'G3','approve','--waive','critique','--note','a']).stderr).toBe('error: --waive critique applies only to G4 approve\n');
+    const out = ok(['gate',dir,...both]);
+    expect(out).toContain('waived: liveness\nwaived: critique\n');
+    const g4 = (await storyboard(dir)).gates[3];
+    expect(g4.state).toBe('approved');
+    expect(g4.waivers).toEqual([{check:'liveness', reason:'fake master'}, {check:'critique', reason:'no subagent tool in this harness'}]);
+    expect(g4.notes).toEqual(['fake master','no subagent tool in this harness']);
+    ok(['validate',dir]);
+    // A film recorded before the list shape keeps its single `waiver` and still loads and validates.
+    await edit(dir,s => {const {waivers:_, ...rest} = s.gates[3]; s.gates[3] = {...rest, waiver:{check:'liveness', reason:'fake master'}};});
+    ok(['validate',dir]);
+    expect(status(dir).split('\n')[3]).toBe('G4 approved');
   });
 });
 

@@ -295,7 +295,7 @@ test(`${runtime}: G4 approval needs a current passing report or a written waiver
   expect(waived.stderr).toBe('');
   expect(waived.status).toBe(0);
   expect(waived.stdout).toContain('waived: liveness\n');
-  expect((await storyboard()).gates[3]).toMatchObject({state:'approved', notes:['deliberate 2.5 s title hold'], waiver:{check:'liveness', reason:'deliberate 2.5 s title hold'}});
+  expect((await storyboard()).gates[3]).toMatchObject({state:'approved', notes:['deliberate 2.5 s title hold'], waivers:[{check:'liveness', reason:'deliberate 2.5 s title hold'}]});
   expect(run('validate',dir).status).toBe(0);
   // A passing current report approves without a waiver; the new approval drops the old waiver.
   expect(run('liveness',dir).status).toBe(0);
@@ -304,5 +304,5 @@ test(`${runtime}: G4 approval needs a current passing report or a written waiver
   expect(approved.status).toBe(0);
   const g4 = (await storyboard()).gates[3];
   expect(g4.state).toBe('approved');
-  expect(g4.waiver).toBeUndefined();
+  expect(g4.waivers).toBeUndefined();
 }));

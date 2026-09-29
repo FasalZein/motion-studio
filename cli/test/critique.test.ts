@@ -185,6 +185,17 @@ test(`${runtime}: packet adds the liveness report, the seam threads and strips a
   expect(run('gate',dir,'G4','approve','--waive','liveness','--note','deliberate hold for the title').status).toBe(0);
   expect(run('packet',dir).status).toBe(0);
   expect((await packet(dir)).liveness).toMatchObject({pass:false, waiver:{reason:'deliberate hold for the title'}, dimension2Max:null});
+  // Only a liveness waiver lifts the cap: a critique waiver (D79) does not, and the older single `waiver` shape still does.
+  const setWaivers = async (g4:Json) => {
+    const s = JSON.parse(await readFile(join(dir,'storyboard.json'),'utf8'));
+    const {waiver:_, waivers:__, ...rest} = s.gates[3];
+    s.gates[3] = {...rest, ...g4};
+    await writeFile(join(dir,'storyboard.json'),JSON.stringify(s,null,2));
+    expect(run('packet',dir).status).toBe(0);
+    return (await packet(dir)).liveness;
+  };
+  expect(await setWaivers({waivers:[{check:'critique', reason:'no subagent tool'}]})).toMatchObject({waiver:null, dimension2Max:7});
+  expect(await setWaivers({waiver:{check:'liveness', reason:'older shape'}})).toMatchObject({waiver:{reason:'older shape'}, dimension2Max:null});
   // A report of another master is not current evidence.
   await writeFile(join(dir,'renders/16x9/liveness.json'),JSON.stringify({...report, sha256:'0'.repeat(64)}));
   expect(run('packet',dir).status).toBe(0);

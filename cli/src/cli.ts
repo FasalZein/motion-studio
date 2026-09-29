@@ -4,7 +4,7 @@ import {spawn} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 
-import {chosenFormats, CliError, gateIds, initProject, layoutOf, parseProject, type Format, type Project, type Shot} from './project.js';
+import {chosenFormats, CliError, gateIds, initProject, layoutOf, parseProject, waivable, type Format, type Project, type Shot, type Waivable} from './project.js';
 import {checkProject, validateProject} from './validate.js';
 import {repro} from './repro.js';
 import {framePngs, glBackend, hyperframesGpu, remotionBundle, renderHyperframesFrames, renderRemotionFrames} from './engines.js';
@@ -102,7 +102,7 @@ async function renderShot(shot:Shot, project:Project, format:Format, output:stri
     await verify(output,frameCount,fps,width,height);
   } finally {await rm(temp,{recursive:true,force:true});}
 }
-const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... [--waive liveness] | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>] | animatic <film-dir> | sheet <film-dir> [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] [--shots <id,...>] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | beatmap <film-dir> | assets <film-dir> <list|add|resolve> ... | scan <film-dir> [format] | scan <video-file> [--report <file.json>] | liveness <film-dir> [format] | liveness <video-file> [--report <file.json>] | looktest <film-dir> <look-id> | packet <film-dir> [format] | packet <video-file> --out <dir> | calibrate <scores.json> <bands.json> | repro <film-dir> <shot-id> [format] | taste <show|g1|notes|accept> ... | style-bible <style-bible.md> [--reference <source>]...';
+const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... [--waive <liveness|critique> --note <reason>]... | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>] | animatic <film-dir> | sheet <film-dir> [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] [--shots <id,...>] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | beatmap <film-dir> | assets <film-dir> <list|add|resolve> ... | scan <film-dir> [format] | scan <video-file> [--report <file.json>] | liveness <film-dir> [format] | liveness <video-file> [--report <file.json>] | looktest <film-dir> <look-id> | packet <film-dir> [format] | packet <video-file> --out <dir> | calibrate <scores.json> <bands.json> | repro <film-dir> <shot-id> [format] | taste <show|g1|notes|accept> ... | style-bible <style-bible.md> [--reference <source>]...';
 /** The formats a command works on: one named chosen format, or every chosen format when none is named. */
 function selectFormats(project:Project, named:string|undefined):Format[] {
   const formats = chosenFormats(project.storyboard.meta);
@@ -192,19 +192,26 @@ async function main() {
   if (action === 'gate') {
     // A gate records state on an unfinished film, so only the schema must pass; validate and render check the rest.
     const [id,decision,...rest] = process.argv.slice(4);
+    // A --note after a --waive gives that waiver's reason; with one waiver, every note is its reason (the older form).
     const notes:string[] = [];
-    let waive:'liveness'|undefined;
+    const waives:{check:Waivable; notes:string[]}[] = [];
     for (let i=0;i<rest.length;i+=2) {
-      if (rest[i] === '--waive' && rest[i+1] === 'liveness') {waive = 'liveness'; continue;}
+      const check = waivable.find(c => c === rest[i+1]);
+      if (rest[i] === '--waive' && check) {
+        if (waives.some(w => w.check === check)) throw new CliError(`--waive ${check} given twice`);
+        waives.push({check, notes:[]}); continue;
+      }
       if (rest[i] !== '--note' || !rest[i+1]) throw new CliError(usage);
       notes.push(rest[i+1]);
+      waives.at(-1)?.notes.push(rest[i+1]);
     }
+    const waivers = waives.map(w => ({check:w.check, reason:(waives.length === 1 ? notes : w.notes).join('\n')}));
     const gate = gateIds.find(g => g === id);
     const choice = decisions.find(d => d === decision);
     if (!gate || !choice) throw new CliError(usage);
     const parsed = await parseProject(target);
     if (!parsed.ok) {report(parsed.errors,[]); process.exitCode = 1; return;}
-    for (const line of await recordGate(parsed.project,gate,choice,notes,waive)) console.log(line);
+    for (const line of await recordGate(parsed.project,gate,choice,notes,waivers)) console.log(line);
     const updated = await parseProject(target);
     if (updated.ok) for (const line of statusLines(await gateViews(updated.project))) console.log(line);
     return;

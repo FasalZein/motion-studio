@@ -196,7 +196,17 @@
           "type": "object",
           "required": ["check", "reason"],
           "properties": {"check": {"enum": ["liveness"]}, "reason": {"type": "string", "minLength": 1}},
-          "description": "A check the director waived at this approval, with the written reason (D60). Only G4 records one; a later decision on the gate drops it."
+          "description": "Older single-waiver shape, still read: a check the director waived at this approval, with the written reason (D60). New records write `waivers`."
+        },
+        "waivers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["check", "reason"],
+            "properties": {"check": {"enum": ["liveness", "critique"]}, "reason": {"type": "string", "minLength": 1}}
+          },
+          "description": "The checks the director waived at this approval, each with its written reason: `liveness` (D60) lifts the liveness report requirement; `critique` (D79) lifts only the independence requirement of the critique report. Only G4 records them; a later decision on the gate drops them."
         }
       }
     },

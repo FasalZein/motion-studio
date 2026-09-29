@@ -1,7 +1,7 @@
 import {mkdir, readFile} from 'node:fs/promises';
 import {join} from 'node:path';
 
-import type {Gate, Shot} from './project.js';
+import {gateWaivers, type Gate, type Shot} from './project.js';
 import {METHOD, type LivenessReport, type Place} from './liveness.js';
 import type {Tools} from './seam.js';
 import {tile, tiling} from './sheet.js';
@@ -85,7 +85,9 @@ export const DIMENSION2_MAX_ON_FAILURE = 7;
 /** The liveness part of a packet: the report's numbers, the named moving-share basis, the waiver and the dimension 2 cap. */
 export function livenessEvidence(report:LivenessReport, file:string, holds:HoldStrip[], g4:{gate:Gate; state:string}|undefined) {
   // A waiver counts only on the current (effective) G4 approval that recorded it (D60, D72).
-  const waiver = g4?.state === 'approved' && g4.gate.waiver?.check === 'liveness' ? {reason:g4.gate.waiver.reason} : null;
+  // Only a liveness waiver lifts the cap; a critique waiver (D79) does not (D75).
+  const live = g4?.state === 'approved' ? gateWaivers(g4.gate).find(w => w.check === 'liveness') : undefined;
+  const waiver = live ? {reason:live.reason} : null;
   return {
     report:file, pass:report.pass,
     movingShareBasis:'content' as const, movingShare:report.movingShare, movingShareWholeFilm:report.movingShareWholeFilm,
