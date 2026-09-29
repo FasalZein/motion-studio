@@ -18,8 +18,8 @@ A thread is what a seam carries from one shot into the next (D64). Every shot af
   - HF: Keep the light layer's color, position and intensity equal on both seam frames, then move it in the incoming timeline.
   - Remotion: Render the same gradient or glow element with equal props at the seam frame on both sides.
 - **Sound thread** (`sound-thread`) - One sound runs or lands across the seam and ties the two pictures together.
-  - HF: Land a visual event on the cue frame on each side; place the sound once in the master mix with a `soundCues` entry.
-  - Remotion: Key the visual events to the cue frame on both sides; the sound goes in the master mix, not the shot render.
+  - HF: Land a visual event on the cue frame in the shot that holds that frame, and let the other shot's motion lead into or out of it; place the sound once in the master mix with a `soundCues` entry.
+  - Remotion: Key a visual event to the cue frame in the shot that holds it and run the other shot's motion toward or away from it; the sound goes in the master mix, not the shot render.
 - **Beat-cut thread** (`beat-cut-thread`) - The cut lands on a beat while something moves on both sides, so the rhythm carries the change.
   - HF: Cut on a `beatFrames` frame with a tween running through the last outgoing frame and from the first incoming frame.
   - Remotion: Put the seam on a beat frame and keep an `interpolate()` range active across both seam frames.

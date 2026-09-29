@@ -16,7 +16,7 @@ export async function threadErrors({storyboard:{shots}}:Project):Promise<string[
     if (thread === undefined) {errors.push(`${where} has no thread; set "thread": {"kind", "shared"} to what the seam carries`); continue;}
     if (thread.kind.startsWith(customPrefix)) {
       if (!thread.kind.slice(customPrefix.length).trim()) errors.push(`${where} thread kind "${thread.kind}" has no description after custom:`);
-    } else if (!kinds.has(thread.kind)) errors.push(`${where} thread kind "${thread.kind}" is not a motion-vocabulary thread kind; use a thread id or custom:<description>`);
+    } else if (!kinds.has(thread.kind)) errors.push(`${where} thread kind "${thread.kind}" is not a motion-vocabulary thread kind; use one of ${[...kinds].sort().join(', ')} or custom:<description>`);
     if (!thread.shared.trim()) errors.push(`${where} thread has no shared text; name the thing the seam carries`);
   }
   return errors;
