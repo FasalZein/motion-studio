@@ -20,14 +20,19 @@ const run = (...args:string[]) => spawnSync(runtime,[cli,...args],{encoding:'utf
 type Json = Record<string,any>;
 
 const W = 320, H = 180, FRAMES = 40, CUT = 20, LEVEL = 6;
-function draw(f:number):Buffer {
+/** Frame `f`: the background changes at CUT; the corner patch and the box show pose `g` (default f). */
+function draw(f:number, g = f):Buffer {
   const frame = Buffer.alloc(W*H*3);
   const bg = f < CUT ? [40,40,48] : [30,60,110];
   for (let p=0;p<W*H;p++) frame.set(bg,p*3);
-  for (let y=0;y<8;y++) for (let x=0;x<8;x++) frame.fill(LEVEL*f,(y*W+x)*3,(y*W+x)*3+3);
-  for (let y=70;y<110;y++) for (let x=20+2*f;x<60+2*f;x++) frame.set([230,200,60],(y*W+x)*3);
+  for (let y=0;y<8;y++) for (let x=0;x<8;x++) frame.fill(LEVEL*g,(y*W+x)*3,(y*W+x)*3+3);
+  for (let y=70;y<110;y++) for (let x=20+2*g;x<60+2*g;x++) frame.set([230,200,60],(y*W+x)*3);
   return frame;
 }
+// A film with one frozen hold inside shot "hyperframes": frames HOLD_FIRST-HOLD_LAST repeat one pose (0.8 s at 30 fps),
+// then the box moves again. Liveness samples at 12 fps, so the span it locates lies within one sample (2.5 frames) of these.
+const HOLD_FRAMES = 66, HOLD_FIRST = 28, HOLD_LAST = 51;
+const drawHold = (f:number) => draw(f,f <= HOLD_FIRST ? f : f <= HOLD_LAST ? HOLD_FIRST : f-(HOLD_LAST-HOLD_FIRST));
 function ffmpeg(args:string[], input?:Buffer) {
   const r = spawnSync('ffmpeg',['-hide_banner','-loglevel','error','-y',...args],{input,maxBuffer:1<<28});
   if (r.status !== 0) throw Error(`ffmpeg failed: ${r.stderr}`);
@@ -37,18 +42,18 @@ const raw = ['-f','rawvideo','-pix_fmt','rgb24','-s',`${W}x${H}`];
 /** The grey level of the corner patch of a PNG, which names the master frame it came from. */
 const cornerLevel = (png:string) => ffmpeg(['-i',png,'-f','rawvideo','-pix_fmt','rgb24','-'])[3*(4*W+4)];
 
-async function withFilm(fn:(dir:string)=>Promise<void>) {
+async function withFilm(fn:(dir:string)=>Promise<void>, frames = FRAMES, drawer:(f:number)=>Buffer = draw) {
   const dir = await mkdtemp(join(tmpdir(),'motion-studio-critique-'));
   try {
     await cp(fixture,dir,{recursive:true,filter:src => !src.endsWith('/renders')});
     const s = JSON.parse(await readFile(join(dir,'storyboard.json'),'utf8'));
-    s.meta.durationFrames = FRAMES;
+    s.meta.durationFrames = frames;
     s.audio.beatFrames = [CUT];
     s.shots[0].endFrame = CUT;
-    Object.assign(s.shots[1],{startFrame:CUT, endFrame:FRAMES, soundCues:[]});
+    Object.assign(s.shots[1],{startFrame:CUT, endFrame:frames, soundCues:[]});
     await writeFile(join(dir,'storyboard.json'),JSON.stringify(s,null,2));
     await mkdir(join(dir,'renders/16x9'),{recursive:true});
-    ffmpeg([...raw,'-r','30','-i','-','-vf','scale=out_color_matrix=bt709,format=yuv444p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709','-c:v','ffv1','-level','3','-colorspace','bt709','-color_trc','bt709','-color_primaries','bt709',join(dir,'renders/16x9/master.mkv')],Buffer.concat(Array.from({length:FRAMES},(_,f) => draw(f))));
+    ffmpeg([...raw,'-r','30','-i','-','-vf','scale=out_color_matrix=bt709,format=yuv444p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709','-c:v','ffv1','-level','3','-colorspace','bt709','-color_trc','bt709','-color_primaries','bt709',join(dir,'renders/16x9/master.mkv')],Buffer.concat(Array.from({length:frames},(_,f) => drawer(f))));
     await writeFile(join(dir,'renders/16x9/render.json'),'{}');
     await fn(dir);
   } finally {await rm(dir,{recursive:true,force:true});}
@@ -73,11 +78,12 @@ test(`${runtime}: packet pairs each frozen approved still with the exact master 
     // Color conversion through yuv444p rounds by a level or two; neighbouring frames differ by 6.
     expect(Math.abs(cornerLevel(join(dir,pair.rendered))-LEVEL*pair.globalFrame)).toBeLessThanOrEqual(2);
   }
-  expect(items(p)).toEqual(['look or style bible','contact sheet and transition strips','scan report','mix sync report']);
+  expect(items(p)).toEqual(['look or style bible','contact sheet and transition strips','scan report','mix sync report','liveness report']);
+  expect(p.liveness).toBe(null);
   expect(p.dimension7.score).toBe('unverified');
   expect(p.logline).toBe('One Remotion shot cuts on the beat to one HyperFrames shot.');
   expect(p.beatGrid.beatFrames).toEqual([CUT]);
-  expect(result.stdout).toContain('packet 16:9: 2 still pairs, 4 missing items, dimension 7 unverified');
+  expect(result.stdout).toContain('packet 16:9: 2 still pairs, 5 missing items, dimension 7 unverified, liveness missing');
 }));
 
 test(`${runtime}: a stale G2 approval gives no still pairs and no G2 revision hash`, async () => withFilm(async dir => {
@@ -98,6 +104,8 @@ test(`${runtime}: a stale G2 approval gives no still pairs and no G2 revision ha
 test(`${runtime}: packet gathers sheet, a current scan and the sync report; a scan of another master is missing`, async () => withFilm(async dir => {
   expect(run('sheet',dir).status).toBe(0);
   expect(run('scan',dir).status).toBe(0);
+  // The box moves every frame, so the film passes liveness and dimension 2 has no cap.
+  expect(run('liveness',dir).status).toBe(0);
   await writeFile(join(dir,'renders/16x9/sync.json'),JSON.stringify(sync()));
   const board = JSON.parse(await readFile(join(dir,'storyboard.json'),'utf8'));
   board.look.id = 'swiss-grid';
@@ -113,6 +121,7 @@ test(`${runtime}: packet gathers sheet, a current scan and the sync report; a sc
   expect(p.sheet.pages.map((x:Json) => x.frames)).toEqual([[0,30]]);
   expect(p.scan.report).toBe('renders/16x9/scan.json');
   expect(p.dimension7.score).toBe(8);
+  expect([p.liveness.pass,p.liveness.stillSpans,p.liveness.dimension2Max]).toEqual([true,[],null]);
   // A report whose master hash differs describes an earlier render.
   const scan = JSON.parse(await readFile(join(dir,'renders/16x9/scan.json'),'utf8'));
   await writeFile(join(dir,'renders/16x9/scan.json'),JSON.stringify({...scan, sha256:'0'.repeat(64)}));
@@ -128,6 +137,46 @@ test(`${runtime}: packet gathers sheet, a current scan and the sync report; a sc
   expect(p.patterns.lookPairs).toBe(null);
   expect(items(p)).toContain('look-specific patterns of house-style (not a motion-look catalogue look)');
 }));
+
+test(`${runtime}: packet adds the liveness report, the seam threads and strips around each seam and inside each hold`, async () => withFilm(async dir => {
+  expect(run('liveness',dir).status).toBe(1);
+  const result = run('packet',dir);
+  expect(result.status).toBe(0);
+  const p = await packet(dir);
+  const report = JSON.parse(await readFile(join(dir,'renders/16x9/liveness.json'),'utf8'));
+  // The packet reads the content-basis moving share, the value the G4 gate checks (D72), and names that basis.
+  expect(p.liveness).toMatchObject({report:'renders/16x9/liveness.json', pass:false, movingShareBasis:'content', movingShare:report.movingShare, movingShareWholeFilm:report.movingShareWholeFilm, waiver:null, dimension2Max:7});
+  // One hold: the frozen frames, located in shot hyperframes to within one 12 fps sample; its strip tiles lie inside it.
+  expect(p.liveness.stillSpans).toHaveLength(1);
+  const [hold] = p.liveness.stillSpans;
+  expect(hold.shots).toEqual(['hyperframes']);
+  expect(Math.abs(hold.firstFrame-HOLD_FIRST)).toBeLessThanOrEqual(3);
+  expect(Math.abs(hold.lastFrame-HOLD_LAST)).toBeLessThanOrEqual(3);
+  expect(hold.file).toBe('critique/packet-16x9/strips/hold-01.png');
+  expect(hold.frames).toHaveLength(8);
+  expect(hold.frames[0]).toBe(hold.firstFrame);
+  expect(hold.frames.at(-1)).toBe(hold.lastFrame);
+  // One seam, with the fixture's thread and an 11-frame strip centred on the cut.
+  expect(p.seams).toEqual([{from:'remotion', to:'hyperframes', frame:CUT, entry:'cut', thread:{kind:'shared-element-thread', shared:'the shared color patch'},
+    bothMove:true, strip:'critique/packet-16x9/strips/seam-remotion-hyperframes.png', frames:[15,16,17,18,19,20,21,22,23,24,25]}]);
+  // Strip images: one tile per listed frame (tiles at most 320 wide, 4-pixel margin and padding, like sheet).
+  const width = (png:string) => Number(spawnSync('ffprobe',['-v','error','-show_entries','stream=width','-of','csv=p=0',join(dir,png)],{encoding:'utf8'}).stdout.trim());
+  expect(width(p.seams[0].strip)).toBe(11*320+12*4);
+  expect(width(hold.file)).toBe(8*320+9*4);
+  expect(result.stdout).toContain('liveness fail (dimension 2 at most 7)');
+  // A written G4 waiver lifts the dimension 2 cap and is shown to the reviewer.
+  for (const id of ['G1','G2','G3']) expect(run('gate',dir,id,'approve').status).toBe(0);
+  expect(run('gate',dir,'G4','approve','--waive','liveness','--note','deliberate hold for the title').status).toBe(0);
+  expect(run('packet',dir).status).toBe(0);
+  expect((await packet(dir)).liveness).toMatchObject({pass:false, waiver:{reason:'deliberate hold for the title'}, dimension2Max:null});
+  // A report of another master is not current evidence.
+  await writeFile(join(dir,'renders/16x9/liveness.json'),JSON.stringify({...report, sha256:'0'.repeat(64)}));
+  expect(run('packet',dir).status).toBe(0);
+  const stale = await packet(dir);
+  expect(stale.liveness).toBe(null);
+  expect(items(stale)).toContain('liveness report (describes an earlier master)');
+  expect(stale.seams[0].bothMove).toBe(null);
+}, HOLD_FRAMES, drawHold));
 
 test(`${runtime}: dimension 7 follows the documented rule for offsets and loudness`, async () => withFilm(async dir => {
   const score = async (report:Json) => {
@@ -180,7 +229,32 @@ test(`${runtime}: standalone packet of a lone video lists every impossible check
     expect(cornerLevel(join(dir,'review/contact-sheet-001.png'))).toBeLessThan(LEVEL);
     expect(p.dimension7.score).toBe('unverified');
     expect(p.scan.report).toBe('scan.json');
+    expect([p.liveness.report,p.liveness.pass,p.liveness.stillSpans,p.seams]).toEqual(['liveness.json',true,[],[]]);
     expect(run('packet',video).status).toBe(1);
+  } finally {await rm(dir,{recursive:true,force:true});}
+});
+
+test(`${runtime}: standalone packet measures liveness and adds a strip inside each hold of a lone video`, async () => {
+  const dir = await mkdtemp(join(tmpdir(),'motion-studio-critique-'));
+  try {
+    const video = join(dir,'clip.mp4');
+    ffmpeg([...raw,'-r','30','-i','-','-c:v','libx264','-pix_fmt','yuv420p',video],Buffer.concat(Array.from({length:HOLD_FRAMES},(_,f) => drawHold(f))));
+    const result = run('packet',video,'--out',join(dir,'review'));
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('liveness fail');
+    const p = JSON.parse(await readFile(join(dir,'review/packet.json'),'utf8'));
+    const report = JSON.parse(await readFile(join(dir,'review/liveness.json'),'utf8'));
+    expect(p.liveness).toMatchObject({report:'liveness.json', pass:false, movingShareBasis:'content', movingShare:report.movingShare, dimension2Max:7});
+    // A lone video has no film frames: the hold is placed by seconds, then converted at the video's 30 fps.
+    const [hold] = p.liveness.stillSpans;
+    expect(p.liveness.stillSpans).toHaveLength(1);
+    expect(hold.firstFrame).toBe(null);
+    expect(hold.file).toBe('strips/hold-01.png');
+    expect(Math.abs(hold.frames[0]-HOLD_FIRST)).toBeLessThanOrEqual(3);
+    expect(Math.abs(hold.frames.at(-1)-HOLD_LAST)).toBeLessThanOrEqual(3);
+    expect((await readdir(join(dir,'review/strips')))).toEqual(['hold-01.png']);
+    // A rerun replaces its own strips folder.
+    expect(run('packet',video,'--out',join(dir,'review')).status).toBe(0);
   } finally {await rm(dir,{recursive:true,force:true});}
 });
 
@@ -218,7 +292,12 @@ test(`${runtime}: standalone packet never deletes files it did not write in an e
     await mkdir(join(dir,'review'));
     expect(run('packet',video,'--out',join(dir,'review')).status).toBe(0);
     expect(run('packet',video,'--out',join(dir,'review')).status).toBe(0);
-    expect((await readdir(join(dir,'review'))).sort()).toEqual(['contact-sheet-001.png','packet.json','scan.json']);
+    expect((await readdir(join(dir,'review'))).sort()).toEqual(['contact-sheet-001.png','liveness.json','packet.json','scan.json']);
+    // Finder's .DS_Store and a staging folder left by a killed run do not make the folder foreign; both stay.
+    await writeFile(join(dir,'review/.DS_Store'),'');
+    await mkdir(join(dir,'review/.motion-packet-left'));
+    expect(run('packet',video,'--out',join(dir,'review')).status).toBe(0);
+    expect((await readdir(join(dir,'review'))).sort()).toEqual(['.DS_Store','.motion-packet-left','contact-sheet-001.png','liveness.json','packet.json','scan.json']);
     // A file added beside an earlier packet makes the folder foreign again.
     await writeFile(join(dir,'review/notes.txt'),'mine too');
     expect(run('packet',video,'--out',join(dir,'review')).status).toBe(1);
