@@ -63,7 +63,7 @@ A separate reviewer subagent scores the film against the approved stills, the lo
 20. As a creator, I want the agent to propose BPM, beats, downbeats and drop from my track, and I want to correct or import the grid, so that timing is right even on ambiguous music.
 21. As a creator, I want a beat map table (beat, time, what happens, camera, spoken line, sound cue, engine), so that I approve the structure before any animation.
 22. As a creator, I want real stills rendered by each shot's engine at key moments, so that I see what the film will look like.
-23. As a creator, I want an animatic with the entry and exit frame of each shot on the real track, so that I judge pacing and transitions before the full build.
+23. As a creator, I want a moving animatic of the blocking renders on the real track, so that I judge pacing, camera and transitions before the full build (D62).
 24. As a creator, I want to give notes in director language, and I want to know which phase re-runs and what gets reset, so that notes are predictable.
 25. As a creator, I want approved stills frozen and used as the reference for critique, so that the finished film is checked against what I approved.
 26. As a creator making an explainer, I want reveals timed to the words of the narration and cuts timed to the beat, so that voice and music both drive the edit.

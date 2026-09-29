@@ -135,7 +135,7 @@ test('resume after an upstream edit: the edited gate and every later approval ar
     expect(recorded.stderr).toBe('error: gate G2 is stale; present G2 again\n');
     ok(['gate',dir,'G2','approve']);
     expect(status(dir)).toBe(lines('G1 approved','G2 approved','G3 pending','G4 pending','G5 pending',
-      'next: animatic with the entry and exit frame of each shot, then present G3'));
+      'next: blocking builds, render and stitch of the primary format, and the moving animatic, then present G3'));
     expect(ok(['validate',dir])).toBe(`valid ${dir}\n`);
   });
 });

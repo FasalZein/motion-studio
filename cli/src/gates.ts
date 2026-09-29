@@ -71,7 +71,7 @@ function pick(value:unknown, fields:string[]):unknown {
   if (value === null || typeof value !== 'object') return value;
   return Object.fromEntries(fields.filter(f => Object.hasOwn(value,f)).map(f => [f,(value as Record<string,unknown>)[f]]));
 }
-function canonical(value:unknown):string {
+export function canonical(value:unknown):string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
   if (value !== null && typeof value === 'object') return `{${Object.keys(value).sort().map(k => `${JSON.stringify(k)}:${canonical((value as Record<string,unknown>)[k])}`).join(',')}}`;
   return JSON.stringify(value);

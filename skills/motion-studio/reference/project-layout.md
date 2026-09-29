@@ -17,7 +17,7 @@ films/<slug>/
   stills/G2/<format>/       board stills <shot-id>-f<frame>.png per format (16x9, 9x16, 1x1), from `motion-studio stills`
   stills/G2/<format>/sheet.png   G2 contact sheet of those stills, with its tile index sheet.json; hashed with them
   stills/approved/<gate>-<hash8>/   immutable approval copies
-  animatic.mp4              G3 animatic from the frozen G2 stills and the track (`motion-studio animatic`)
+  animatic.mp4              G3 moving animatic: the stitched blocking master of the primary format with the track and narration (`motion-studio animatic`)
   renders/<format>/         render.json, master picture, safezone.json, handoff reports, contact sheets and transition strips, delivery files (16x9, 9x16, 1x1)
   renders/<format>/shots/   one clip (and still) per shot id, apart from pipeline outputs
   audio/                    track, voice and SFX sources; master mix; beats.detected.json (CLI grid proposal, seconds)

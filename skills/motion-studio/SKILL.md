@@ -21,7 +21,7 @@ A gate presents the actual artifact, its current input hashes and choices to app
 |---|---|---|---|
 | Brief (at most 3 intake rounds); assets **hero** (track, logo, type, palette, hero screenshots, voice script); `motion-look` and keyframe look tests in `shots/_look/<look-id>/` | G1: filled brief, 2–3 candidate stills with real assets, style-bible take/do-not-take | Brief or look test | G2–G5 |
 | Board, engine keyframes, real stills | G2: beat contract table with its thread column (what each seam carries) and the start and end stills of each beat, on a contact sheet built from the hashed stills at presentation time | Named beats in board; keyframes as needed | G3–G5; G2 too if beat time changes |
-| Entry/exit still animatic on the track | G3: playable animatic | Board or keyframes for named shots | G4–G5 |
+| Blocking builds (every beat moves with its real timing at placeholder fidelity); render and stitch of the primary format; moving animatic on the real track and narration | G3: playable moving animatic, with its liveness verdict as advice | Board, keyframes or blocking for named shots | G4–G5 |
 | Assets **fill**, full build, scan, liveness, critique loop A | G4: full-pass MP4, liveness report and scorecard | Build or board for named shots | G5 |
 | Polish, master mix, per-format draft renders, scan, critique loop B | No gate; examine real deliverables | Named defects in build/render | G5 when inputs change |
 | License check (D37) and final-render cost approval | G5: poster, contact sheet, safe-zone report, unresolved-license list | Render only | None |

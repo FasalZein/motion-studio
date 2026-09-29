@@ -17,7 +17,8 @@ export const vendorFileNames = ['gsap.min.js','SplitText.min.js','Flip.min.js','
 /** Author source files; media and fonts are not sources. */
 const sourceExtensions = new Set(['.ts','.tsx','.js','.jsx','.mjs','.cjs','.html','.htm','.css']);
 /** Folders inside a shot that hold dependencies or engine output, not author sources. */
-const skippedDirs = new Set(['node_modules','snapshots','renders','beats','out','outputs','build','dist','coverage']);
+export const nonSourceDirs:ReadonlySet<string> = new Set(['node_modules','snapshots','renders','beats','out','outputs','build','dist','coverage']);
+const skippedDirs = nonSourceDirs;
 
 const banned:{name:string; pattern:RegExp}[] = [
   {name:'useFrame', pattern:/\buseFrame\b/},

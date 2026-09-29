@@ -207,14 +207,20 @@ async function sha256(file:string):Promise<string> {
   return hash.digest('hex');
 }
 const spanText = (p:Place) => p.firstFrame === null ? `at ${p.startSecond} s` : `at frames ${p.firstFrame}-${p.lastFrame} (shot ${p.shots.join(', ')})`;
-/** One summary line and one line per located still span on stdout, one `error:` line per failed limit on stderr. */
-function print(name:string, output:string, r:LivenessReport) {
+/** The summary line and one line per excluded span and located still span. */
+function summary(name:string, output:string, r:LivenessReport):string[] {
   const {movingShare:m, stillShare:s, longestStillSeconds:l} = r;
-  console.log(`liveness ${name}: ${r.pass ? 'pass' : 'fail'}: moving ${m}, still over 0.5 s ${s.over0_5}, over 1 s ${s.over1}, over 2 s ${s.over2}, longest still ${l} s (${output})`);
-  for (const e of r.excluded) console.log(`  excluded ${e.kind} ${e.seconds} s ${spanText(e)}`);
-  for (const span of r.stillSpans) console.log(`  still ${span.seconds} s ${spanText(span)}`);
+  return [`liveness ${name}: ${r.pass ? 'pass' : 'fail'}: moving ${m}, still over 0.5 s ${s.over0_5}, over 1 s ${s.over1}, over 2 s ${s.over2}, longest still ${l} s (${output})`,
+    ...r.excluded.map(e => `  excluded ${e.kind} ${e.seconds} s ${spanText(e)}`),
+    ...r.stillSpans.map(span => `  still ${span.seconds} s ${spanText(span)}`)];
+}
+/** The summary on stdout, one `error:` line per failed limit on stderr. */
+function print(name:string, output:string, r:LivenessReport) {
+  for (const line of summary(name,output,r)) console.log(line);
   for (const f of r.failures) console.error(`error: ${name}: ${f}`);
 }
+/** Advice form (G3 animatic, D62): the summary and one `advice:` line per failed limit, all for stdout. */
+export const adviceLines = (name:string, output:string, r:LivenessReport) => [...summary(name,output,r), ...r.failures.map(f => `  advice: ${f}`)];
 
 export const livenessFile = (out:Outputs) => join(out.dir,'liveness.json');
 
