@@ -5,6 +5,7 @@ Create this tree in the user's working directory, not inside the installed skill
 ```text
 films/<slug>/
   BRIEF.md                  XML sections: inputs, direction, structure, build, gotchas, start
+  beatmap.md                the board's beat map: sourced assets, beat contract, engines, hero shot (agents/board.md)
   storyboard.json           canonical film and gate state
   ledger.json               canonical rights and asset provenance
   style-bible.md            when a reference was supplied
@@ -14,7 +15,7 @@ films/<slug>/
   shots/<shot-id>/          one engine project per shot
   shots/_look/<look-id>/    one G1 look-test project per candidate; not a film shot
   stills/<gate>/            engine-rendered review frames; G1 look tests: <look-id>.mkv (clip), .png (poster), .liveness.json (motion-studio looktest)
-  stills/G2/<format>/       board stills <shot-id>-f<frame>.png per format (16x9, 9x16, 1x1), from `motion-studio stills`
+  stills/G2/<format>/       board stills <shot-id>-f<NNN>.png per format (16x9, 9x16, 1x1), from `motion-studio stills`; NNN is the shot-local frame zero-padded to 3 digits (`s03-f070.png`)
   stills/G2/<format>/sheet.png   G2 contact sheet of those stills, with its tile index sheet.json; hashed with them
   stills/approved/<gate>-<hash8>/   immutable approval copies
   animatic.mp4              G3 moving animatic: the stitched blocking master of the primary format with the track and narration (`motion-studio animatic`)

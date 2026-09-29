@@ -9,12 +9,12 @@ Direct a film across HyperFrames and Remotion shots. You are the director and th
 
 ## State and resume
 
-1. For a new film, run `motion-studio init <slug>`. For an existing film, run `motion-studio status films/<slug>` and start at the phase its `next:` line names (the first pending, stale or noted gate). Before G1, `next:` names all pre-G1 phases in one line: run each pre-G1 packet's completion check in table order and start at the first that fails. Run `status` again before every gate decision. Without the CLI, use [v0 commands](reference/v0-commands.md) and mark each check it cannot run as unverified. Completion: the next phase and its packet are known.
+1. For a new film, run `motion-studio init <slug>`. For an existing film, run `motion-studio status films/<slug>` and start at the phase its `next:` line names (the first pending, stale or noted gate). When `next:` names several phases in one line (before G1, G2 or G3), run the completion check of each of those packets in table order and start at the first that fails. Run `status` again before every gate decision. Without the CLI, use [v0 commands](reference/v0-commands.md) and mark each check it cannot run as unverified. Completion: the next phase and its packet are known.
 2. **Independence.** The critique reviewer and skill evals run in a fresh subagent that receives only their packet. When the harness has no subagent tool, tell the user at the start: `This harness runs without independent subagents; every review is non-independent.` Label each such review **non-independent** beside its scorecard until a fresh session or the user reviews it. Completion: every review shown carries its independence label.
 
 ## Phase packets
 
-A phase packet is a short list of explicit paths: the brief to load, inputs, outputs and the completion check. Load only what the packet names. After the phase, keep its output paths and check result, and drop its working detail. Packets up to G1:
+A phase packet is a short list of explicit paths: the brief to load, inputs, outputs and the completion check. Load only what the packet names. After the phase, keep its output paths and check result, and drop its working detail. Packets up to G3:
 
 | Phase | Load | Inputs | Outputs | Completion check |
 |---|---|---|---|---|
@@ -23,6 +23,13 @@ A phase packet is a short list of explicit paths: the brief to load, inputs, out
 | Directions | `motion-look` steps 1-4; `motion-direction` `reference/idea-and-structure.md`, `reference/world-and-camera.md` | `BRIEF.md`, hero ledger ids, references | `BRIEF.md` `Direction <n>:` lines and `Logline:` (confirm it, or rewrite it from the hero assets, and copy it to `storyboard.json` `meta.logline`), `style-bible.md` when a reference exists, one look-test build brief per direction | 2-3 directions, each with a look taken from the brand (a `motion-look` file only as fallback) and naming the ledger ids of its logo, type, palette and captures; the brief check still prints `brief ok` |
 | Look tests | `agents/build-<engine>.md` for each look test | its build brief | `shots/_look/<look-id>/` | `motion-studio looktest films/<slug> <look-id>` exits 0 for each |
 | G1 | [reference/g1.md](reference/g1.md) | brief, ledger, `stills/G1/`, `style-bible.md` | G1 gate record | `motion-studio status` shows the decision |
+| Board | [agents/board.md](agents/board.md) steps 0-6 | `BRIEF.md`, ledger, `storyboard.json` `look` and `audio`, playbook | `beatmap.md`, `storyboard.json` `shots`, hero shot source | `motion-studio validate films/<slug>` exits 0 and `motion-studio beatmap films/<slug>` shows no `missing` thread |
+| Keyframes | `agents/build-remotion.md` for Remotion shots and `agents/build-hyperframes.md` for HyperFrames shots, mode `keyframe` | `storyboard.json`, frozen G1 stills, ledger, layouts | `shots/<shot-id>/` | each builder's keyframe completion |
+| Stills | [agents/board.md](agents/board.md) step 7 | keyframe shots | `renders/<format>/safezone.json`, `stills/G2/<format>/` | `node <this skill>/evals/check.mjs board films/<slug>` prints `board ok` |
+| G2 | [reference/g2.md](reference/g2.md) | `beatmap.md`, `stills/G2/`, `beatmap` output | G2 gate record | `motion-studio status` shows the decision; after approval, `check.mjs g2 films/<slug>` prints `g2 ok` |
+| Blocking | the same builder briefs, mode `blocking` ([agents/board.md](agents/board.md) step 8) | approved keyframe sources, frozen G2 stills `stills/approved/G2-<hash8>/` | `shots/<shot-id>/` | each builder's blocking completion |
+| Animatic | [agents/render.md](agents/render.md) step 1 | blocking shots, `audio.track`, `voice` | `renders/<primary>/`, `animatic.mp4` | `motion-studio animatic films/<slug>` exits 0 |
+| G3 | [reference/g3.md](reference/g3.md) | `animatic.mp4`, its liveness advice, `beatmap.md`, frozen G2 sheet | G3 gate record | `motion-studio status` shows the decision; after approval, `check.mjs g3 films/<slug>` prints `g3 ok` |
 
 Later phases use the same packet shape: the brief in `agents/`, the inputs and outputs the flow table names, and the phase brief's completion check.
 
@@ -33,8 +40,8 @@ A gate presents the actual artifact, its current input hashes and choices to app
 | Phase and artifact | Gate shows | Note re-entry | Reset |
 |---|---|---|---|
 | Brief (at most 3 intake rounds); assets **hero** (track, logo, type, palette, real captures and site art, voice script); directions from the brand and moving look tests in `shots/_look/<look-id>/` | G1 ([reference/g1.md](reference/g1.md)): full brief, hero assets, 2–3 directions, each a moving look test (clip, poster and passing liveness report from `motion-studio looktest`) with real assets, style-bible take/do-not-take | Brief or look test | G2–G5 |
-| Board, engine keyframes, real stills | G2: beat contract table with its thread column (what each seam carries) and the start and end stills of each beat, on a contact sheet built from the hashed stills at presentation time | Named beats in board; keyframes as needed | G3–G5; G2 too if beat time changes |
-| Blocking builds (every beat moves with its real timing at placeholder fidelity); render and stitch of the primary format; moving animatic on the real track and narration | G3: playable moving animatic, with its liveness verdict as advice | Board, keyframes or blocking for named shots | G4–G5 |
+| Board, engine keyframes, real stills | G2 ([reference/g2.md](reference/g2.md)): beat contract table with its thread column (what each seam carries) and the start and end stills of each beat, on a contact sheet built from the hashed stills at presentation time | Named beats in board; keyframes as needed | G3–G5; G2 too if beat time changes |
+| Blocking builds (every beat moves with its real timing at placeholder fidelity); render and stitch of the primary format; moving animatic on the real track and narration | G3 ([reference/g3.md](reference/g3.md)): playable moving animatic, with its liveness verdict as advice | Board, keyframes or blocking for named shots | G4–G5 |
 | Assets **fill**, full build, polish pass (`motion-direction` `reference/polish.md`), scan, liveness, critique loop A by a fresh reviewer | G4: full-pass MP4, liveness report, current critique report and scorecard | Build or board for named shots | G5 |
 | Master mix, per-format draft renders, scan, critique loop B | No gate; examine real deliverables | Named defects in build/render | G5 when inputs change |
 | License check (D37) and final-render cost approval | G5: poster, contact sheet, safe-zone report, unresolved-license list | Render only | None |
@@ -49,3 +56,14 @@ Look tests are not film shots: `storyboard.json` never lists `shots/_look/`, and
 For loops A and B, run technical scan first, then dispatch `motion-critique` in fresh context with the logline, approved frozen stills, look/style bible, beat grid, measured sync report, contact sheet, transition strips, scan and draft. Give the builder only the three worst findings. Stop when every verified score is at least 8, or after 3 loops **per revision**; show score changes per loop and offer accept at current scores, notes, or rescope. Mark unavailable evidence unverified. Manual scan substitutes are in [v0 commands](reference/v0-commands.md) (CLI: `motion-studio scan`, #8).
 
 Before G5, inspect every ledger entry: each `unknown` or `restricted` right needs an explicit user acceptance or a licensed replacement (D37). Show the final render cost before running it. After rendering, show the files and request acceptance. Completion: accepted files match G5 inputs and every open licensing decision is explicit.
+
+## Notes
+
+A note is the director's words at a gate. Apply each note round in this order:
+
+1. Record it first: `motion-studio gate films/<slug> <gate> changes --note "<director's words>"`, then `motion-studio taste notes films/<slug> <gate>`. The CLI counts the round and marks every later gate that is not pending stale.
+2. Map each note to the named beats, shots or files, and re-run only that work, from the phase the flow table's **Note re-entry** column names. A G2 note on beat 3 changes that beat's rows in `beatmap.md` and its shot, then runs `motion-studio stills films/<slug> <shot-id>` for that shot only. A G3 note on a shot re-enters board, keyframes or blocking for that shot; then render and stitch the primary format and run `motion-studio animatic` again. Leave every shot the notes do not name unchanged.
+3. Run `motion-studio status films/<slug>`. A note that moved a beat time or a shot range makes G2 stale (G2 hashes shot ids and frames); present every stale or noted gate again, earliest first. Earlier approved gates stay approved.
+4. Present the gate again with a line per note: the note, the work re-run and the files that changed.
+
+Completion: the gate is presented again, and every changed file traces to a note. After the third note round on a gate the CLI refuses a fourth: ask the user to approve the current state, `rescope` (which resets the round count) or stop.
