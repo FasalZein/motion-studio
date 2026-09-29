@@ -1,15 +1,7 @@
 {
-  "$comment": "Dispatcher only: expected bands of the two calibration cases in ../calibration/cases.md. The reviewer never sees this file. Check with: motion-studio calibrate <scores.json> calibration-bands.json. known-good gives only a 1 fps contact page, so motion quality (3) and technical finish (8) need full-rate evidence it lacks: the rubric requires unverified there.",
+  "$comment": "Dispatcher only: expected bands of the two calibration cases in ../calibration/cases.md. The reviewer never sees this file. Check with: motion-studio calibrate <scores.json> calibration-bands.json. case-2 is the slideshow: its liveness report fails with no waiver, so dimension 2 at 8 or more voids the run (rubric: an unwaived failing report caps dimension 2 at 7). case-1 gives only a 1 fps contact page, so motion quality (3) and technical finish (8) need full-rate evidence it lacks: the rubric requires unverified there; its passing liveness report supports dimension 2, and cases.md tells the reviewer to judge motion through the seams from the report's still spans (no seam strips ship). Known limit: case-1's bars change in 1 s steps; its only continuous motion is the teal marker. Check at the first LLM eval run whether an honest reviewer reaches 8 on dimension 2 from this evidence.",
   "cases": {
-    "known-bad": [
-      {"dimension": "1", "max": 7},
-      {"dimension": "2", "max": 7},
-      {"dimension": "7", "max": 7},
-      {"dimension": "7-audible", "unverified": true},
-      {"dimension": "6", "shot": "s03", "max": 7},
-      {"dimension": "8", "shot": "s03", "max": 7}
-    ],
-    "known-good": [
+    "case-1": [
       {"dimension": "1", "min": 8},
       {"dimension": "2", "min": 8},
       {"dimension": "7", "min": 8, "max": 8},
@@ -19,6 +11,14 @@
       {"dimension": "5", "shot": "*", "min": 8},
       {"dimension": "6", "shot": "*", "min": 8},
       {"dimension": "8", "shot": "*", "unverified": true}
+    ],
+    "case-2": [
+      {"dimension": "1", "max": 7},
+      {"dimension": "2", "max": 7},
+      {"dimension": "7", "max": 7},
+      {"dimension": "7-audible", "unverified": true},
+      {"dimension": "6", "shot": "s03", "max": 7},
+      {"dimension": "8", "shot": "s03", "max": 7}
     ]
   }
 }

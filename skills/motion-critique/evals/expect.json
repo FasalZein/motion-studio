@@ -1,5 +1,5 @@
 {
-  "$comment": "Grader only: expected bands per side (motion-studio calibrate <scores.json> expect.json). A bad side must score below 8 on its damaged dimension and name a damaged shot with a frame inside it; an issue list accepts a finding at any one of its places. A good side must reach 8 on the applicable dimensions.",
+  "$comment": "Grader only: expected bands per side (motion-studio calibrate <scores.json> expect.json). A bad side must score below 8 on its damaged dimension and name a damaged shot with a frame inside it; an issue list accepts a finding at any one of its places. A good side must reach 8 on the applicable dimensions. Dimension 2 at 8 on slideshow-pace/good and data-story/good rests on a passing liveness report, declared threads and a moving marker; their layouts change in 1 s steps and no seam strips ship. Check at the first LLM eval run whether an honest reviewer reaches 8 there.",
   "cases": {
     "off-beat-sfx/bad": [{"dimension": "7", "max": 7}, {"dimension": "7-audible", "unverified": true}, {"issue": [{"shot": "s02", "from": 30, "to": 35}, {"shot": "s03", "from": 84, "to": 89}, {"shot": "s04", "from": 90, "to": 93}]}],
     "off-beat-sfx/good": [{"dimension": "7", "min": 8, "max": 8}, {"dimension": "7-audible", "unverified": true}],

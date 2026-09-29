@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {createReadStream} from 'node:fs';
-import {access, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile} from 'node:fs/promises';
+import {access, mkdir, mkdtemp, readdir, readFile, rename, rm, rmdir, stat, writeFile} from 'node:fs/promises';
 import {basename, dirname, join, relative} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -11,6 +11,8 @@ import {scanVideo, type ScanReport} from './scan.js';
 import {tile, tiling, SHEET_COLUMNS} from './sheet.js';
 import {round3, type Tools} from './seam.js';
 import {soundScore, type SyncReport} from './sound.js';
+import {holdStrips, livenessEvidence, readReport, seamStrips} from './evidence.js';
+import {livenessFile, measureLiveness} from './liveness.js';
 
 /**
  * `packet`: gathers the motion-critique evidence packet into one index, `packet.json`. Every item it cannot find is
@@ -48,21 +50,35 @@ async function replaceDir(dir:string, build:(staging:string) => Promise<void>) {
 
 // The files a standalone packet writes. An existing --out folder is reused only when it holds a standalone packet and
 // nothing else, so the command never deletes a file it did not write (the input video, the user's notes).
-const STANDALONE_FILE = /^(packet\.json|scan\.json|contact-sheet-\d{3}\.png)$/;
+const STANDALONE_FILE = /^(packet\.json|scan\.json|liveness\.json|contact-sheet-\d{3}\.png|strips)$/;
+// The files a packet writes into its strips/ folder. The folder counts as the packet's only when it holds nothing else.
+const STRIP_FILE = /^(seam-.+|hold-\d{2})\.png$/;
+// Entries the guard ignores and leaves in place: Finder's folder file and a staging folder left by a killed run.
+const IGNORED = /^(\.DS_Store|\.motion-packet-.+)$/;
 /** Writes a standalone packet into `dir`: a new folder, an empty folder, or a folder that holds only an earlier packet. */
 async function intoOutDir(dir:string, build:(staging:string) => Promise<void>) {
   const info = await stat(dir).catch(() => null);
   if (info === null) return replaceDir(dir,build);
   if (!info.isDirectory()) throw new CliError(`--out ${dir} is not a folder`);
-  const entries = await readdir(dir);
+  const entries = (await readdir(dir)).filter(e => !IGNORED.test(e));
   const earlier = entries.includes('packet.json') && (await readJson(join(dir,'packet.json')).catch(() => null))?.mode === 'standalone';
-  const foreign = entries.filter(e => !earlier || !STANDALONE_FILE.test(e));
+  // strips/ as a file, or a strips/ folder with another file in it, is foreign like any other entry.
+  const strips = entries.includes('strips') ? await readdir(join(dir,'strips')).then(l => l.filter(e => !IGNORED.test(e)),() => null) : [];
+  const foreign = [...entries.filter(e => !earlier || !STANDALONE_FILE.test(e)),
+    ...(strips === null ? ['strips'] : strips.filter(e => !earlier || !STRIP_FILE.test(e)).map(e => `strips/${e}`))];
   if (foreign.length) throw new CliError(`--out ${dir} holds files no packet wrote (${foreign.slice(0,3).join(', ')}${foreign.length > 3 ? ', ...' : ''}); name a new or empty folder`);
   const staging = await mkdtemp(join(dir,'.motion-packet-'));
   try {
     await build(staging);
-    for (const e of entries) await rm(join(dir,e));
-    for (const e of await readdir(staging)) await rename(join(staging,e),join(dir,e));
+    // Delete only the files an earlier packet wrote; ignored entries inside strips/ stay, so the folder may stay too.
+    for (const e of entries) if (e !== 'strips') await rm(join(dir,e));
+    for (const e of strips ?? []) await rm(join(dir,'strips',e));
+    if (strips?.length) await rmdir(join(dir,'strips')).catch(() => {});
+    for (const e of await readdir(staging)) {
+      if (e === 'strips' && await exists(join(dir,'strips'))) {
+        for (const f of await readdir(join(staging,e))) await rename(join(staging,e,f),join(dir,e,f));
+      } else await rename(join(staging,e),join(dir,e));
+    }
   } finally {await rm(staging,{recursive:true,force:true});}
 }
 
@@ -134,6 +150,17 @@ export async function filmPacket(project:Project, out:Outputs, tools:Tools):Prom
     if (declared && !handoffs.length) missing.push({item:'handoff reports', unverified:['8 technical finish at handoff seams'], action:`motion-studio handoff <film-dir> ${format}`});
     const ledger = await exists(join(root,'ledger.json')) ? 'ledger.json' : null;
 
+    // Motion evidence (#41): the liveness report of this master, seam strips with their threads, and hold strips.
+    const reportFile = livenessFile(out);
+    const report = await readReport(reportFile);
+    const reportCurrent = report !== null && report.sha256 === masterHash;
+    if (!reportCurrent) missing.push({item:report ? 'liveness report (describes an earlier master)' : 'liveness report', unverified:['2 continuity and pacing: living holds inside the D59 limits','hold strips inside still spans over 0.5 s'], action:`motion-studio liveness <film-dir> ${format}`});
+    const size = s.meta.layouts[format]?.canvas ?? {width:320, height:180};
+    const packetPath = (file:string) => `${rel(dir)}/${file}`;
+    const seams = await seamStrips(tools,out.master,size,s.meta.durationFrames,s.shots,reportCurrent ? report : null,staging,packetPath);
+    const holds = reportCurrent ? await holdStrips(tools,out.master,size,s.meta.fps,s.meta.durationFrames,report.stillSpans,staging,packetPath) : [];
+    const liveness = reportCurrent ? livenessEvidence(report,rel(reportFile),holds,views.find(v => v.gate.id === 'G4')) : null;
+
     const draft = await exists(final) ? rel(final) : rel(out.master);
     const packet = {
       mode:'in-studio', format, fps:s.meta.fps, durationFrames:s.meta.durationFrames,
@@ -150,12 +177,14 @@ export async function filmPacket(project:Project, out:Outputs, tools:Tools):Prom
       beatGrid:{grid:s.audio.grid, bpm:s.audio.bpm, confidence:s.audio.confidence, beatFrames:s.audio.beatFrames, downbeatFrames:s.audio.downbeatFrames, dropFrames:s.audio.dropFrames},
       sync:sync ? {report:rel(syncFile), syncWindowFrames:sync.syncWindowFrames, integratedLufs:sync.integratedLufs, truePeakDbtp:sync.truePeakDbtp, sfx:sync.sfx, cuts:sync.cuts} : null,
       dimension7:soundScore(sync),
+      liveness, seams,
       handoffs, ledger,
       missing,
     };
     await writeFile(join(staging,'packet.json'),JSON.stringify(packet,null,2)+'\n');
     const blocking = scanCurrent ? scan.counts.blocking : 0;
-    written = `packet ${format}: ${stillPairs.length} still pair${stillPairs.length === 1 ? '' : 's'}, ${missing.length} missing item${missing.length === 1 ? '' : 's'}, dimension 7 ${packet.dimension7.score}${blocking ? `, ${blocking} blocking scan flag${blocking === 1 ? '' : 's'} (repair before review)` : ''} (${rel(dir)}/packet.json)`;
+    const live = liveness === null ? 'liveness missing' : `liveness ${liveness.pass ? 'pass' : liveness.waiver ? 'fail (waived)' : 'fail (dimension 2 at most 7)'}`;
+    written = `packet ${format}: ${stillPairs.length} still pair${stillPairs.length === 1 ? '' : 's'}, ${missing.length} missing item${missing.length === 1 ? '' : 's'}, dimension 7 ${packet.dimension7.score}, ${live}${blocking ? `, ${blocking} blocking scan flag${blocking === 1 ? '' : 's'} (repair before review)` : ''} (${rel(dir)}/packet.json)`;
   });
   return written;
 }
@@ -201,19 +230,27 @@ export async function videoPacket(video:string, args:string[], tools:Tools):Prom
       const peak = /True peak:\s*Peak:\s*(-?[\d.]+|-inf) dBFS/.exec(log)?.[1];
       if (Number.isFinite(lufs) && peak !== undefined) loudness = {integratedLufs:lufs, truePeakDbtp:peak === '-inf' ? -Infinity : Number(peak)};
     }
-    const missing = [...STANDALONE_IMPOSSIBLE, ...(audio ? [] : [{item:'audio stream', unverified:['7 sound and sync','loudness'], action:'none: the video has no audio'}])];
+    // Liveness of the lone video (no film context, so no cuts) and a hold strip inside each still span over 0.5 s.
+    const report = await measureLiveness(tools,video,basename(video),null).catch(e => {if (e instanceof CliError) return null; throw e;});
+    if (report) await writeFile(join(staging,'liveness.json'),JSON.stringify(report,null,2)+'\n');
+    const holds = report ? await holdStrips(tools,video,{width:v.width!, height:v.height!},fps,frames,report.stillSpans,staging,f => f) : [];
+    const missing = [...STANDALONE_IMPOSSIBLE, ...(audio ? [] : [{item:'audio stream', unverified:['7 sound and sync','loudness'], action:'none: the video has no audio'}]),
+      ...(report ? [] : [{item:'liveness report', unverified:['2 continuity and pacing: living holds inside the D59 limits'], action:'none: the video is too short to measure'}])];
     const packet = {
       mode:'standalone', video, sha256:scan.sha256, fps, frames,
       contactSheets:pages,
       scan:{report:'scan.json', counts:scan.counts, flags:scan.flags.map(f => ({kind:f.kind, severity:f.severity, frame:f.frame, frames:f.frames}))},
       loudness,
+      liveness:report ? livenessEvidence(report,'liveness.json',holds,undefined) : null,
+      // A lone video declares no seams: scan color jumps are candidate cuts only (see impossible).
+      seams:[],
       patterns:{shared:(await loadPatterns()).shared, look:null, lookPairs:[]},
       dimension7:soundScore(null,'standalone: no mix sync report, so hit and cut offsets are unverified'),
       impossible:missing,
       missing,
     };
     await writeFile(join(staging,'packet.json'),JSON.stringify(packet,null,2)+'\n');
-    written = `packet standalone: ${pages.length} contact page${pages.length === 1 ? '' : 's'}, scan ${scan.counts.blocking} blocking and ${scan.counts.advisory} advisory, ${missing.length} impossible checks (${join(dir,'packet.json')})`;
+    written = `packet standalone: ${pages.length} contact page${pages.length === 1 ? '' : 's'}, scan ${scan.counts.blocking} blocking and ${scan.counts.advisory} advisory, ${missing.length} impossible checks, liveness ${report ? report.pass ? 'pass' : 'fail' : 'missing'} (${join(dir,'packet.json')})`;
   });
   return written;
 }
