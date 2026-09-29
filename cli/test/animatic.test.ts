@@ -121,6 +121,17 @@ test('animatic encodes the current stitched master on the real track and narrati
     // Content, not file time: restoring the rendered source makes the render current again.
     await writeFile(html,original);
     ok('node',...animaticArgs);
+    // Engine output inside a shot folder (hyperframes check --snapshots) and a storyboard rewritten with another key
+    // order change no rendered source, so the render stays current.
+    await mkdir(join(dir,'shots','hyperframes','snapshots'),{recursive:true});
+    await writeFile(join(dir,'shots','hyperframes','snapshots','frame-0.png'),'snapshot');
+    const boardFile = join(dir,'storyboard.json');
+    const board = await readFile(boardFile,'utf8');
+    const reversed = (v:unknown):unknown => Array.isArray(v) ? v.map(reversed) : v !== null && typeof v === 'object' ? Object.fromEntries(Object.entries(v).reverse().map(([k,x]) => [k,reversed(x)])) : v;
+    await writeFile(boardFile,JSON.stringify(reversed(JSON.parse(board))));
+    ok('bun',...animaticArgs);
+    await writeFile(boardFile,board);
+    await rm(join(dir,'shots','hyperframes','snapshots'),{recursive:true,force:true});
     // A render record from before source hashes cannot prove any shot current.
     const marker = join(dir,'renders','16x9','render.json');
     const record = await readFile(marker);

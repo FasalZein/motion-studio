@@ -4,9 +4,15 @@ import {join, relative} from 'node:path';
 
 import {CliError, layoutOf, type Format, type Project, type Shot} from './project.js';
 import type {Outputs} from './outputs.js';
+import {nonSourceDirs} from './determinism.js';
+import {canonical} from './gates.js';
 
-/** Folders inside a shot that are not shot source: installed packages. Dot entries (CLI staging) are skipped too. */
-const skippedDirs = new Set(['node_modules']);
+/**
+ * Folders inside a shot that are not shot source: installed packages and engine output (the same list the
+ * determinism guard skips, and the G2 shot-sources exclusions), so a manual `hyperframes check --snapshots` after
+ * `render` does not make the render look stale. Dot entries (CLI staging) are skipped too.
+ */
+const skippedDirs = nonSourceDirs;
 
 async function sourceFiles(dir:string):Promise<string[]> {
   const entries = await readdir(dir,{withFileTypes:true}).catch(() => []);
@@ -22,8 +28,8 @@ async function sourceFiles(dir:string):Promise<string[]> {
 }
 
 /**
- * The source hash of one shot render: SHA-256 over every file in `shots/<id>/` (path and content; dot entries and
- * `node_modules` left out), the shot's storyboard fields that change its pixels (engine, entrypoint, frame range),
+ * The source hash of one shot render: SHA-256 over every file in `shots/<id>/` (path and content; dot entries,
+ * `node_modules` and engine output folders left out), the shot's storyboard fields that change its pixels (engine, entrypoint, frame range),
  * the film fps, the format layout, and the ledger hash of each asset the shot lists. `render` records it per shot in
  * `render.json`; a different current hash means the source changed after the render. Content hashes, not file
  * times: a copy, checkout or touch changes a time but not the rendered source, and an edit within the same second
@@ -36,7 +42,8 @@ export async function shotSourceHash(project:Project, shot:Shot, format:Format):
   const files = (await sourceFiles(dir)).map(f => ({rel:relative(dir,f).split('\\').join('/'), full:f})).sort((a,b) => a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0);
   for (const {rel,full} of files) hash.update(`${rel}\0${createHash('sha256').update(await readFile(full)).digest('hex')}\n`);
   const assets = shot.assets.map(id => [id,ledger.assets.find(a => a.id === id)?.sha256 ?? null]);
-  hash.update(JSON.stringify({engine:shot.engine, entrypoint:shot.entrypoint, startFrame:shot.startFrame, endFrame:shot.endFrame,
+  // Canonical JSON (sorted keys), so rewriting storyboard.json with another key order changes no hash.
+  hash.update(canonical({engine:shot.engine, entrypoint:shot.entrypoint, startFrame:shot.startFrame, endFrame:shot.endFrame,
     fps:storyboard.meta.fps, layout:layoutOf(storyboard,format), assets}));
   return hash.digest('hex');
 }
