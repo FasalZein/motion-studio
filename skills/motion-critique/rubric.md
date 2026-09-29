@@ -20,7 +20,7 @@ For dimension 7, use the measured report, not a contact sheet or an imagined sou
 - Timing points for beat-targeted cuts: worst error at most 1 frame gives 8; 2 or 3 frames gives 5; 4 or more gives 2.
 - Where the SFX window edge comes from: `mix` looks for each SFX peak only `syncWindowFrames` (3) frames either side of its planned peak, so an SFX error at that edge means the hit was not found within the window.
 - Level points: within 0.5 LU of the target and true peak at or below -1 dBTP gives 8; within 2 LU and at or below 0 dBTP gives 5; otherwise 2.
-- The score is the lower of the two. Nothing timed leaves level only, with "no SFX hit tested". No report gives unverified.
+- The score is the lowest of the timing and level points. Nothing timed leaves level only, with "no SFX hit tested". No report gives unverified.
 - The rule stops at 8. Score 9 or 10 only when you heard the audio; otherwise mark `7-audible` unverified.
  Identify each intended beat-targeted cut from the board; an intentional off-beat cut is judged against its declared timing, not silently forced to a beat. When there are no SFX, assess only applicable checks and state that no SFX hit was tested. When music has no declared beat grid, mark beat alignment unverified. The project mix target is -14 integrated LUFS; quote its measured value and any documented tolerance rather than inventing one. The ledger can establish an SFX source, not how it sounds. If neither audio nor enough measurement is available, mark sound quality unverified even if numeric sync is measured.
 

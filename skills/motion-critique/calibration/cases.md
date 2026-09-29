@@ -9,7 +9,7 @@ Score both cases from this file and the two sheets beside it. Each case is a 12-
 
 ## known-good
 - Sheet: `known-good.png`. No full-rate strips, no playable clip and no scan report.
-- Look: `data-journalism` (motion-look), with its palette and axis style visible in every shot.
+- Look: `data-journalism` (motion-look), adapted to a dark field with one teal accent.
 - Non-product data story: monthly rainfall of four cities from a public weather dataset, retrieved 2026-09-01; bars start at a zero baseline. The bars grow in s01 and sort by value in s02. In s03 the wettest city is highlighted and its value callout grows. s04 is the end card that states the claim.
 - Sync report: every SFX hit and beat-targeted cut at 0 frames; -14.1 LUFS, true peak -1.3 dBTP. Audio cannot be heard.
 
