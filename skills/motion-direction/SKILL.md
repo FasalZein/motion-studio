@@ -1,6 +1,6 @@
 ---
 name: motion-direction
-description: Direct motion in a film of any length - the idea line, one world with a camera, seam threads, designed in-betweens, living holds, choreography, 2D and 3D, product UI in motion, and the per-beat contract. Use when boarding beats, building a look test or shot, or reviewing motion. Style belongs to motion-look; scoring belongs to motion-critique.
+description: Direct motion in a film of any length - asset-first brand material, the idea line, one world with a camera, seam threads, designed in-betweens, living holds, choreography, 2D and 3D, product UI and UI kits, polish, and the per-beat contract. Use when sourcing brand assets, boarding beats, building a look test or shot, polishing before G4, or reviewing motion. Style belongs to motion-look; scoring belongs to motion-critique.
 ---
 
 # Motion direction
@@ -24,13 +24,15 @@ Load only the files your phase names. Each file is short and self-contained.
 
 | Phase | Files |
 |---|---|
+| Assets (before directions and the board) | [asset first](reference/asset-first.md) |
 | Brief and directions (G1 candidates) | [idea and structure](reference/idea-and-structure.md), [world and camera](reference/world-and-camera.md) |
 | Look test build | [world and camera](reference/world-and-camera.md), [seams](reference/seams-and-in-betweens.md), [living holds](reference/living-holds.md), [choreography](reference/choreography.md) |
-| Board (beat map, G2) | [beat contract](reference/beat-contract.md), [idea and structure](reference/idea-and-structure.md), [world and camera](reference/world-and-camera.md), [seams](reference/seams-and-in-betweens.md), [living holds](reference/living-holds.md) |
+| Board (beat map, G2) | [asset first](reference/asset-first.md), [beat contract](reference/beat-contract.md), [idea and structure](reference/idea-and-structure.md), [world and camera](reference/world-and-camera.md), [seams](reference/seams-and-in-betweens.md), [living holds](reference/living-holds.md) |
 | Shot build (keyframe, blocking, full) | [beat contract](reference/beat-contract.md), [seams](reference/seams-and-in-betweens.md), [living holds](reference/living-holds.md), [choreography](reference/choreography.md) |
+| Polish (after the full build, before G4) | [polish checklist](reference/polish.md) |
 | Review | [beat contract](reference/beat-contract.md), [seams](reference/seams-and-in-betweens.md), [living holds](reference/living-holds.md) |
 
-Add [2D and 3D](reference/2d-and-3d.md) when a shot declares 3D or mixes 3D with 2D. Add [product UI in motion](reference/product-ui.md) when the film shows a product interface.
+Add [2D and 3D](reference/2d-and-3d.md) when a shot declares 3D or mixes 3D with 2D. Add [product UI in motion](reference/product-ui.md) when the film shows a product interface, and [UI kit](reference/ui-kit.md) before building UI in code.
 
 ## The one test
 

@@ -11,9 +11,9 @@ The board sets these fields for every beat, one row per beat (a shot may hold se
 | Thread | At a seam: the thread kind and the shared thing. Inside a shot: the element that carries into the next beat. | `none`, empty | shot `thread` (D70); beat map |
 | In-between plan | How the frame travels from this beat's end pose into the next beat. | "fade", "transition" alone | beat map |
 | Sound cue | The beat, word or SFX the motion lands on. | none on a beat-driven film | beat map; `soundCues`, `reveals` |
-| Live content | What keeps moving during any hold: drift, parallax, light, type or UI behavior. Type and UI are live objects, not bitmaps. | a frozen pose; a pasted screenshot | beat map |
+| Live content | What keeps moving during any hold: drift, parallax, light, type or UI behavior, or the camera, mask or depth moving over a capture. | a frozen pose; a capture that sits still in frame | beat map |
 
-Evidence per field: motion event [S: wwdc18; I], camera [S: linear-releases, if-jessica-jones], thread [S: flavien; D: D64], in-between plan [S: ordinary-folk], sound cue [S: buck-2021, flavien], live content [D: D67; S: metrics-study].
+Evidence per field: motion event [S: wwdc18; I], camera [S: linear-releases, if-jessica-jones], thread [S: flavien; D: D64], in-between plan [S: ordinary-folk], sound cue [S: buck-2021, flavien], live content [D: D67, D78; S: metrics-study].
 
 ## Check
 

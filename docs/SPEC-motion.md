@@ -25,7 +25,7 @@ Motion becomes a first-class, measured part of the studio.
 - **A liveness report measures stillness** with the method and limits taken from 18 world-class pieces (D59). A failing full pass cannot be approved at G4 unless the director writes a waiver (D60).
 - **Seams carry motion.** Every seam declares its continuity thread (D64), and a handoff lets motion continue through the seam (D63).
 - **The builders get the techniques.** 3D (three.js in both engines), all GSAP plugins, noise, motion blur and path tools are pinned in the CLI. The allow-lists name the installed engine files for API detail. A determinism guard keeps every frame a pure function of time (D65, D66).
-- **Product UI is a live object** inside the film's world, never a pasted screenshot, and every hold is a living hold (D67).
+- **Real captures are hero material** (D78, which supersedes the UI part of D67): the brand's real screens, card art and logo are moved with camera, masks, depth, 3D tilt and cuts on action; UI is rebuilt in code (a UI kit in Remotion from the brand tokens) only where behavior is needed. Every hold is a living hold (D67).
 
 ## User Stories
 
@@ -82,7 +82,7 @@ Motion becomes a first-class, measured part of the studio.
 40. As an operator, I want the render report to record the GL backend, so that a film is not rebuilt on another backend without a note.
 
 ### Product UI
-41. As a creator of a product film, I want the UI rebuilt in code and animated as real behavior, so that the product feels alive and not pasted.
+41. As a creator of a product film, I want my product's real captures moved as hero material, and UI rebuilt in code only where it must behave (typing, filtering, selection), so that the product looks true and feels alive (D78).
 42. As a creator, I want the UI to be one element inside the film's world, so that the film is motion design and not a UI demo.
 43. As a maintainer, I want the capture URL and date of the UI state kept in the ledger, so that message truth survives the rebuild.
 

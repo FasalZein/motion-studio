@@ -5,12 +5,23 @@ import {fileURLToPath} from 'node:url';
 import {cp, mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {spawn, spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 
 // Black-box taste and style-bible checks: each case runs the built CLI as a process with HOME pointed at a scratch
 // folder, so no run reads or writes the real ~/.motion-studio/taste.json. Expected profiles are built from the notes and
 // flags the test passes, in the order the taste-profile reference defines.
 const test = (name:string, fn:()=>Promise<void>, timeout=120000) => nodeTest(name,{timeout},fn);
 const here = dirname(fileURLToPath(import.meta.url));
+
+/** A stand-in master with what `packet` and a fresh reviewer write for it, which G4 approval needs (D78). */
+async function fakeCritique(film:string) {
+  const sha = createHash('sha256').update('master v1').digest('hex');
+  await mkdir(join(film,'renders/16x9'),{recursive:true});
+  await mkdir(join(film,'critique/packet-16x9'),{recursive:true});
+  await writeFile(join(film,'renders/16x9/master.mkv'),'master v1');
+  await writeFile(join(film,'critique/packet-16x9/packet.json'),JSON.stringify({render:{masterSha256:sha}}));
+  await writeFile(join(film,'critique/loop-1.md'),`Mode: in-studio; independence: independent\nPacket: critique/packet-16x9/packet.json; master sha256: ${sha}\n`);
+}
 const cli = resolve(here,'../dist/cli.js');
 const fixture = resolve(here,'../fixtures/two-engine');
 const styleFixture = resolve(here,'../fixtures/style-bible/style-bible.md');
@@ -252,7 +263,8 @@ test('taste accept records the accepted look, signature moves and pacing after G
     fails(home,['taste','accept',film],'taste accept needs G5 approved and not stale; G5 is pending');
     ok(home,['gate',film,'G1','approve','--note','keynote']);
     for (const gate of ['G2','G3']) ok(home,['gate',film,gate,'approve']);
-    // The fixture has no rendered master to measure, so G4 is approved with a liveness waiver (D60).
+    // The stand-in master cannot be measured, so G4 is approved with a liveness waiver (D60).
+    await fakeCritique(film);
     ok(home,['gate',film,'G4','approve','--waive','liveness','--note','no master in this fixture']);
     ok(home,['gate',film,'G5','approve','--note','ship it']);
     fails(home,['taste','accept',film,'--move','whoosh-in'],'taste accept: move "whoosh-in" is not a motion-vocabulary term id or custom:<description>');

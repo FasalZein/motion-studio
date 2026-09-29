@@ -27,8 +27,9 @@ Judge each motion failure below as **present**, **absent** or **unverified**. A 
 | Style-frame alternation (2, 3) | Posed key frames joined by brief transitions: "style frame, transition, style frame". | Contact pages where held poses repeat between seams; `liveness.advisory.longestMotionRunSeconds`; hold strips. |
 | Repeated template layout (1, 5) | The same layout, framing or entry returns shot after shot. | Contact tiles at the named frames of three or more shots. |
 | Idea line not restatable (6, 1) | After the whole sheet, you cannot say in one sentence what the film shows and why. | Your one-sentence restatement beside the packet `logline`, or "cannot restate" with the pages you read. |
+| Placeholder or parked UI (6, 3) | Grey placeholder UI (empty boxes, grey bars for text, windows with no content), or a real capture that only sits in frame with no camera, mask, depth or tilt move (D78). | Contact tiles and native frames of the UI shots; the packet `ledger` for capture entries (source URL and date). |
 
-**Done when:** Each of the five failures has a verdict, and each present or absent verdict names its evidence path and frames.
+**Done when:** Each of the six failures has a verdict, and each present or absent verdict names its evidence path and frames.
 
 ## 4. Write the report
 
@@ -38,6 +39,7 @@ In-studio, write `critique/loop-<n>.md` under the film project. For standalone r
 # Critique loop N
 Mode: in-studio | standalone; independence: independent | non-independent
 Render: <path>; format: <format>; fps: <fps>; revision hashes: <hashes or unavailable>
+Packet: critique/packet-<format folder>/packet.json; master sha256: <the packet's render.masterSha256>
 Evidence: <readable paths>; missing/unreadable: <items and affected judgments>
 Calibration: case-1 <dimension: score or unverified, per dimension>; case-2 <dimension: score or unverified, per dimension>
 Liveness: <pass | fail | waived | unverified>; content-basis moving share <liveness.movingShare>; failed limits <list or none>
@@ -59,6 +61,7 @@ Liveness: <pass | fail | waived | unverified>; content-basis moving share <liven
 | Style-frame alternation | | |
 | Repeated template layout | | |
 | Idea line not restatable | | |
+| Placeholder or parked UI | | |
 
 ## Three worst issues
 1. <shot id>, global frame <n> (<time seconds>), `motion-vocabulary` term `<kebab-id>`: <visible/recorded failure>; repair: <specific edit>. <evidence path>
@@ -75,6 +78,8 @@ Liveness: <pass | fail | waived | unverified>; content-basis moving share <liven
 - <previous score → current score for each dimension and shot; first loop: baseline>
 - Decision: pass | repair | escalate; <all scores >= 8, unverified status, blocking scan flags>
 ```
+
+The **header** is every line above the first `## ` heading. Write the `Mode` and `Packet` lines in the header, exactly in this shape: `gate G4 approve` reads only the header (the first `Mode:` line and the `Packet` lines) and refuses without an independent report whose `Packet` line names the current packet and master hash (D78). A `--waive critique` approval accepts a non-independent header but still needs that `Packet` line (D80). One report may carry one `Packet` line per format it reviewed. Standalone reports leave the `Packet` line out.
 
 Name exactly three worst issues when three actionable issues exist. If fewer exist, list only observed issues and state the count; never invent defects to fill slots. Put the worst issues first, and name the affected shot and exact frame. Each issue names a `motion-vocabulary` kebab id and a concrete repair. For a missing evidence issue, state its frame as unverified and request the evidence instead of making up a defect. Give **one line per frozen approved still**, even when it matches. Note intentional design departures separately from accidental ones; approval still controls whether a departure is acceptable. Compare previous loop scores only when hashes identify the same revision; otherwise label the new loop a new baseline.
 

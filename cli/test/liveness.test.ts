@@ -6,6 +6,7 @@ import {cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile} from 'node:fs/prom
 import {tmpdir} from 'node:os';
 import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 
 // Black-box liveness fixtures (spec seam 1). Every video is drawn here sample by sample: a 40x40 box on a fixed
 // textured background moves 2 px per step, or holds by repeating the picture. A lone video is encoded at 12 fps, so
@@ -284,12 +285,17 @@ test(`${runtime}: G4 approval needs a current passing report or a written waiver
   expect(run('gate',dir,'G4','approve','--waive','liveness').stderr).toBe('error: --waive liveness needs a --note with the reason\n');
   expect(run('gate',dir,'G3','approve','--waive','liveness','--note','x').stderr).toBe('error: --waive liveness applies only to G4 approve\n');
   expect(run('gate',dir,'G4','approve','--waive','other','--note','x').status).toBe(1);
+  // G4 also needs a fresh reviewer's critique report of this master (D78): the packet and a report that names it.
+  const masterSha = createHash('sha256').update(await readFile(join(dir,'renders/16x9/master.mkv'))).digest('hex');
+  await mkdir(join(dir,'critique/packet-16x9'),{recursive:true});
+  await writeFile(join(dir,'critique/packet-16x9/packet.json'),JSON.stringify({render:{masterSha256:masterSha}}));
+  await writeFile(join(dir,'critique/loop-1.md'),`Mode: in-studio; independence: independent\nPacket: critique/packet-16x9/packet.json; master sha256: ${masterSha}\n`);
   // The director waives the stale report with a reason; the gate record keeps it.
   const waived = run('gate',dir,'G4','approve','--waive','liveness','--note','deliberate 2.5 s title hold');
   expect(waived.stderr).toBe('');
   expect(waived.status).toBe(0);
   expect(waived.stdout).toContain('waived: liveness\n');
-  expect((await storyboard()).gates[3]).toMatchObject({state:'approved', notes:['deliberate 2.5 s title hold'], waiver:{check:'liveness', reason:'deliberate 2.5 s title hold'}});
+  expect((await storyboard()).gates[3]).toMatchObject({state:'approved', notes:['deliberate 2.5 s title hold'], waivers:[{check:'liveness', reason:'deliberate 2.5 s title hold'}]});
   expect(run('validate',dir).status).toBe(0);
   // A passing current report approves without a waiver; the new approval drops the old waiver.
   expect(run('liveness',dir).status).toBe(0);
@@ -298,5 +304,5 @@ test(`${runtime}: G4 approval needs a current passing report or a written waiver
   expect(approved.status).toBe(0);
   const g4 = (await storyboard()).gates[3];
   expect(g4.state).toBe('approved');
-  expect(g4.waiver).toBeUndefined();
+  expect(g4.waivers).toBeUndefined();
 }));

@@ -14,7 +14,8 @@
     {"name": "animatic", "freeze": true, "sources": [{"file": "animatic.mp4"}]}
   ],
   "G4": [
-    {"name": "full pass", "freeze": true, "sources": [{"file": "renders/*/master.mkv"}]}
+    {"name": "full pass", "freeze": true, "sources": [{"file": "renders/*/master.mkv"}]},
+    {"name": "critique reports", "freeze": true, "sources": [{"file": "critique/loop-*.md"}]}
   ],
   "G5": [
     {"name": "shot sources", "sources": [{"file": "shots/**", "exclude": ["shots/_look/**", "shots/*/snapshots/**", "shots/*/renders/**", "shots/*/beats/**", "shots/*/out/**", "shots/*/outputs/**", "shots/*/build/**", "shots/*/dist/**", "shots/*/coverage/**"]}, {"storyboard": "/shots"}, {"storyboard": "/audio"}]},
@@ -22,5 +23,11 @@
     {"name": "layouts", "sources": [{"storyboard": "/meta/layouts"}]},
     {"name": "delivery checks", "freeze": true, "sources": [{"file": "renders/*/mix.wav"}, {"file": "renders/*/final.mkv"}, {"file": "renders/*/draft.*"}, {"file": "renders/*/sync.json"}, {"file": "renders/*/handoff-*.json"}, {"file": "renders/*/safezone.json"}, {"file": "renders/*/scan.json"}, {"file": "renders/*/poster.*"}, {"file": "renders/*/contact-sheet-*.png"}]},
     {"name": "liveness reports", "sources": [{"file": "renders/*/liveness.json"}]}
-  ]
+  ],
+  "critique": {
+    "$comment": "Approval check (D78): `gate <gate> approve` refuses unless, for every chosen format, the packet exists and its render.masterSha256 is the SHA-256 of the current renders/<format>/master.mkv, and a report matching `reports` has the header line `Packet: <packet path>; master sha256: <that hash>` and says `independence: independent` in its header, the lines above the first `## ` heading (a fresh reviewer, not the builder); `--waive critique` lifts only that independence requirement (D80). {format} is the format folder (16x9, 9x16, 1x1). The reports are also a freeze input of that gate, so a later critique loop does not stale the approval.",
+    "gate": "G4",
+    "packet": "critique/packet-{format}/packet.json",
+    "reports": "critique/loop-*.md"
+  }
 }

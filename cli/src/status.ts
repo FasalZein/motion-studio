@@ -6,8 +6,8 @@ const gateWork:Record<GateId,string> = {
   G1:'brief, hero assets and look test',
   G2:'board: beat map, keyframe builds and stills',
   G3:'blocking builds, render and stitch of the primary format, and the moving animatic',
-  G4:'fill assets, full build and critique loop A',
-  G5:'polish, mix, draft renders per format, critique loop B and license check',
+  G4:'fill assets, full build, polish (D78), liveness and a fresh reviewer\'s critique loop A',
+  G5:'mix, draft renders per format, critique loop B and license check',
 };
 
 export function nextStep(views:GateView[]):string {
