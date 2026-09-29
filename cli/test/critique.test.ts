@@ -154,8 +154,7 @@ test(`${runtime}: packet adds the liveness report, the seam threads and strips a
   expect(Math.abs(hold.lastFrame-HOLD_LAST)).toBeLessThanOrEqual(3);
   expect(hold.file).toBe('critique/packet-16x9/strips/hold-01.png');
   expect(hold.frames).toHaveLength(8);
-  expect(hold.frames[0]).toBe(hold.firstFrame);
-  expect(hold.frames.at(-1)).toBe(hold.lastFrame);
+  for (const f of hold.frames) expect(f >= HOLD_FIRST && f <= HOLD_LAST).toBe(true);
   // One seam, with the fixture's thread and an 11-frame strip centred on the cut.
   expect(p.seams).toEqual([{from:'remotion', to:'hyperframes', frame:CUT, entry:'cut', thread:{kind:'shared-element-thread', shared:'the shared color patch'},
     bothMove:true, strip:'critique/packet-16x9/strips/seam-remotion-hyperframes.png', frames:[15,16,17,18,19,20,21,22,23,24,25]}]);
@@ -253,8 +252,44 @@ test(`${runtime}: standalone packet measures liveness and adds a strip inside ea
     expect(Math.abs(hold.frames[0]-HOLD_FIRST)).toBeLessThanOrEqual(3);
     expect(Math.abs(hold.frames.at(-1)-HOLD_LAST)).toBeLessThanOrEqual(3);
     expect((await readdir(join(dir,'review/strips')))).toEqual(['hold-01.png']);
-    // A rerun replaces its own strips folder.
+    // A rerun replaces its own strips; Finder's .DS_Store inside strips/ stays.
+    await writeFile(join(dir,'review/strips/.DS_Store'),'');
     expect(run('packet',video,'--out',join(dir,'review')).status).toBe(0);
+    expect((await readdir(join(dir,'review/strips'))).sort()).toEqual(['.DS_Store','hold-01.png']);
+    // A file the user put into strips/ makes the folder foreign: the rerun refuses and deletes nothing.
+    await writeFile(join(dir,'review/strips/notes.txt'),'mine');
+    const refused = run('packet',video,'--out',join(dir,'review'));
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain('strips/notes.txt');
+    expect((await readdir(join(dir,'review/strips'))).sort()).toEqual(['.DS_Store','hold-01.png','notes.txt']);
+  } finally {await rm(dir,{recursive:true,force:true});}
+});
+
+// ffmpeg's fps filter gives input frame n the 12 fps time round(n x 12 / 30) and keeps the last frame of each time, so
+// sample k shows the last frame n with n < 2.5 k + 1.25: samples 11, 12, 23 and 24 show frames 28, 31, 58 and 61. A
+// freeze on frames 31-60 therefore starts on the even sample 12, whose rounded frame (2.5 x 12 = 30) is still moving,
+// and ends on sample 23. Every tile of its hold strip must lie inside the freeze and show the same picture.
+const EVEN_FIRST = 31, EVEN_LAST = 60, EVEN_FRAMES = 90;
+const drawEven = (f:number) => draw(f,f < EVEN_FIRST ? f : f <= EVEN_LAST ? EVEN_FIRST : f-(EVEN_LAST-EVEN_FIRST));
+
+test(`${runtime}: a hold strip of a freeze that starts on an even sample shows only frozen frames`, async () => {
+  const dir = await mkdtemp(join(tmpdir(),'motion-studio-critique-'));
+  try {
+    const video = join(dir,'clip.mkv');
+    ffmpeg([...raw,'-r','30','-i','-','-c:v','ffv1',video],Buffer.concat(Array.from({length:EVEN_FRAMES},(_,f) => drawEven(f))));
+    expect(run('packet',video,'--out',join(dir,'review')).status).toBe(0);
+    const p = JSON.parse(await readFile(join(dir,'review/packet.json'),'utf8'));
+    expect(p.liveness.stillSpans).toHaveLength(1);
+    const [hold] = p.liveness.stillSpans;
+    // The span holds samples 12-23: 1 s and 11/12 s. Its first and last sampled frames are 31 and 58; eight tiles spread
+    // between them are round(31 + 27 i / 7).
+    expect([hold.startSecond,hold.seconds]).toEqual([1,0.917]);
+    expect(hold.frames).toEqual([31,35,39,43,46,50,54,58]);
+    // Tiles: 320x180 each, after a 4-pixel margin, 4 pixels apart (the sheet layout). All eight hold one picture.
+    const rgb = ffmpeg(['-i',join(dir,'review',hold.file),'-f','rawvideo','-pix_fmt','rgb24','-']);
+    const stripWidth = 8*320+9*4;
+    const tileAt = (i:number) => Buffer.concat(Array.from({length:180},(_,y) => rgb.subarray(3*((4+y)*stripWidth+4+i*324),3*((4+y)*stripWidth+4+i*324+320))));
+    for (let i=1;i<8;i++) expect(tileAt(i).equals(tileAt(0))).toBe(true);
   } finally {await rm(dir,{recursive:true,force:true});}
 });
 
@@ -350,6 +385,12 @@ test(`${runtime}: the shipped liveness reports agree with the cases: the slidesh
   const pace = cases.pairs['slideshow-pace'];
   expect((await report(join('evals',pace.bad.liveness))).pass).toBe(false);
   expect((await report(join('evals',pace.good.liveness))).pass).toBe(true);
+  // data-story/good must reach 8 on dimension 2, so both data-story sides carry the passing report of the moving bars film.
+  const story = cases.pairs['data-story'];
+  for (const side of [story.bad,story.good]) expect((await report(join('evals',side.liveness))).pass).toBe(true);
+  // The reviewer gets a copy of each report: its video field names no case.
+  const reports = [...['slideshow','moving','bars'].map(n => `evals/liveness/${n}.json`), 'calibration/case-1-liveness.json', 'calibration/case-2-liveness.json'];
+  for (const file of reports) expect((await report(file)).video).toBe('film.mkv');
   // cases.md names each report beside its sheet; case-2 is the slideshow the calibration bands cap on dimension 2.
   const text = await readFile(join(skill,'calibration/cases.md'),'utf8');
   for (const name of ['case-1','case-2']) expect(text).toContain(`Liveness report: \`${name}-liveness.json\``);

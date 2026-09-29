@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {createReadStream} from 'node:fs';
-import {access, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile} from 'node:fs/promises';
+import {access, mkdir, mkdtemp, readdir, readFile, rename, rm, rmdir, stat, writeFile} from 'node:fs/promises';
 import {basename, dirname, join, relative} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -51,6 +51,8 @@ async function replaceDir(dir:string, build:(staging:string) => Promise<void>) {
 // The files a standalone packet writes. An existing --out folder is reused only when it holds a standalone packet and
 // nothing else, so the command never deletes a file it did not write (the input video, the user's notes).
 const STANDALONE_FILE = /^(packet\.json|scan\.json|liveness\.json|contact-sheet-\d{3}\.png|strips)$/;
+// The files a packet writes into its strips/ folder. The folder counts as the packet's only when it holds nothing else.
+const STRIP_FILE = /^(seam-.+|hold-\d{2})\.png$/;
 // Entries the guard ignores and leaves in place: Finder's folder file and a staging folder left by a killed run.
 const IGNORED = /^(\.DS_Store|\.motion-packet-.+)$/;
 /** Writes a standalone packet into `dir`: a new folder, an empty folder, or a folder that holds only an earlier packet. */
@@ -60,13 +62,23 @@ async function intoOutDir(dir:string, build:(staging:string) => Promise<void>) {
   if (!info.isDirectory()) throw new CliError(`--out ${dir} is not a folder`);
   const entries = (await readdir(dir)).filter(e => !IGNORED.test(e));
   const earlier = entries.includes('packet.json') && (await readJson(join(dir,'packet.json')).catch(() => null))?.mode === 'standalone';
-  const foreign = entries.filter(e => !earlier || !STANDALONE_FILE.test(e));
+  // strips/ as a file, or a strips/ folder with another file in it, is foreign like any other entry.
+  const strips = entries.includes('strips') ? await readdir(join(dir,'strips')).then(l => l.filter(e => !IGNORED.test(e)),() => null) : [];
+  const foreign = [...entries.filter(e => !earlier || !STANDALONE_FILE.test(e)),
+    ...(strips === null ? ['strips'] : strips.filter(e => !earlier || !STRIP_FILE.test(e)).map(e => `strips/${e}`))];
   if (foreign.length) throw new CliError(`--out ${dir} holds files no packet wrote (${foreign.slice(0,3).join(', ')}${foreign.length > 3 ? ', ...' : ''}); name a new or empty folder`);
   const staging = await mkdtemp(join(dir,'.motion-packet-'));
   try {
     await build(staging);
-    for (const e of entries) await rm(join(dir,e),{recursive:true});
-    for (const e of await readdir(staging)) await rename(join(staging,e),join(dir,e));
+    // Delete only the files an earlier packet wrote; ignored entries inside strips/ stay, so the folder may stay too.
+    for (const e of entries) if (e !== 'strips') await rm(join(dir,e));
+    for (const e of strips ?? []) await rm(join(dir,'strips',e));
+    if (strips?.length) await rmdir(join(dir,'strips')).catch(() => {});
+    for (const e of await readdir(staging)) {
+      if (e === 'strips' && await exists(join(dir,'strips'))) {
+        for (const f of await readdir(join(staging,e))) await rename(join(staging,e,f),join(dir,e,f));
+      } else await rename(join(staging,e),join(dir,e));
+    }
   } finally {await rm(staging,{recursive:true,force:true});}
 }
 

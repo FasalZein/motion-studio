@@ -1,6 +1,6 @@
 # Calibration cases
 
-Score both cases from this file and the files beside it. Each case is a 12-second film at 10 fps with four 3-second shots: s01 frames 0-29, s02 30-59, s03 60-89, s04 90-119. Each sheet is a 1 fps contact page: tile n shows global frame 10n, left to right, then top to bottom. The sheets carry no text; the claims and sources are stated below. Each case has a liveness report measured on its full-rate film with `motion-studio liveness <video>`. The films were measured as lone videos, so the reports locate still spans by seconds and name no cuts.
+Score both cases from this file and the files beside it. Each case is a 12-second film at 10 fps with four 3-second shots: s01 frames 0-29, s02 30-59, s03 60-89, s04 90-119. Each sheet is a 1 fps contact page: tile n shows global frame 10n, left to right, then top to bottom. The sheets carry no text; the claims and sources are stated below. Each case has a liveness report measured on its full-rate film with `motion-studio liveness <video>`. The films were measured as lone videos, so the reports locate still spans by seconds and name no cuts. No seam strips and no clip ship. Judge motion through each seam (global frames 30, 60 and 90) from the report: a seam inside a still span over 0.5 s is frozen, and a seam outside every still span moved at the report's 12 fps sampling.
 
 ## case-1
 - Sheet: `case-1.png`. Liveness report: `case-1-liveness.json`. No full-rate strips, no playable clip and no scan report.
