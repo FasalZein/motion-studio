@@ -53,7 +53,9 @@ export async function remotionBundle(project:Project, shot:Shot, withHide:boolea
       await mkdir(wrapperDir,{recursive:true});
       await writeFile(wrapper,`import {getInputProps} from 'remotion';\nimport '${relative(wrapperDir,entry).replace(/\.tsx?$/,'')}';\nconst hide = (getInputProps() as {motionStudioHide?:string}).motionStudioHide;\nif (hide) {const style = document.createElement('style'); style.textContent = ${JSON.stringify(hideCss('__ID__'))}.replace('__ID__', hide); document.head.appendChild(style);}\n`);
     }
-    const serveUrl = await bundle({entryPoint:wrapper ?? entry, ignoreRegisterRootWarning:Boolean(wrapper), publicDir:join(project.root,'shots',shot.id,'public'),
+    // enableCaching:false: webpack's persistent cache keys on the entry path, so every film folder and every measure
+    // wrapper (named by pid) adds a new ~160 MB entry under node_modules/.cache/webpack that nothing removes.
+    const serveUrl = await bundle({entryPoint:wrapper ?? entry, ignoreRegisterRootWarning:Boolean(wrapper), publicDir:join(project.root,'shots',shot.id,'public'), enableCaching:false,
       webpackOverride:config => ({...config, resolve:{...config.resolve, modules:[...(config.resolve?.modules ?? ['node_modules']), transitionsModules]}})});
     return {serveUrl, dispose:() => rm(serveUrl,{recursive:true,force:true})};
   } finally {if (wrapperDir) await rm(wrapperDir,{recursive:true,force:true});}
