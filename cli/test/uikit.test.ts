@@ -2,7 +2,7 @@ import {test as nodeTest} from 'node:test';
 const {expect} = await import('bun' in process.versions ? 'bun:test' : 'expect');
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {cp, mkdtemp, readFile, rm} from 'node:fs/promises';
+import {cp, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 
@@ -66,5 +66,15 @@ test(`${runtime}: the UI kit renders a token-themed still and a behavior clip th
     // Typing is visible frame by frame: 'c' at frame 2, 'cli' at 6, 'clip' at 10 (the caret is off on all three).
     const counts = [2,6,10].map(n => textPixels(rgb(clip,n),color.text));
     for (let i = 1; i < counts.length; i++) expect(counts[i]).toBeGreaterThan(counts[i-1]);
+
+    // The tokens drive the render: a new accent token in tokens.json gives the new accent color, with no component edit.
+    const tokensFile = join(dir,'shots/kit/tokens.json');
+    const tokens = JSON.parse(await readFile(tokensFile,'utf8'));
+    const accent = '#36c2ff';
+    await writeFile(tokensFile,JSON.stringify({...tokens, color:{...tokens.color, accent}},null,2));
+    ok('still',dir,'kit','11');
+    const swapped = rgb(still);
+    expect(near(at(swapped,280,104),accent,0)).toBe(true);
+    expect(near(at(swapped,4,4),color.canvas,0)).toBe(true);
   } finally {await rm(dir,{recursive:true,force:true});}
 });
