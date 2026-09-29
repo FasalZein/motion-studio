@@ -72,7 +72,8 @@ async function narratedFilm(clicks = false) {
   const assets = [];
   for (const [id,type] of [['bed','music'],['voice','voice']]) assets.push({id,type,sourceKind:'code',sourceUrlOrGenerator:'ffmpeg aevalsrc',providerAssetId:null,license:{status:'known',name:'CC0-1.0',evidence:'generated in test'},localPath:`audio/${id}.wav`,sha256:await sha256(join(dir,'audio',`${id}.wav`)),shots:[]});
   await writeFile(join(dir,'ledger.json'),JSON.stringify({version:'0',assets}));
-  const shot = (id:string, start:number, end:number, reveals:unknown[]) => ({id,startFrame:start,endFrame:end,engine:'hyperframes',entrypoint:`shots/${id}/index.html`,description:`shot ${id}`,camera:'custom:locked',entry:'cut',exit:'cut',assets:[],reveals,soundCues:[],stillFrames:[],protected:[]});
+  // Every shot after the first carries its seam thread (D64); the beat map prints it.
+  const shot = (id:string, start:number, end:number, reveals:unknown[]) => ({id,startFrame:start,endFrame:end,engine:'hyperframes',entrypoint:`shots/${id}/index.html`,description:`shot ${id}`,camera:'custom:locked',entry:'cut',exit:'cut',assets:[],reveals,soundCues:[],stillFrames:[],protected:[],...(start ? {thread:{kind:'sound-thread',shared:`the voice into ${id}`}} : {})});
   const storyboard = {version:'0',meta:{title:'narrated',logline:'',genre:'explainer',formats:{primary:'16:9',extra:[]},fps:FPS,durationFrames:100,layouts:{'16:9':{canvas:{width:64,height:36},safe:{x:0,y:0,width:64,height:36},overlay:null}}},look:{id:null,styleBible:null,axes:{},tasteSnapshot:null},
     audio:{track:'bed',grid:null,bpm:null,beatFrames:[],downbeatFrames:[],dropFrames:[],confidence:null},
     voice:{script:'audio/script.txt',tts:'voice',wordTimings:'audio/words.json',startFrame:VOICE_START},
@@ -103,11 +104,11 @@ for (const runtime of ['node','bun']) test(`${runtime}: narration reveals snap t
     const map = run(runtime,'beatmap',dir);
     expect(map.stderr).toBe('');
     expect(map.stdout.trim().split('\n')).toEqual([
-      '| shot | frames | seconds | entry | visual event | camera | spoken line | reveals | sound cues | engine |',
-      '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
-      '| a | [0, 40) | 0.00-1.60 | start | shot a | custom:locked | "Why now?" | "Why" f18 | - | hyperframes |',
-      '| b | [40, 70) | 1.60-2.80 | cut on beat | shot b | custom:locked | "It costs" | "It" f56 | - | hyperframes |',
-      '| c | [70, 100) | 2.80-4.00 | cut on beat | shot c | custom:locked | - | - | - | hyperframes |',
+      '| shot | frames | seconds | entry | thread | visual event | camera | spoken line | reveals | sound cues | engine |',
+      '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+      '| a | [0, 40) | 0.00-1.60 | start | - | shot a | custom:locked | "Why now?" | "Why" f18 | - | hyperframes |',
+      '| b | [40, 70) | 1.60-2.80 | cut on beat | sound-thread: the voice into b | shot b | custom:locked | "It costs" | "It" f56 | - | hyperframes |',
+      '| c | [70, 100) | 2.80-4.00 | cut on beat | sound-thread: the voice into c | shot c | custom:locked | - | - | - | hyperframes |',
     ]);
 
     const mixed = run(runtime,'mix',dir);

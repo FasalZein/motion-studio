@@ -163,7 +163,7 @@ async function syntheticFilm(runtime:string) {
     const shot = (id:string, start:number, end:number, soundCues:Cue[], extra = {}) => ({id,startFrame:start,endFrame:end,engine:'hyperframes',entrypoint:`shots/${id}/index.html`,description:'',camera:'custom:locked',entry:'cut',exit:'cut',assets:[],soundCues,stillFrames:[],protected:[],...extra});
     const storyboard = {version:'0',meta:{title:'mix',logline:'',genre:null,formats:{primary:'16:9',extra:[]},fps:25,durationFrames:75,layouts:{'16:9':{canvas:{width:64,height:36},safe:{x:0,y:0,width:64,height:36},overlay:null}}},look:{id:null,styleBible:null,axes:{},tasteSnapshot:null},
       audio:{track,grid:'imported',bpm:null,beatFrames:[12,49],downbeatFrames:[],dropFrames:[],confidence:'high'},voice:null,
-      shots:[shot('a',0,50,cues.a),shot('b',50,75,cues.b,{offBeatCut:'word-timed reveal'})],
+      shots:[shot('a',0,50,cues.a),shot('b',50,75,cues.b,{offBeatCut:'word-timed reveal',thread:{kind:'sound-thread',shared:'the cut pulse'}})],
       gates:['G1','G2','G3','G4','G5'].map(id => ({id,state:'pending',inputHashes:{},decision:null,notes:[],rounds:0})),critique:[]};
     const assets = [];
     for (const id of ['track','early','cut']) assets.push({id,type:id === 'track' ? 'music' : 'sfx',sourceKind:'code',sourceUrlOrGenerator:'ffmpeg aevalsrc',providerAssetId:null,license:{status:'known',name:'CC0-1.0',evidence:'generated in test'},localPath:`audio/${id}.wav`,sha256:await sha256(join(dir,'audio',`${id}.wav`)),shots:['a','b']});
@@ -290,7 +290,7 @@ for (const fps of [24,25,30,60]) test(`stitch keeps one global frame clock for f
     const ids = ['a','b','c','d'], length = 7, total = ids.length*length;
     const clips = join(dir,'renders','16x9','shots');
     await mkdir(clips,{recursive:true});
-    const shots = ids.map((id,i) => ({id,startFrame:i*length,endFrame:(i+1)*length,engine:'hyperframes',entrypoint:`shots/${id}/index.html`,description:'',camera:'custom:locked',entry:'cut',exit:'cut',assets:[],soundCues:[],stillFrames:[],protected:[]}));
+    const shots = ids.map((id,i) => ({id,startFrame:i*length,endFrame:(i+1)*length,engine:'hyperframes',entrypoint:`shots/${id}/index.html`,description:'',camera:'custom:locked',entry:'cut',exit:'cut',assets:[],soundCues:[],stillFrames:[],protected:[],...(i ? {thread:{kind:'beat-cut-thread',shared:'the moving color'}} : {})}));
     const storyboard = {version:'0',meta:{title:'clock',logline:'',genre:null,formats:{primary:'16:9',extra:[]},fps,durationFrames:total,layouts:{'16:9':{canvas:{width:64,height:36},safe:{x:0,y:0,width:64,height:36},overlay:null}}},look:{id:null,styleBible:null,axes:{},tasteSnapshot:null},
       audio:{track:null,grid:null,bpm:null,beatFrames:[],downbeatFrames:[],dropFrames:[],confidence:null},voice:null,shots,
       gates:['G1','G2','G3','G4','G5'].map(id => ({id,state:'pending',inputHashes:{},decision:null,notes:[],rounds:0})),critique:[]};

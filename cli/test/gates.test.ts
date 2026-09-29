@@ -192,9 +192,10 @@ test('G2 binds the beat grid and beat map, not shot descriptions or fill-mode as
     expect(g2.inputHashes['storyboard.json#/meta{fps,durationFrames}']).toBe(sha('{"durationFrames":12,"fps":30}'));
     const approved = lines('G1 approved','G2 approved','G3 approved','G4 pending','G5 pending','next: fill assets, full build and critique loop A, then present G4');
 
-    // Fill mode, description edits, grid labels, formats and layouts leave G2 and G3 approved.
+    // Fill mode, description and seam-thread edits, grid labels, formats and layouts leave G2 and G3 approved (D43, D64).
     await edit(dir,s => {
       s.shots[1].description = 'HYPERFRAMES label, warmer';
+      s.shots[1].thread = {kind:'light-thread', shared:'the warm glow'};
       s.shots[1].assets.push('sfx-hit');
       s.shots[1].soundCues.push({asset:'sfx-hit', eventFrame:9, peakOffsetFrames:0});
       s.audio.grid = 'corrected'; s.audio.confidence = 'low';

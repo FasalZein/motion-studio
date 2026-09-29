@@ -13,11 +13,14 @@ export type GateState = 'pending'|'approved'|'changes'|'stale';
 export type Shot = {
   id:string; startFrame:number; endFrame:number; engine:Engine; entrypoint:string; description:string; camera:string;
   entry:'cut'|'handoff'; exit:'cut'|'handoff'; transition?:string; offBeatCut?:string; assets:string[];
+  thread?:Thread; // required on every shot after the first; validate checks it (D64)
   reveals?:Reveal[]; // spoken reveals, checked against the word timings
   soundCues:{asset:string; eventFrame:number; peakOffsetFrames:number; gainDb?:number}[];
   stillFrames:number[]; protected:{id:string; bounds:string; heldFrames:number[]}[]; // bounds: 'measured' or a declared-geometry file
   holds?:FrameSpan[]; effects?:(FrameSpan & {term:string})[]; // declared context for scan
 };
+/** What the seam into a shot carries: a motion-vocabulary thread id or custom:<description>, and the carried thing in words. */
+export type Thread = {kind:string; shared:string};
 /** A visual event timed to one narration word: its index in the word-timing file, its text and the film frame. */
 export type Reveal = {word:number; text:string; frame:number};
 /** Optional narration. startFrame is the film frame where the audio starts (default 0). */

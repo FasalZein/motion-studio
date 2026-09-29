@@ -11,7 +11,7 @@
   "voice": null,
   "shots": [
     {"id": "remotion", "startFrame": 0, "endFrame": 6, "engine": "remotion", "entrypoint": "Shot", "description": "Wrapped title slides in over full-bleed stripes; SVG mark in the corner of the safe area", "camera": "custom:locked", "entry": "cut", "exit": "cut", "assets": ["font-plex"], "soundCues": [], "stillFrames": [0, 5], "protected": [{"id": "title", "bounds": "measured", "heldFrames": [2, 5]}, {"id": "mark", "bounds": "shots/remotion/mark-bounds.json", "heldFrames": [0, 5]}]},
-    {"id": "hyperframes", "startFrame": 6, "endFrame": 12, "engine": "hyperframes", "entrypoint": "shots/hyperframes/index.html", "description": "Wrapped title slides in over full-bleed stripes", "camera": "custom:locked", "entry": "cut", "exit": "cut", "assets": ["font-plex"], "soundCues": [], "stillFrames": [0, 5], "protected": [{"id": "title", "bounds": "measured", "heldFrames": [2, 5]}]}
+    {"id": "hyperframes", "startFrame": 6, "endFrame": 12, "engine": "hyperframes", "entrypoint": "shots/hyperframes/index.html", "description": "Wrapped title slides in over full-bleed stripes", "camera": "custom:locked", "entry": "cut", "exit": "cut", "assets": ["font-plex"], "soundCues": [], "stillFrames": [0, 5], "thread": {"kind": "shared-element-thread", "shared": "the wrapped title over the stripes"}, "protected": [{"id": "title", "bounds": "measured", "heldFrames": [2, 5]}]}
   ],
   "gates": [
     {"id": "G1", "state": "pending", "inputHashes": {}, "decision": null, "notes": [], "rounds": 0},

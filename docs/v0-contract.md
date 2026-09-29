@@ -94,7 +94,7 @@ The CLI JSON Schemas `cli/schema/storyboard.schema.json` and `cli/schema/ledger.
 }
 ```
 
-Allowed values: `genre` is `product-launch`, `ui-morph-loop`, `explainer`, `showreel`, `social-kinetic-type` or `null`; `grid` is `detected`, `corrected`, `imported` or `null`; `confidence` is `high`, `low` or `null`; `engine` is `hyperframes` or `remotion`; `entry` and `exit` are `cut` or `handoff`; gate `state` is `pending`, `approved`, `changes` or `stale`. Optional shot fields: `transition` (a `motion-vocabulary` term for the named move, D42) and `offBeatCut` (the reason a cut is intentionally off the beat grid, D41).
+Allowed values: `genre` is `product-launch`, `ui-morph-loop`, `explainer`, `showreel`, `social-kinetic-type` or `null`; `grid` is `detected`, `corrected`, `imported` or `null`; `confidence` is `high`, `low` or `null`; `engine` is `hyperframes` or `remotion`; `entry` and `exit` are `cut` or `handoff`; gate `state` is `pending`, `approved`, `changes` or `stale`. Optional shot fields: `transition` (a `motion-vocabulary` term for the named move, D42), `thread` (required on every shot after the first: `{"kind", "shared"}`, the thread kind and the thing the seam carries, D64) and `offBeatCut` (the reason a cut is intentionally off the beat grid, D41).
 
 Ranges are half-open: `[startFrame, endFrame)`. Beat time to frame: `round(seconds * fps)`, one rule everywhere.
 

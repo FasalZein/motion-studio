@@ -67,6 +67,13 @@ const invalid:{kind:string; change:(dir:string)=>Promise<void>; message:string}[
   {kind:'safe rectangle outside the canvas', change:d => edit(d,'storyboard.json',s => {s.meta.layouts['16:9'].safe = {x:40,y:9,width:288,height:162};}), message:'meta.layouts 16:9: safe rectangle 40,9 288x162 is outside the canvas 320x180'},
   {kind:'protected held frame outside the shot', change:d => edit(d,'storyboard.json',s => {s.shots[0].protected = [{id:'title',bounds:'measured',heldFrames:[6]}];}), message:'shot remotion: protected title held frame 6 is outside the shot (held frames are shot-local, 0 to 5)'},
   {kind:'missing gate', change:d => edit(d,'storyboard.json',s => {s.gates.pop();}), message:'gates must be G1, G2, G3, G4, G5 in order; found G1, G2, G3, G4'},
+  // Seam threads (D64): every shot after the first names what its seam carries; render commands run the same check (D44).
+  {kind:'seam without a thread', change:d => edit(d,'storyboard.json',s => {delete s.shots[1].thread;}), message:'seam remotion -> hyperframes: shot hyperframes has no thread; set "thread": {"kind", "shared"} to what the seam carries'},
+  {kind:'unknown thread kind', change:d => edit(d,'storyboard.json',s => {s.shots[1].thread.kind = 'teleport';}), message:'seam remotion -> hyperframes: shot hyperframes thread kind "teleport" is not a motion-vocabulary thread kind; use a thread id or custom:<description>'},
+  {kind:'glossary term that is not a thread kind', change:d => edit(d,'storyboard.json',s => {s.shots[1].thread.kind = 'push-in';}), message:'seam remotion -> hyperframes: shot hyperframes thread kind "push-in" is not a motion-vocabulary thread kind; use a thread id or custom:<description>'},
+  {kind:'bare custom: thread kind', change:d => edit(d,'storyboard.json',s => {s.shots[1].thread.kind = 'custom: ';}), message:'seam remotion -> hyperframes: shot hyperframes thread kind "custom: " has no description after custom:'},
+  {kind:'empty thread shared text', change:d => edit(d,'storyboard.json',s => {s.shots[1].thread.shared = '  ';}), message:'seam remotion -> hyperframes: shot hyperframes thread has no shared text; name the thing the seam carries'},
+  {kind:'thread without a kind', change:d => edit(d,'storyboard.json',s => {delete s.shots[1].thread.kind;}), message:'storyboard.json /shots/1/thread: missing required field "kind"'},
 ];
 
 test('the converted two-engine fixture is a valid project under both runtimes', async () => {
@@ -160,9 +167,42 @@ test('the custom: prefix escapes the glossary; a bare custom: warns', async () =
   });
 });
 
-test('every glossary term in the 9 categories is accepted by validate', async () => {
+test('a custom thread passes; the first shot needs no thread', async () => {
+  await withFixture(async dir => {
+    // The fixture's first shot has no thread and its second a glossary thread, so the fixture itself is the valid case.
+    expect(JSON.parse(await readFile(join(dir,'storyboard.json'),'utf8')).shots[0].thread).toBeUndefined();
+    await edit(dir,'storyboard.json',s => {s.shots[1].thread = {kind:'custom:color bleed',shared:'the magenta patch'};});
+    for (const runtime of runtimes) {
+      const result = run(runtime,['validate',dir]);
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
+    }
+  });
+});
+
+test('beatmap prints each seam thread and marks a missing one', async () => {
+  await withFixture(async dir => {
+    const threads = () => {
+      const result = run('node',['beatmap',dir]);
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
+      const [header,,...rows] = result.stdout.trim().split('\n').map(line => line.split(' | '));
+      const column = header.indexOf('thread');
+      return rows.map(row => row[column]);
+    };
+    // The fixture's first shot starts the film; its second carries the shared color patch.
+    expect(threads()).toEqual(['-','shared-element-thread: the shared color patch']);
+    await edit(dir,'storyboard.json',s => {delete s.shots[1].thread;});
+    expect(threads()).toEqual(['-','missing']);
+  });
+});
+
+test('every glossary term in the 10 categories is accepted by validate, and every thread id as a thread kind', async () => {
   const files = (await readdir(termsDir)).sort();
-  expect(files).toEqual(['audio-sync.md','camera.md','composition.md','editing.md','finishing.md','graphic-transitions.md','interface-in-shot.md','kinetic-type.md','timing-physics.md']);
+  expect(files).toEqual(['audio-sync.md','camera.md','composition.md','editing.md','finishing.md','graphic-transitions.md','interface-in-shot.md','kinetic-type.md','threads.md','timing-physics.md']);
+  const threadIds = (await readFile(join(termsDir,'threads.md'),'utf8')).split('\n').filter(l => l.startsWith('- **')).map(l => l.match(/\(`([^`]+)`\)/)![1]);
+  // The seven thread kinds the ticket starts with (D64), in the glossary's id style.
+  expect(threadIds).toEqual(['shared-element-thread','shape-match-thread','movement-match-thread','camera-direction-thread','light-thread','sound-thread','beat-cut-thread']);
   const ids:string[] = [];
   for (const file of files) {
     const text = await readFile(join(termsDir,file),'utf8');
@@ -181,6 +221,12 @@ test('every glossary term in the 9 categories is accepted by validate', async ()
     const result = run('bun',['validate',dir]);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
+    for (const kind of threadIds) {
+      await edit(dir,'storyboard.json',s => {s.shots[1].thread.kind = kind;});
+      const thread = run('node',['validate',dir]);
+      expect(thread.stderr).toBe('');
+      expect(thread.status).toBe(0);
+    }
   });
 });
 
