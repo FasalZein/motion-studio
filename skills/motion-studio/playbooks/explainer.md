@@ -1,3 +1,13 @@
+---
+genre: explainer
+status: worked
+duration-seconds: 30
+fps: 30
+primary-format: 16:9
+extra-formats: 9:16
+audio: voice
+---
+
 # Explainer or data story | worked
 
 <inputs>Ask: Which question does the viewer leave able to answer? Who is the audience, what are the sources and script? Default: one question, one answer, narrated 30 seconds, voice-led with a quiet licensed bed if available.</inputs>

@@ -1,18 +1,36 @@
 # Intake brief phase
 
-Inputs: user request, project root, optional product URL, available reference paths, taste recommendations from `motion-look`, and one genre playbook selected from [playbooks](../playbooks/). Output: `BRIEF.md` and draft `storyboard.json` meta/look/audio. Use the playbook for genre-specific questions and defaults. Load `motion-direction` `reference/idea-and-structure.md` and `reference/world-and-camera.md` for the idea line and the directions.
+Inputs: user request, film root, optional brand or product URL, reference paths, `motion-studio taste show` output. Output: `BRIEF.md` (the `motion-studio init` skeleton, filled) and `storyboard.json` `meta` (title, logline, genre, formats, fps, duration). Load `motion-direction` `reference/idea-and-structure.md` for the idea line. Directions come later, after the hero assets (see the G1 packets in the `motion-studio` skill); this phase only names their starting ideas.
 
-1. Read the product URL before asking questions. Record source URL and retrieval date, product name, verifiable claims, palette and logo provenance. Label missing or uncertain evidence; ask only what the page does not answer. Completion: sourced observations and unknowns are listed.
-2. Interview in at most **3 rounds**. Group only questions that affect the direction: audience, one message/claim, action, duration, voice/music, reference, look, formats, budget and constraints. Give **one recommended answer per question**, using the taste profile when relevant, otherwise the playbook default. If the user says `use defaults`, apply recorded defaults to all unanswered choices immediately. Completion: each remaining question has a user answer or recorded default by round 3.
-3. Write `BRIEF.md` with the XML sections below. Use short, specific sentences. Name the genre, the idea line as the logline (one sentence, no "and"), 2–3 candidate directions (each an idea device, a world and camera logic, and a look from `motion-look`), primary and extra formats (16:9, 9:16, 1:1), track ledger id **or** voice source/script, and source URL (`none` for a project without a product URL). Store factual claims with their evidence. Completion: **every XML section has an answer or explicitly marked playbook default**, and all named fields are set.
+1. **URL first.** Read the brand's site before any question: product name, verifiable claims, palette, type, logo, UI and site art. Record the URL and retrieval date. Mark each fact as observed (with its page) or unknown. Ask only what the site does not answer. Without a URL, write `Source URL: none` and ask for the brand's material in round 1. Completion: sourced observations and unknowns are listed.
+2. **Pick the genre playbook.** Choose one file in [playbooks](../playbooks/) whose `genre` matches the request. Its front matter holds the defaults (`duration-seconds`, `fps`, `primary-format`, `extra-formats`, `audio`); its `<inputs>` holds the genre questions. A playbook marked `status: untested` has not made a film yet: tell the user so. Completion: the genre id is set.
+3. **Interview in at most 3 rounds.** Ask only questions that change the film: audience, one message or claim, action, duration, track or voice, references, formats, budget and limits. Group them in one message per round. Give one recommended answer per question: from the site, else the taste profile, else the playbook default. `use defaults` applies every recommended answer at once. After round 3, apply the recommendation to every open question. Completion: every question has the user's answer or a recorded default, within 3 rounds.
+4. **Write `BRIEF.md`.** Fill each XML section with short, specific sentences and the field lines below. The logline is the idea line: one sentence, no "and". Mark each playbook default `(default)`. Store each factual claim with its evidence. Name 2-3 direction seeds, each with an idea device, a world and camera logic, and a look taken from the brand (the `motion-look` library only as fallback); the directions packet completes them against the real hero assets. Completion: `node <this skill>/evals/check.mjs brief films/<slug>/BRIEF.md` prints `brief ok`, and `storyboard.json` `meta` matches the brief.
 
 ```xml
-<inputs>Product, source URL, user assets, track or voice, sources and rights.</inputs>
-<direction>Logline, audience, genre, look candidates, references and take/do-not-take.</direction>
-<structure>Duration, format set, arc, beat anchors and spoken words.</structure>
-<build>Engine constraints, layout, deliverables and budget.</build>
-<gotchas>Claim risks, rights gaps, format risks and deliberate limitations.</gotchas>
-<start>First hero assets, look tests and the G1 decision request.</start>
+<inputs>
+Source URL: <url> (retrieved YYYY-MM-DD) | none
+Intake rounds: <1-3>; defaults: <fields or none>
+Sources: <brand material seen on the site, user files, rights status>
+Track: <ledger id or need> | Voice: <source>; script: <path or text>
+Claims: <each claim with its page>
+</inputs>
+<direction>
+Logline: <one sentence, no "and">
+Genre: <playbook genre id>
+Audience: <who>
+Direction 1: <name>; idea device: <one sentence>; world and camera: <world, camera logic>; look: <brand palette, type, motif; or a motion-look id>
+Direction 2: ...
+References: <paths or URLs with take and do-not-take, or none>
+</direction>
+<structure>
+Duration: <seconds> at <fps> fps
+Formats: primary <16:9|9:16|1:1>; extra <formats or none>
+Arc: <beats and their anchors, spoken words>
+</structure>
+<build>Engine limits, layout, deliverables and budget.</build>
+<gotchas>Claim risks, rights gaps, format risks and deliberate limits.</gotchas>
+<start>First hero assets to source, look tests to build and the G1 decision to request.</start>
 ```
 
-The XML section pattern is adapted from @twoclipping's published prompt structure as a pattern only; no sample prompt text is copied. Show the complete filled brief to the user at G1. (CLI: `motion-studio init/validate`, #4.)
+The XML section pattern is adapted from @twoclipping's published prompt structure as a pattern only; no sample prompt text is copied.

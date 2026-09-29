@@ -1,3 +1,13 @@
+---
+genre: showreel
+status: untested
+duration-seconds: 20
+fps: 30
+primary-format: 16:9
+extra-formats: none
+audio: track
+---
+
 # Showreel | untested until used
 
 <inputs>Ask: Which work is yours, which clips can be shown, who must hire you, and which skill should the first shot prove? Default: 6–8 cleared pieces, strongest first, 15–25 s, licensed upbeat track.</inputs>

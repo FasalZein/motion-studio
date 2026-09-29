@@ -3,15 +3,28 @@ name: motion-studio
 description: Directed film with a storyboard, animatic and gated approvals. Use for a new directed film, resuming a film project from storyboard.json, or recording a gate decision on a film.
 ---
 
-# Motion studio v0
+# Motion studio
 
-Direct a film across HyperFrames and Remotion shots. The project files, not this conversation, carry state. v0 does not require the `motion-studio` CLI; use [v0 commands](reference/v0-commands.md), which name the CLI form where one exists, and mark unavailable automated checks as unverified. Read [project layout](reference/project-layout.md), [storyboard fields](reference/storyboard-schema.md), and [media contract](engines/media-contract.md) before the first phase. The motion craft (beat contract, threads, living holds, camera) lives in the `motion-direction` skill; each phase brief names the `motion-direction` files its subagent loads.
+Direct a film across HyperFrames and Remotion shots. You are the director and the builder (D78): one agent writes the brief, chooses the direction and builds. The CLI and the film folder hold state; this conversation does not. Read [project layout](reference/project-layout.md) and [storyboard fields](reference/storyboard-schema.md) before the first phase. Engine rules live only in the builder briefs and engine contracts; load them inside a build phase, never here. The motion craft lives in the `motion-direction` skill; each phase brief names the files it loads.
 
-## Dispatch and resume
+## State and resume
 
-1. For a new film, create `films/<slug>/` using the project layout. Dispatch a fresh subagent with `agents/brief.md`, the user's request and explicit project paths. For an existing film, run `motion-studio status films/<slug>` and read `BRIEF.md` and the ledger; start at the phase its `next:` line names (the first pending, stale or noted gate). Completion: the next phase and its exact input paths are known.
-2. Dispatch one fresh subagent per phase with its `agents/<phase>.md` brief, explicit input and output paths, mode, shot ids and the relevant playbook path. Keep engine contracts inside their assigned builders, not the orchestrator. Receive a compact summary and artifact/report paths only; inspect those artifacts against that phase's completion criterion. Completion: the named artifact exists and its check passes or has a stated unverified check.
-3. If fresh subagents are unavailable, run the same briefs inline in order and persist every handoff in files. Label inline critique **non-independent** until a fresh session or the user reviews it. Completion: the review independence status appears beside the scorecard.
+1. For a new film, run `motion-studio init <slug>`. For an existing film, run `motion-studio status films/<slug>` and start at the phase its `next:` line names (the first pending, stale or noted gate). Run `status` again before every gate decision. Without the CLI, use [v0 commands](reference/v0-commands.md) and mark each check it cannot run as unverified. Completion: the next phase and its packet are known.
+2. **Independence.** The critique reviewer and skill evals run in a fresh subagent that receives only their packet. When the harness has no subagent tool, tell the user at the start: `This harness runs without independent subagents; every review is non-independent.` Label each such review **non-independent** beside its scorecard until a fresh session or the user reviews it. Completion: every review shown carries its independence label.
+
+## Phase packets
+
+A phase packet is a short list of explicit paths: the brief to load, inputs, outputs and the completion check. Load only what the packet names. After the phase, keep its output paths and check result, and drop its working detail. Hero asset capture and renders may go to a helper subagent with the same packet; you inspect its outputs against the check. Packets up to G1:
+
+| Phase | Load | Inputs | Outputs | Completion check |
+|---|---|---|---|---|
+| Brief | [agents/brief.md](agents/brief.md), one [playbook](playbooks/) | request, brand URL, `motion-studio taste show` | `BRIEF.md`, `storyboard.json` `meta` | `node evals/check.mjs brief films/<slug>/BRIEF.md` prints `brief ok` (path relative to this skill) |
+| Hero assets | [agents/assets.md](agents/assets.md) mode `hero`, `motion-direction` [reference/asset-first.md](../motion-direction/reference/asset-first.md) | `BRIEF.md`, `ledger.json` | `assets/`, `ledger.json` | its hero completion; `motion-studio assets films/<slug> list` shows logo, fonts, palette and real captures |
+| Directions | `motion-look` steps 1-4; `motion-direction` `reference/idea-and-structure.md`, `reference/world-and-camera.md` | `BRIEF.md`, hero ledger ids, references | `BRIEF.md` `Direction <n>:` lines, `style-bible.md` when a reference exists, one look-test build brief per direction | 2-3 directions, each with a look taken from the brand (a `motion-look` file only as fallback) and naming the ledger ids of its logo, type, palette and captures |
+| Look tests | `agents/build-<engine>.md` for each look test | its build brief | `shots/_look/<look-id>/` | `motion-studio looktest films/<slug> <look-id>` exits 0 for each |
+| G1 | [reference/g1.md](reference/g1.md) | brief, ledger, `stills/G1/`, `style-bible.md` | G1 gate record | `motion-studio status` shows the decision |
+
+Later phases use the same packet shape: the brief in `agents/`, the inputs and outputs the flow table names, and the phase brief's completion check.
 
 ## Flow and gates
 
@@ -19,7 +32,7 @@ A gate presents the actual artifact, its current input hashes and choices to app
 
 | Phase and artifact | Gate shows | Note re-entry | Reset |
 |---|---|---|---|
-| Brief (at most 3 intake rounds); assets **hero** (track, logo, type, palette, hero screenshots, voice script); `motion-look` directions and moving look tests in `shots/_look/<look-id>/` | G1: filled brief, 2–3 directions, each a moving look test (clip, poster and passing liveness report from `motion-studio looktest`) with real assets, style-bible take/do-not-take | Brief or look test | G2–G5 |
+| Brief (at most 3 intake rounds); assets **hero** (track, logo, type, palette, real captures and site art, voice script); directions from the brand and moving look tests in `shots/_look/<look-id>/` | G1 ([reference/g1.md](reference/g1.md)): full brief, hero assets, 2–3 directions, each a moving look test (clip, poster and passing liveness report from `motion-studio looktest`) with real assets, style-bible take/do-not-take | Brief or look test | G2–G5 |
 | Board, engine keyframes, real stills | G2: beat contract table with its thread column (what each seam carries) and the start and end stills of each beat, on a contact sheet built from the hashed stills at presentation time | Named beats in board; keyframes as needed | G3–G5; G2 too if beat time changes |
 | Blocking builds (every beat moves with its real timing at placeholder fidelity); render and stitch of the primary format; moving animatic on the real track and narration | G3: playable moving animatic, with its liveness verdict as advice | Board, keyframes or blocking for named shots | G4–G5 |
 | Assets **fill**, full build, scan, liveness, critique loop A | G4: full-pass MP4, liveness report and scorecard | Build or board for named shots | G5 |
