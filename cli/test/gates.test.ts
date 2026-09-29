@@ -57,7 +57,7 @@ async function refused(dir:string, args:string[], message:string) {
 }
 const status = (dir:string) => ok(['status',dir]);
 /**
- * Writes what `packet` and a fresh motion-critique reviewer write for the master bytes `master` (D78): the packet with
+ * Writes what `packet` and a fresh motion-critique reviewer write for the master bytes `master` (D80): the packet with
  * its render.masterSha256 and a report whose header names the packet and that hash (reviewer.md format).
  */
 async function critique(dir:string, master:string, {loop = 1, independence = 'independent', packetMaster = master} = {}) {
@@ -222,7 +222,7 @@ test('G2 binds the beat grid and beat map, not shot descriptions or fill-mode as
     expect(g2.inputHashes[g2Grid]).toBe(sha('{"beatFrames":[3,6],"bpm":null,"downbeatFrames":[],"dropFrames":[]}'));
     expect(g2.inputHashes[g2Map]).toBe(sha('[{"endFrame":6,"id":"remotion","startFrame":0},{"endFrame":12,"id":"hyperframes","startFrame":6}]'));
     expect(g2.inputHashes['storyboard.json#/meta{fps,durationFrames}']).toBe(sha('{"durationFrames":12,"fps":30}'));
-    const approved = lines('G1 approved','G2 approved','G3 approved','G4 pending','G5 pending',"next: fill assets, full build, polish (D78), liveness and a fresh reviewer's critique loop A, then present G4");
+    const approved = lines('G1 approved','G2 approved','G3 approved','G4 pending','G5 pending',"next: fill assets, full build, polish (D81), liveness and a fresh reviewer's critique loop A, then present G4");
 
     // Fill mode, description and seam-thread edits, grid labels, formats and layouts leave G2 and G3 approved (D43, D64).
     await edit(dir,s => {

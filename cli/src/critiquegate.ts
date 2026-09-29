@@ -6,7 +6,7 @@ import {chosenFormats, formatDir, type GateId, type Project} from './project.js'
 import {outputsOf} from './outputs.js';
 
 /**
- * The critique approval check (D78), configured by the `critique` entry of schema/gate-inputs.json. A gate approval
+ * The critique approval check (D80), configured by the `critique` entry of schema/gate-inputs.json. A gate approval
  * needs a current critique report per chosen format: the packet `packet` describes the current master, and a report
  * matching `reports` names that packet and master hash in its header and comes from a fresh (independent) reviewer.
  * A critique waiver (D80) lifts only the independence requirement.

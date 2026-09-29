@@ -212,7 +212,7 @@ async function freeze(project:Project, id:GateId, hashes:Record<string,string>, 
  * Records one decision on a gate, bound to the hashes of its current inputs.
  * Every earlier gate must be approved and not stale. A note or rescope resets every later gate that is not pending.
  * G4 approval needs a current passing liveness report for every chosen format, unless a `liveness` waiver gives the
- * reason (D60). The critique gate (G4) also needs a current critique report per chosen format (D78, the `critique` entry
+ * reason (D60). The critique gate (G4) also needs a current critique report per chosen format (D80, the `critique` entry
  * of schema/gate-inputs.json); a `critique` waiver lifts only its independence requirement (D80). The gate record keeps
  * every waiver with its reason.
  */
@@ -239,7 +239,7 @@ export async function recordGate(project:Project, id:GateId, decision:Decision, 
     const refusals = await livenessRefusals(project);
     if (refusals.length) throw new CliError(`cannot approve G4: ${refusals.join('; ')}; run motion-studio liveness ${project.root}, or approve with --waive liveness --note <reason>`);
   }
-  // The approval shows the user a report of this master (D78). A critique waiver lifts only the independence
+  // The approval shows the user a report of this master (D80). A critique waiver lifts only the independence
   // requirement (D80): a current packet and a report bound to the current master hash are still needed.
   const {critique} = await gateInputs();
   if (id === critique.gate && decision === 'approve') {

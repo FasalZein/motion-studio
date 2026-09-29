@@ -289,7 +289,7 @@ test(`${runtime}: G4 approval needs a current passing report or a written waiver
   expect(run('gate',dir,'G4','approve','--waive','liveness').stderr).toBe('error: --waive liveness needs a --note with the reason\n');
   expect(run('gate',dir,'G3','approve','--waive','liveness','--note','x').stderr).toBe('error: --waive liveness applies only to G4 approve\n');
   expect(run('gate',dir,'G4','approve','--waive','other','--note','x').status).toBe(1);
-  // G4 also needs a fresh reviewer's critique report of this master (D78): the packet and a report that names it.
+  // G4 also needs a fresh reviewer's critique report of this master (D80): the packet and a report that names it.
   const masterSha = createHash('sha256').update(await readFile(join(dir,'renders/16x9/master.mkv'))).digest('hex');
   await mkdir(join(dir,'critique/packet-16x9'),{recursive:true});
   await writeFile(join(dir,'critique/packet-16x9/packet.json'),JSON.stringify({render:{masterSha256:masterSha}}));

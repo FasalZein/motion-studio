@@ -10,7 +10,7 @@ import {createHash} from 'node:crypto';
 const test = (name:string, fn:()=>Promise<void>, timeout=120000) => nodeTest(name,{timeout},fn);
 const here = dirname(fileURLToPath(import.meta.url));
 
-/** A stand-in master with what `packet` and a fresh reviewer write for it, which G4 approval needs (D78). */
+/** A stand-in master with what `packet` and a fresh reviewer write for it, which G4 approval needs (D80). */
 async function fakeCritique(film:string) {
   const sha = createHash('sha256').update('master v1').digest('hex');
   await mkdir(join(film,'renders/16x9'),{recursive:true});
