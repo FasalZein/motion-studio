@@ -215,7 +215,7 @@ function summary(name:string, output:string, r:LivenessReport):string[] {
     ...r.stillSpans.map(span => `  still ${span.seconds} s ${spanText(span)}`)];
 }
 /** The summary on stdout, one `error:` line per failed limit on stderr. */
-function print(name:string, output:string, r:LivenessReport) {
+export function printLiveness(name:string, output:string, r:LivenessReport) {
   for (const line of summary(name,output,r)) console.log(line);
   for (const f of r.failures) console.error(`error: ${name}: ${f}`);
 }
@@ -235,7 +235,7 @@ export async function livenessFilm(project:Project, formats:Format[], tools:Tool
     const report = await measureLiveness(tools,out.master,relative(root,out.master),{fps:meta.fps, shots},meta.durationFrames/meta.fps);
     const file = livenessFile(out);
     await writeFile(file,JSON.stringify({format,...report},null,2)+'\n');
-    print(format,relative(root,file),report);
+    printLiveness(format,relative(root,file),report);
     if (!report.pass) failures++;
   }
   return failures;
@@ -249,7 +249,7 @@ export async function livenessVideo(video:string, args:string[], tools:Tools):Pr
     throw new CliError(`cannot read video ${video}`);
   });
   if (args[1]) await writeFile(args[1],JSON.stringify(report,null,2)+'\n');
-  print(video,args[1] ?? 'no report file',report);
+  printLiveness(video,args[1] ?? 'no report file',report);
   return report.pass ? 0 : 1;
 }
 

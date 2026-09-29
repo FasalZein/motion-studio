@@ -1,0 +1,19 @@
+<!doctype html><html lang="en" data-composition-variables='[{"id":"format","type":"string","label":"Format","default":"16:9"},{"id":"canvasWidth","type":"number","label":"Canvas width","default":320},{"id":"canvasHeight","type":"number","label":"Canvas height","default":180},{"id":"safeX","type":"number","label":"Safe x","default":32},{"id":"safeY","type":"number","label":"Safe y","default":18},{"id":"safeWidth","type":"number","label":"Safe width","default":256},{"id":"safeHeight","type":"number","label":"Safe height","default":144},{"id":"overlay","type":"string","label":"Overlay preset","default":""}]'><head><meta charset="UTF-8"/><style>
+body {margin:0;} #root {position:relative;width:100%;height:100%;overflow:hidden;}
+#bg {position:absolute;inset:0;background:#172b46;} #box {position:absolute;width:40px;height:40px;background:#e05b45;} #label {position:absolute;font:20px sans-serif;color:#f2d064;}
+</style></head><body><div id="root" data-composition-id="look" data-width="320" data-height="180" data-duration="0.8"><div id="bg"></div><div id="box"></div><div id="label">LOOK</div></div><script>
+// Layout inputs arrive as HyperFrames variables. The box crosses the safe area for the whole test; at frame 12 the
+// background changes (the seam) while the box keeps moving, and the label slides in (the type beat).
+const v = window.__hyperframes.getVariables();
+const bg = document.getElementById('bg'), box = document.getElementById('box'), label = document.getElementById('label');
+const pose = t => {
+  const frame = Math.round(t * 30);
+  box.style.left = (v.safeX + (v.safeWidth - 40) * frame / 23) + 'px';
+  box.style.top = (v.safeY + v.safeHeight / 2 - 20) + 'px';
+  bg.style.background = frame < 12 ? '#172b46' : '#2d4a2f';
+  label.style.left = (v.safeX + 4 * frame) + 'px';
+  label.style.top = v.safeY + 'px';
+};
+pose(0);
+window.__timelines['look'] = { duration: () => 0.8, pause: () => {}, seek: pose };
+</script></body></html>

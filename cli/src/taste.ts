@@ -179,9 +179,10 @@ async function g1(project:Project, args:string[]):Promise<string[]> {
   for (const look of passed) {
     if (look === chosen) throw new CliError(`taste g1: ${look} is the chosen look (look.id), not a passed candidate`);
     if (passed.filter(p => p === look).length > 1) throw new CliError(`taste g1: ${look} is listed more than once`);
-    // Only a shown candidate can be passed: the approved G1 hashes list every look-test still it showed.
+    // Only a shown candidate can be passed: the approved G1 hashes list every look-test file it showed. The clip
+    // (<look-id>.mkv) or the poster (<look-id>.png) shows the look; the report <look-id>.liveness.json does not match.
     if (!Object.keys(gate.inputHashes).some(k => k.startsWith('stills/G1/') && k.slice('stills/G1/'.length).replace(/\.[^./]*$/,'') === look))
-      throw new CliError(`taste g1: ${look} has no look-test still at G1 (stills/G1/${look}.png); only a shown candidate can be passed`);
+      throw new CliError(`taste g1: ${look} has no look test at G1 (clip stills/G1/${look}.mkv or poster stills/G1/${look}.png); only a shown candidate can be passed`);
   }
   const slug = basename(project.root);
   const words = quote(gate.notes);

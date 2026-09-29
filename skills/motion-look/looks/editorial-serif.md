@@ -6,6 +6,11 @@ Status: **untested until used**.
 - Type pairing (free fonts): Source Serif 4 (display) + JetBrains Mono (captions and source notes).
 - Nearest HyperFrames frame preset: `editorial-forest` (nearest serif-first page treatment; replace green and pink with the product palette).
 - Motion signature: `mask-line-reveal`, `straight-cut`, `push-in`. Let an image or quote carry each turn.
+- Motion signature fields (the look test shows them, D61):
+  - Easing family: slow `ease-in-out` on image crops and text masks.
+  - Camera behavior: `push-in` on the image or quote, and a slow `drift` across the page.
+  - Light behavior: soft light that warms across a beat, as on a printed page (`color-grade`).
+  - Transition family: `straight-cut` and `match-cut` between image and quote; `mask-line-reveal` for type.
 - Variation axis 1: Image voice: archival crop or product-detail crop.
 - Variation axis 2: page structure: full-bleed feature or ruled column.
 - HyperFrames feasibility: layered image masks and SVG hairlines with GSAP camera moves.

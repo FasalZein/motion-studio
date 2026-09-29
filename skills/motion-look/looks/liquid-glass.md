@@ -6,6 +6,11 @@ Status: **untested until used**.
 - Type pairing (free fonts): Manrope (display and UI) + IBM Plex Mono (instrument labels).
 - Nearest HyperFrames frame preset: none (the listed presets lack refractive material and its changing background).
 - Motion signature: `shape-morph`, `shared-element`, `flood`, `closed-form-spring`. Use refraction to expose a real scene change.
+- Motion signature fields (the look test shows them, D61):
+  - Easing family: `closed-form-spring` with a soft settle.
+  - Camera behavior: slow `parallax` behind the glass and a gentle `drift`.
+  - Light behavior: the refraction and rim light move across the glass as the background changes (`light-thread` across seams).
+  - Transition family: `shape-morph`, `shared-element` and `liquid-merge` through the glass control.
 - Variation axis 1: Refraction strength: subtle rim or strong lens.
 - Variation axis 2: material carrier: one control or one transitioning panel.
 - HyperFrames feasibility: duplicate the scene behind a clipped glass element; use SVG displacement and a sharp rim. Validate Chromium capture.

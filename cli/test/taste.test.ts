@@ -128,8 +128,8 @@ test('taste g1 refuses without an approved G1, the director words or a chosen lo
     fails(home,['taste','g1',film,'--rejected','swiss-grid','--kept','swiss-grid:Crossfade'],'taste g1: swiss-grid is listed more than once');
     fails(home,['taste','g1',film,'--kept','swiss-grid'],'taste g1: --kept needs <look-id>:<pattern>, got "swiss-grid"');
     // An unshown candidate is never a rejection or a note: G1 showed only swiss-grid.
-    fails(home,['taste','g1',film,'--rejected','paper-collage'],'taste g1: paper-collage has no look-test still at G1 (stills/G1/paper-collage.png); only a shown candidate can be passed');
-    fails(home,['taste','g1',film,'--kept','swiss-gri:Crossfade'],'taste g1: swiss-gri has no look-test still at G1 (stills/G1/swiss-gri.png); only a shown candidate can be passed');
+    fails(home,['taste','g1',film,'--rejected','paper-collage'],'taste g1: paper-collage has no look test at G1 (clip stills/G1/paper-collage.mkv or poster stills/G1/paper-collage.png); only a shown candidate can be passed');
+    fails(home,['taste','g1',film,'--kept','swiss-gri:Crossfade'],'taste g1: swiss-gri has no look test at G1 (clip stills/G1/swiss-gri.mkv or poster stills/G1/swiss-gri.png); only a shown candidate can be passed');
     await edit(film,s => {s.look.id = null;});
     // Clearing look.id changes the G1 inputs, so re-approve before checking the look.id refusal.
     ok(home,['gate',film,'G1','approve','--note','keynote']);
@@ -148,6 +148,20 @@ test('taste g1 refuses without an approved G1, the director words or a chosen lo
     expect(result.stderr).toMatch(/^error: .*taste\.json: invalid JSON \(.*\); fix it, the CLI never overwrites it\n$/);
     expect(await readFile(profilePath(home),'utf8')).toBe('{"version":');
     expect((await storyboard(film)).look.tasteSnapshot).toBe(null);
+  });
+});
+
+test('taste g1 accepts a look shown by its look-test clip or its poster, not by its liveness report alone', async () => {
+  await scratch(async (home,film) => {
+    await edit(film,s => {s.look.id = 'keynote-minimal';});
+    await mkdir(join(film,'stills','G1'),{recursive:true});
+    // The names motion-studio looktest writes: <look-id>.mkv (clip), <look-id>.png (poster), <look-id>.liveness.json.
+    await writeFile(join(film,'stills','G1','swiss-grid.mkv'),'clip only');
+    await writeFile(join(film,'stills','G1','paper-collage.png'),'poster only');
+    await writeFile(join(film,'stills','G1','brutalist-mono.liveness.json'),'{}');
+    ok(home,['gate',film,'G1','approve','--note','keynote']);
+    fails(home,['taste','g1',film,'--rejected','brutalist-mono'],'taste g1: brutalist-mono has no look test at G1 (clip stills/G1/brutalist-mono.mkv or poster stills/G1/brutalist-mono.png); only a shown candidate can be passed');
+    expect(ok(home,['taste','g1',film,'--rejected','swiss-grid','--rejected','paper-collage']).split('\n').slice(0,3)).toEqual(['liked look keynote-minimal','rejected look swiss-grid','rejected look paper-collage']);
   });
 });
 

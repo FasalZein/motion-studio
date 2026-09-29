@@ -13,7 +13,7 @@ films/<slug>/
   assets/                   frozen local media, including pinned fonts
   shots/<shot-id>/          one engine project per shot
   shots/_look/<look-id>/    one G1 look-test project per candidate; not a film shot
-  stills/<gate>/            engine-rendered review frames; G1 look tests at stills/G1/<look-id>.png
+  stills/<gate>/            engine-rendered review frames; G1 look tests: <look-id>.mkv (clip), .png (poster), .liveness.json (motion-studio looktest)
   stills/G2/<format>/       board stills <shot-id>-f<frame>.png per format (16x9, 9x16, 1x1), from `motion-studio stills`
   stills/G2/<format>/sheet.png   G2 contact sheet of those stills, with its tile index sheet.json; hashed with them
   stills/approved/<gate>-<hash8>/   immutable approval copies
