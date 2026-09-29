@@ -301,7 +301,8 @@ const Shot = () => <TransitionSeries>
 </TransitionSeries>;
 registerRoot(() => <Composition id="Shot" component={Shot} durationInFrames={6} fps={30} width={320} height={180} />);
 `);
-    // The bundle writes no webpack cache: each film folder would add a new entry that nothing removes.
+    // The bundle writes no webpack cache: each film folder would add a new entry that nothing removes. Webpack puts
+    // the cache under the package.json nearest the working directory; npm test runs in cli/, so that is this folder.
     const cacheDir = resolve(here,'../node_modules/.cache/webpack');
     const cacheEntries = async () => (await readdir(cacheDir,{recursive:true}).catch(() => [])).length;
     const cachedBefore = await cacheEntries();
