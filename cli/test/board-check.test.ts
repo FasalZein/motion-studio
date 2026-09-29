@@ -149,3 +149,14 @@ test(`${runtime}: remove the board eval films`, async () => {
   for (const entry of await readdir(root,{recursive:true})) await chmod(join(root,entry),0o755).catch(() => {});
   await rm(root,{recursive:true,force:true});
 });
+
+// The checker copies the G1-G3 freeze inputs from cli/schema/gate-inputs.json because the installed skill has no cli/;
+// this keeps the copy equal to the schema.
+test(`${runtime}: check.mjs freeze inputs equal the G1-G3 freeze inputs in gate-inputs.json`, async () => {
+  const {FROZEN} = await import(join(skill,'evals/board.mjs'));
+  const schema = JSON.parse(await readFile(resolve(here,'../schema/gate-inputs.json'),'utf8'));
+  type Input = {freeze?:boolean; sources:{file?:string}[]};
+  const frozen = ['G1','G2','G3'].flatMap(id => (schema[id] as Input[]).filter(i => i.freeze)
+    .flatMap(i => i.sources.map(src => [src.file!.replace(/\*\*$/,''), id])));
+  expect(FROZEN).toEqual(frozen);
+});

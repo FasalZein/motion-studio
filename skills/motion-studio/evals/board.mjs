@@ -15,7 +15,7 @@ const ENGINE_COLUMNS = ['Shot', 'Engine', 'Reason', 'UI source', '3D'];
 const PLACEHOLDER = /^(none|-|n\/a|tbd|todo|\.\.\.)$/i;
 // Freeze inputs of G1-G3 in cli/schema/gate-inputs.json: the live path prefix and the gate whose frozen folder holds
 // the copy (stills/approved/<gate>-<hash8>/<path after the prefix>).
-const FROZEN = [['stills/G1/', 'G1'], ['stills/G2/', 'G2'], ['animatic.mp4', 'G3']];
+export const FROZEN = [['stills/G1/', 'G1'], ['stills/G2/', 'G2'], ['animatic.mp4', 'G3']];
 
 const sha256 = data => createHash('sha256').update(data).digest('hex');
 // Same as canonical() in cli/src/gates.ts: sorted keys, no spaces.
