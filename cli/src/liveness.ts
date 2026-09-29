@@ -93,6 +93,20 @@ function runsOf(mask:boolean[]):Run[] {
   return runs;
 }
 
+/**
+ * The frames of samples `start` through `end` (12 fps) in the video's own frame numbers, both inside the span. ffmpeg's
+ * `fps` filter (rounding `near`) gives input frame n the output time round(n x 12 / fps) and keeps the last frame of each
+ * time, so sample k decodes the last frame with n x 12 / fps < k + 0.5. That frame is later than round(k x fps / 12) (by
+ * 1 frame at 30 fps and 2 at 60 fps for an even k), so a rounded first frame can lie before a freeze. Frame timestamps
+ * stored in milliseconds can move a frame that falls exactly on k + 0.5 to either side, so the first frame includes that
+ * tie (it lies between two samples of the span) and the last frame excludes it. Hold strips (`evidence.ts`) use the same
+ * rule, so a report's frames and its strip tiles agree.
+ */
+export function sampleSpanFrames(start:number, end:number, fps:number) {
+  const rate = METHOD.sampleFps;
+  return {first:Math.floor((start+0.5)*fps/rate), last:Math.ceil((end+0.5)*fps/rate)-1};
+}
+
 /** Film context for locating spans and cuts; absent for a lone video. */
 export type FilmContext = {fps:number; shots:Shot[]};
 /** Where a run of samples lies: seconds from the start, and in a film the film frames and shots it touches. */
@@ -130,10 +144,9 @@ export async function measureLiveness(tools:Tools, video:string, label:string, f
   const floor = Math.min(max,Math.max(min,factor*percentile(d,q)));
   const moving = d.map((v,i) => v > floor || pixels[i] > METHOD.pixelShare);
 
-  // Film frame of a sample; the 12 fps sample grid places it to within one sample.
-  const frameOf = (s:number) => film ? Math.round(s*film.fps/fps) : null;
   const place = (run:Run):Place => {
-    const firstFrame = frameOf(run.start), lastFrame = frameOf(run.start+run.steps);
+    const frames = film ? sampleSpanFrames(run.start,run.start+run.steps,film.fps) : null;
+    const firstFrame = frames ? frames.first : null, lastFrame = frames ? frames.last : null;
     const shots = film && firstFrame !== null && lastFrame !== null ? film.shots.filter(s => s.startFrame <= lastFrame && s.endFrame > firstFrame).map(s => s.id) : [];
     return {startSecond:round3(run.start/fps), seconds:round3(run.steps/fps), firstFrame, lastFrame, shots};
   };
