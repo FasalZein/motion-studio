@@ -24,7 +24,7 @@ How elements move inside a beat. Use `motion-vocabulary` `terms/timing-physics.m
 ## Faster exits
 
 - Exits are faster than entrances; the source gives about 10 frames against about 20. [S: remotion-motion-graphics, video-storytelling]
-- A finished element leaves or recedes; it does not linger at half strength. [S: video-storytelling]
+- A finished element leaves or recedes: it stays quiet but legible while the next element takes focus. [S: video-storytelling]
 
 ## Spatial consistency
 

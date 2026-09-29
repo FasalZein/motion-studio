@@ -1,6 +1,6 @@
 # The beat contract
 
-The board sets these fields for every beat; builders deliver them and reviewers check them. They replace a list of poses. [S: ordinary-folk; D: D67; spec `docs/SPEC-motion.md` "motion-studio guidance"]
+The board sets these fields for every beat, one row per beat (a shot may hold several beats; `motion-studio beatmap` prints one row per shot), plus the spoken line and the engine with its reason for the beat's shot; builders deliver them and reviewers check them. They replace a list of poses. [S: ordinary-folk; D: D67; spec `docs/SPEC-motion.md` "motion-studio guidance"]
 
 | Field | Content | Invalid | Recorded in |
 |---|---|---|---|
