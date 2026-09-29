@@ -53,8 +53,11 @@ const blend = (a:Buffer, b:Buffer, weight:number) => Buffer.from(a.map((v,i) => 
  */
 function ffmpegWithInput(args:string[], input:Buffer) {
   const file = join(mkdtempSync(join(tmpdir(),'motion-studio-raw-')),'input.raw');
-  writeFileSync(file,input);
-  try {return spawnSync('ffmpeg',args.map((a,i) => a === '-' && args[i-1] === '-i' ? file : a),{maxBuffer:1<<30});}
+  // The same 60 s bound as this file's CLI runs, so a stall fails the test instead of hanging the suite.
+  try {
+    writeFileSync(file,input);
+    return spawnSync('ffmpeg',args.map((a,i) => a === '-' && args[i-1] === '-i' ? file : a),{maxBuffer:1<<30,timeout:60000});
+  }
   finally {rmSync(dirname(file),{recursive:true,force:true});}
 }
 /** Encodes RGB frames into the master format: FFV1, yuv444p, BT.709 tags, 30 fps. */

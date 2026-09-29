@@ -40,13 +40,16 @@ const drawHold = (f:number) => draw(f,f <= HOLD_FIRST ? f : f <= HOLD_LAST ? HOL
  */
 function ffmpegWithInput(args:string[], input:Buffer) {
   const file = join(mkdtempSync(join(tmpdir(),'motion-studio-raw-')),'input.raw');
-  writeFileSync(file,input);
-  try {return spawnSync('ffmpeg',args.map((a,i) => a === '-' && args[i-1] === '-i' ? file : a),{maxBuffer:1<<30});}
+  // The same 60 s bound as this file's CLI runs, so a stall fails the test instead of hanging the suite.
+  try {
+    writeFileSync(file,input);
+    return spawnSync('ffmpeg',args.map((a,i) => a === '-' && args[i-1] === '-i' ? file : a),{maxBuffer:1<<30,timeout:60000});
+  }
   finally {rmSync(dirname(file),{recursive:true,force:true});}
 }
 function ffmpeg(args:string[], input?:Buffer) {
   const full = ['-hide_banner','-loglevel','error','-y',...args];
-  const r = input ? ffmpegWithInput(full,input) : spawnSync('ffmpeg',full,{maxBuffer:1<<28});
+  const r = input ? ffmpegWithInput(full,input) : spawnSync('ffmpeg',full,{maxBuffer:1<<28,timeout:60000});
   if (r.status !== 0) throw Error(`ffmpeg failed: ${r.stderr}`);
   return r.stdout;
 }

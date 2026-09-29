@@ -57,8 +57,11 @@ function samples(segments:Segment[], start:Picture|null = {kind:'box', pos:0}):P
  */
 function ffmpegWithInput(args:string[], input:Buffer) {
   const file = join(mkdtempSync(join(tmpdir(),'motion-studio-raw-')),'input.raw');
-  writeFileSync(file,input);
-  try {return spawnSync('ffmpeg',args.map((a,i) => a === '-' && args[i-1] === '-i' ? file : a),{maxBuffer:1<<30});}
+  // The same 60 s bound as this file's CLI runs, so a stall fails the test instead of hanging the suite.
+  try {
+    writeFileSync(file,input);
+    return spawnSync('ffmpeg',args.map((a,i) => a === '-' && args[i-1] === '-i' ? file : a),{maxBuffer:1<<30,timeout:60000});
+  }
   finally {rmSync(dirname(file),{recursive:true,force:true});}
 }
 function encode(pictures:Picture[], file:string, fps:number, codec:'ffv1'|'h264') {
