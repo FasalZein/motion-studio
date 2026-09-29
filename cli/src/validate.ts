@@ -7,6 +7,7 @@ import {checkScanContext} from './scan.js';
 import {vocabularyWarnings} from './vocabulary.js';
 import {checkVoice} from './voice.js';
 import {threadErrors} from './threads.js';
+import {determinismErrors} from './determinism.js';
 
 export type Report = {errors:string[]; warnings:string[]};
 /**
@@ -185,7 +186,10 @@ const checkVocabulary:Check = async ({storyboard}) => ({errors:[], warnings:awai
 // D64: a seam without a thread is an error; render commands run it too (D44).
 const checkThreads:Check = async project => errorsOnly(await threadErrors(project));
 
-const structuralChecks = (only?:readonly string[]):Check[] => [checkMeta, checkGates, checkTimeline, checkHandoffs, checkThreads, checkSoundCues, checkEntrypoints(only), checkAssetIds, checkLedgerFiles, checkScanContext, checkVocabulary, checkVoice];
+// D66: wall clocks, frame loops, unseeded randomness, network loads and undeclared three.js imports in shot sources.
+const checkDeterminism = (only?:readonly string[]):Check => async project => errorsOnly(await determinismErrors(project,only));
+
+const structuralChecks = (only?:readonly string[]):Check[] => [checkMeta, checkGates, checkTimeline, checkHandoffs, checkThreads, checkSoundCues, checkEntrypoints(only), checkDeterminism(only), checkAssetIds, checkLedgerFiles, checkScanContext, checkVocabulary, checkVoice];
 
 /**
  * Which checks run. `validate` runs all of them. Render commands pass `{gates:false}` (D44): re-rendering after an

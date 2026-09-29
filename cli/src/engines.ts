@@ -7,6 +7,7 @@ import {renderFrames, renderStill, selectComposition} from '@remotion/renderer';
 import {CliError, layoutOf, type Format, type Layout, type Project, type Shot} from './project.js';
 import {remotionEntry} from './validate.js';
 import type {Tools} from './seam.js';
+import {vendorDir, vendorFileNames} from './determinism.js';
 
 const require = createRequire(import.meta.url);
 const hfBin = resolve(dirname(require.resolve('hyperframes/package.json')), 'bin/hyperframes.mjs');
@@ -15,6 +16,31 @@ const hfBin = resolve(dirname(require.resolve('hyperframes/package.json')), 'bin
  * cannot find the package by walking up their own folders; the bundler searches this folder after theirs (D54).
  */
 const transitionsModules = resolve(dirname(require.resolve('@remotion/transitions/package.json')),'..','..');
+
+/**
+ * The Chromium GL backend of every Remotion render (D65). three.js does not render with the default OpenGL renderer.
+ * `angle` is the macOS route; `swangle` (SwiftShader through ANGLE) is the Linux and CI route. Pixels differ between
+ * backends, so the render report records the backend and a film is compared only within one backend.
+ */
+export const glBackend = process.platform === 'darwin' ? 'angle' : 'swangle';
+const chromiumOptions = {gl:glBackend} as const;
+/** HyperFrames picks the Chrome GPU mode itself (`--browser-gpu` default: probe the host GPU, fall back to software). */
+export const hyperframesGpu = 'auto';
+
+/**
+ * The pinned GSAP (core and the SplitText, Flip, MorphSVG, DrawSVG and MotionPath plugins) and three.js files that
+ * the CLI provides in every staged HyperFrames shot as `vendor/<file>` (D65). Shots load them with relative paths,
+ * so a render never fetches a library from a CDN.
+ */
+// three's package exports hide package.json; its main entry sits in build/ beside the module files.
+const vendorSources:{file:string; from:string}[] = vendorFileNames.map(file => ({file, from:file.startsWith('three.')
+  ? join(dirname(require.resolve('three')),file)
+  : join(dirname(require.resolve('gsap/package.json')),'dist',file)}));
+/** Copies the pinned library files into `<shotDir>/vendor/`, replacing any copy the author made. */
+export async function provideVendor(shotDir:string) {
+  await mkdir(join(shotDir,vendorDir),{recursive:true});
+  for (const {file,from} of vendorSources) await cp(from,join(shotDir,vendorDir,file));
+}
 
 /** Remotion input props: the format's layout inputs under `layout`. */
 export const remotionProps = (format:Format, {canvas,safe,overlay}:Layout) => ({layout:{format, canvas, safe, overlay}});
@@ -66,7 +92,7 @@ async function shotComposition(project:Project, shot:Shot, serveUrl:string, form
   const {fps} = project.storyboard.meta;
   const layout = layoutOf(project.storyboard,format);
   const inputProps = {...remotionProps(format,layout), ...(hide ? {motionStudioHide:hide} : {})};
-  const composition = await selectComposition({serveUrl,id:shot.entrypoint,inputProps});
+  const composition = await selectComposition({serveUrl,id:shot.entrypoint,inputProps,chromiumOptions});
   if (composition.durationInFrames !== shot.endFrame-shot.startFrame || composition.fps !== fps || composition.width !== layout.canvas.width || composition.height !== layout.canvas.height) {
     throw new CliError(`composition metadata mismatch: ${shot.id} ${format} is ${composition.width}x${composition.height} ${composition.fps} fps ${composition.durationInFrames} frames`);
   }
@@ -75,19 +101,20 @@ async function shotComposition(project:Project, shot:Shot, serveUrl:string, form
 
 export async function renderRemotionFrames(project:Project, shot:Shot, serveUrl:string, {format,framesDir,hide}:FrameRender) {
   const {composition,inputProps} = await shotComposition(project,shot,serveUrl,format,hide);
-  await renderFrames({serveUrl,composition,inputProps,outputDir:framesDir,imageFormat:'png',muted:true,onStart:()=>{},onFrameUpdate:()=>{},concurrency:1});
+  await renderFrames({serveUrl,composition,inputProps,chromiumOptions,outputDir:framesDir,imageFormat:'png',muted:true,onStart:()=>{},onFrameUpdate:()=>{},concurrency:1});
 }
 
 /** Renders single shot-local frames of a Remotion shot as PNG files, without rendering the rest of the shot. */
 export async function renderRemotionStills(project:Project, shot:Shot, serveUrl:string, format:Format, frames:{frame:number; output:string}[]) {
   const {composition,inputProps} = await shotComposition(project,shot,serveUrl,format);
-  for (const {frame,output} of frames) await renderStill({serveUrl,composition,inputProps,frame,output,imageFormat:'png'});
+  for (const {frame,output} of frames) await renderStill({serveUrl,composition,inputProps,chromiumOptions,frame,output,imageFormat:'png'});
 }
 
 /**
  * Renders a HyperFrames shot for one format. The CLI stages a copy of `shots/<id>/` beside it,
  * sets the root's data-width and data-height to the format canvas, and passes the layout as variables.
- * The copy keeps the folder depth, so relative paths such as ../../assets still resolve.
+ * The copy keeps the folder depth, so relative paths such as ../../assets still resolve. The CLI adds the pinned
+ * GSAP and three files to the copy's `vendor/` folder.
  */
 export async function renderHyperframesFrames(project:Project, shot:Shot, tools:Tools, {format,framesDir,hide}:FrameRender) {
   const {root,storyboard} = project;
@@ -96,6 +123,7 @@ export async function renderHyperframesFrames(project:Project, shot:Shot, tools:
   const stage = await mkdtemp(join(root,'shots',`.motion-${shot.id}-`));
   try {
     await cp(shotDir,stage,{recursive:true});
+    await provideVendor(stage);
     const rel = relative(shotDir,resolve(root,shot.entrypoint));
     const entry = join(stage,rel);
     let html = await readFile(entry,'utf8');

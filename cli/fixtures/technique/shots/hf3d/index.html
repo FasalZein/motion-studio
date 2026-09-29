@@ -1,0 +1,48 @@
+<!doctype html><html lang="en" data-composition-variables='[{"id":"format","type":"string","label":"Format","default":"16:9"},{"id":"canvasWidth","type":"number","label":"Canvas width","default":160},{"id":"canvasHeight","type":"number","label":"Canvas height","default":90},{"id":"safeX","type":"number","label":"Safe x","default":16},{"id":"safeY","type":"number","label":"Safe y","default":9},{"id":"safeWidth","type":"number","label":"Safe width","default":128},{"id":"safeHeight","type":"number","label":"Safe height","default":72},{"id":"overlay","type":"string","label":"Overlay preset","default":""}]'><head><meta charset="UTF-8"/>
+<!-- Pinned GSAP and three come from vendor/, which motion-studio provides in the staged shot (engines/hyperframes.md). -->
+<script src="vendor/gsap.min.js"></script><script src="vendor/SplitText.min.js"></script><script src="vendor/Flip.min.js"></script>
+<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
+<style>
+body {margin:0;} #root {position:relative;width:100%;height:100%;overflow:hidden;font-family:sans-serif;}
+.bg {position:absolute;inset:0;background:#101820;}
+#gl {position:absolute;inset:0;width:100%;height:100%;}
+#title {position:absolute;font-size:12px;line-height:14px;color:#f2d064;}
+#row {position:absolute;display:flex;gap:6px;}
+#row.swapped {flex-direction:row-reverse;}
+.box {width:12px;height:12px;}
+#a {background:#e05b45;} #b {background:#4f9dde;}
+</style></head><body><div id="root" data-composition-id="shot" data-width="160" data-height="90" data-duration="0.2"><div class="bg"></div><canvas id="gl"></canvas><div id="title">Pinned local motion</div><div id="row"><div class="box" id="a"></div><div class="box" id="b"></div></div></div>
+<script type="module">
+import * as THREE from 'three';
+gsap.registerPlugin(SplitText, Flip);
+const v = window.__hyperframes.getVariables();
+const title = document.getElementById('title');
+Object.assign(title.style, {left: v.safeX + 'px', top: v.safeY + 'px', width: v.safeWidth + 'px'});
+const row = document.getElementById('row');
+Object.assign(row.style, {left: v.safeX + 'px', top: (v.safeY + v.safeHeight - 12) + 'px'});
+// three at pixel ratio 1; every frame renders from the timeline's state, never from a clock.
+const renderer = new THREE.WebGLRenderer({canvas: document.getElementById('gl'), alpha: true, antialias: false, preserveDrawingBuffer: true});
+renderer.setPixelRatio(1);
+renderer.setSize(v.canvasWidth, v.canvasHeight, false);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, v.canvasWidth / v.canvasHeight, 0.1, 50);
+scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+const light = new THREE.DirectionalLight(0xffffff, 2); light.position.set(2, 2, 3); scene.add(light);
+const solid = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({color: 0xe05b45, flatShading: true}));
+scene.add(solid);
+const state = {turn: 0, z: 4.5};
+const draw = () => { solid.rotation.set(state.turn, state.turn * 0.7, 0); camera.position.z = state.z; renderer.render(scene, camera); };
+document.fonts.ready.then(() => {
+  const tl = gsap.timeline({paused: true, onUpdate: draw});
+  tl.to(state, {turn: 1.2, z: 3.5, duration: 0.2, ease: 'power2.inOut'}, 0);
+  const split = SplitText.create(title, {type: 'chars'});
+  tl.from(split.chars, {y: 8, opacity: 0, stagger: 0.01, duration: 0.1, ease: 'power2.out'}, 0);
+  const before = Flip.getState('.box');
+  row.classList.add('swapped');
+  tl.add(Flip.from(before, {duration: 0.2, ease: 'power1.inOut'}), 0);
+  tl.time(0);
+  draw();
+  window.__timelines = window.__timelines || {};
+  window.__timelines["shot"] = tl;
+});
+</script></body></html>
