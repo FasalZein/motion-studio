@@ -53,6 +53,11 @@ export async function looktest(project:Project, args:string[], tools:Tools, rend
   if (!lookId || extra.length) throw new CliError(lookTestUsage);
   if (!/^[a-z0-9][a-z0-9-]*$/.test(lookId)) throw new CliError(`invalid look id "${lookId}": use lowercase letters, digits and hyphens`);
   const {root,storyboard} = project;
+  const g1 = join(root,'stills','G1');
+  const outputs = {clip:join(g1,`${lookId}.mkv`), poster:join(g1,`${lookId}.png`), report:join(g1,`${lookId}.liveness.json`)};
+  // Every run first removes this look's earlier outputs, so a run that fails at any step leaves none that no longer
+  // show its source.
+  for (const file of Object.values(outputs)) await rm(file,{force:true});
   const spec = await readLookTest(root,lookId);
   const format = storyboard.meta.formats.primary;
   const {width,height} = layoutOf(storyboard,format).canvas;
@@ -66,9 +71,6 @@ export async function looktest(project:Project, args:string[], tools:Tools, rend
   const guard = await shotDeterminismErrors(root,shot);
   if (guard.length) throw new CliError(`look test ${lookId} is not deterministic:\nerror: ${guard.join('\nerror: ')}`);
 
-  const g1 = join(root,'stills','G1');
-  const outputs = {clip:join(g1,`${lookId}.mkv`), poster:join(g1,`${lookId}.png`), report:join(g1,`${lookId}.liveness.json`)};
-  for (const file of Object.values(outputs)) await rm(file,{force:true});
   // Inside the film, so the final renames stay on one file system; hidden folders are never gate inputs.
   const stage = await mkdtemp(join(root,'.motion-looktest-'));
   try {
