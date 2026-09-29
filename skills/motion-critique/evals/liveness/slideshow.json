@@ -1,0 +1,116 @@
+{
+  "video": "slideshow.mkv",
+  "sha256": "7a6d8ac6d52bf6efc1d554d050bbdfdf335787deb6b5aa286dd98956f7b057da",
+  "method": {
+    "sampleFps": 12,
+    "width": 320,
+    "height": 180,
+    "noiseFloor": {
+      "factor": 3,
+      "percentile": 5,
+      "min": 0.03,
+      "max": 0.25
+    },
+    "pixelShare": 0.0005,
+    "pixelDelta": 6,
+    "blackLuma": 8,
+    "endCardSeconds": 0.5
+  },
+  "durationSeconds": 12,
+  "samples": 144,
+  "noiseFloor": 0.03,
+  "contentSeconds": 9,
+  "excluded": [
+    {
+      "kind": "end-card",
+      "startSecond": 9,
+      "seconds": 2.917,
+      "firstFrame": null,
+      "lastFrame": null,
+      "shots": []
+    }
+  ],
+  "movingShare": 0.028,
+  "movingShareWholeFilm": 0.021,
+  "stillShare": {
+    "over0_5": 0.972,
+    "over1": 0.972,
+    "over2": 0.972
+  },
+  "longestStillSeconds": 2.917,
+  "stillSpans": [
+    {
+      "startSecond": 0,
+      "seconds": 2.917,
+      "firstFrame": null,
+      "lastFrame": null,
+      "shots": []
+    },
+    {
+      "startSecond": 3,
+      "seconds": 2.917,
+      "firstFrame": null,
+      "lastFrame": null,
+      "shots": []
+    },
+    {
+      "startSecond": 6,
+      "seconds": 2.917,
+      "firstFrame": null,
+      "lastFrame": null,
+      "shots": []
+    }
+  ],
+  "advisory": {
+    "longestMotionRunSeconds": 0.083,
+    "cuts": [],
+    "cutsBothMoving": null,
+    "cutRate": null,
+    "onsetsPerSecond": 0.252
+  },
+  "limits": [
+    {
+      "metric": "moving share",
+      "value": 0.028,
+      "limit": 0.75,
+      "direction": "min",
+      "pass": false
+    },
+    {
+      "metric": "still over 0.5 s share",
+      "value": 0.972,
+      "limit": 0.1,
+      "direction": "max",
+      "pass": false
+    },
+    {
+      "metric": "still over 1 s share",
+      "value": 0.972,
+      "limit": 0.05,
+      "direction": "max",
+      "pass": false
+    },
+    {
+      "metric": "still over 2 s share",
+      "value": 0.972,
+      "limit": 0.04,
+      "direction": "max",
+      "pass": false
+    },
+    {
+      "metric": "longest still span",
+      "value": 2.917,
+      "limit": 2,
+      "direction": "max",
+      "pass": false
+    }
+  ],
+  "failures": [
+    "moving share 0.028 is below the minimum 0.75",
+    "still over 0.5 s share 0.972 is above the maximum 0.1",
+    "still over 1 s share 0.972 is above the maximum 0.05",
+    "still over 2 s share 0.972 is above the maximum 0.04",
+    "longest still span 2.917 s is above the maximum 2 s (film under 90 s)"
+  ],
+  "pass": false
+}

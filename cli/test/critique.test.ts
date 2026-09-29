@@ -200,7 +200,7 @@ test(`${runtime}: dimension 7 follows the documented rule for offsets and loudne
   const offBeat = await score(sync({cuts:[{shot:'hyperframes', frame:20, beatFrame:15, offsetFrames:5, offBeatCut:'lands on the word'}]}));
   expect(offBeat.score).toBe(8);
   expect(offBeat.reasons.join('\n')).toContain('declared off-beat');
-  // Loudness: 1.5 LU off is inconsistent level (5); 5 LU off is wide (2), like the known-bad calibration case.
+  // Loudness: 1.5 LU off is inconsistent level (5); 5 LU off is wide (2), like the case-2 calibration case.
   expect((await score(sync({integratedLufs:-15.5}))).score).toBe(5);
   expect((await score(sync({integratedLufs:-19}))).score).toBe(2);
   expect((await score(sync({truePeakDbtp:-0.5}))).score).toBe(5);
@@ -310,32 +310,53 @@ test(`${runtime}: calibrate passes scores inside the shipped bands and voids a r
   const dir = await mkdtemp(join(tmpdir(),'motion-studio-critique-'));
   try {
     const shot = {'3':'unverified','4':3,'5':4,'6':2,'8':2};
-    // known-good has only a 1 fps sheet: motion quality (3) and technical finish (8) must stay unverified.
+    // case-1 has only a 1 fps sheet: motion quality (3) and technical finish (8) must stay unverified.
     const good = {film:{'1':8,'2':9,'7':8,'7-audible':'unverified'}, shots:{s01:{'3':'unverified','4':9,'5':8,'6':8,'8':'unverified'}, s02:{'3':'unverified','4':8,'5':9,'6':9,'8':'unverified'}}};
-    const scores = {cases:{'known-bad':{film:{'1':2,'2':3,'7':2,'7-audible':'unverified'}, shots:{s01:shot, s03:shot}}, 'known-good':good}};
+    const scores = {cases:{'case-2':{film:{'1':2,'2':3,'7':2,'7-audible':'unverified'}, shots:{s01:shot, s03:shot}}, 'case-1':good}};
     const file = join(dir,'scores.json');
     await writeFile(file,JSON.stringify(scores));
     let result = run('calibrate',file,bands);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('calibration within bands');
-    // A known-good shot below 8 voids the run and names the missed band.
-    await writeFile(file,JSON.stringify({cases:{...scores.cases, 'known-good':{...good, shots:{...good.shots, s02:{...good.shots.s02, '5':6}}}}}));
+    // A case-1 shot below 8 voids the run and names the missed band.
+    await writeFile(file,JSON.stringify({cases:{...scores.cases, 'case-1':{...good, shots:{...good.shots, s02:{...good.shots.s02, '5':6}}}}}));
     result = run('calibrate',file,bands);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('error: run void: 1 band missed');
-    expect(result.stderr).toContain('known-good: shot * dimension 5 >= 8: got 6');
+    expect(result.stderr).toContain('case-1: shot * dimension 5 >= 8: got 6');
     // An audible judgment scored without listening is a miss, not a pass.
-    await writeFile(file,JSON.stringify({cases:{...scores.cases, 'known-bad':{...scores.cases['known-bad'], film:{'1':2,'2':3,'7':2,'7-audible':6}}}}));
+    await writeFile(file,JSON.stringify({cases:{...scores.cases, 'case-2':{...scores.cases['case-2'], film:{'1':2,'2':3,'7':2,'7-audible':6}}}}));
     result = run('calibrate',file,bands);
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('known-bad: film dimension 7-audible unverified: got 6');
-    // Scoring a full-rate judgment from the 1 fps known-good sheet is a miss.
-    await writeFile(file,JSON.stringify({cases:{...scores.cases, 'known-good':{...good, shots:{...good.shots, s01:{...good.shots.s01, '3':8}}}}}));
+    expect(result.stderr).toContain('case-2: film dimension 7-audible unverified: got 6');
+    // Scoring a full-rate judgment from the 1 fps case-1 sheet is a miss.
+    await writeFile(file,JSON.stringify({cases:{...scores.cases, 'case-1':{...good, shots:{...good.shots, s01:{...good.shots.s01, '3':8}}}}}));
     result = run('calibrate',file,bands);
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('known-good: shot * dimension 3 unverified: got 8');
+    expect(result.stderr).toContain('case-1: shot * dimension 3 unverified: got 8');
+    // case-2 is the slideshow: its liveness report fails without a waiver, so dimension 2 at 8 voids the run.
+    await writeFile(file,JSON.stringify({cases:{...scores.cases, 'case-2':{...scores.cases['case-2'], film:{...scores.cases['case-2'].film, '2':8}}}}));
+    result = run('calibrate',file,bands);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('case-2: film dimension 2 <= 7: got 8');
   } finally {await rm(dir,{recursive:true,force:true});}
+});
+
+test(`${runtime}: the shipped liveness reports agree with the cases: the slideshows fail and the moving films pass`, async () => {
+  const skill = resolve(here,'../../skills/motion-critique');
+  const report = async (file:string) => JSON.parse(await readFile(join(skill,file),'utf8'));
+  const cases = await report('evals/cases.json');
+  const pace = cases.pairs['slideshow-pace'];
+  expect((await report(join('evals',pace.bad.liveness))).pass).toBe(false);
+  expect((await report(join('evals',pace.good.liveness))).pass).toBe(true);
+  // cases.md names each report beside its sheet; case-2 is the slideshow the calibration bands cap on dimension 2.
+  const text = await readFile(join(skill,'calibration/cases.md'),'utf8');
+  for (const name of ['case-1','case-2']) expect(text).toContain(`Liveness report: \`${name}-liveness.json\``);
+  expect((await report('calibration/case-1-liveness.json')).pass).toBe(true);
+  const slideshow = await report('calibration/case-2-liveness.json');
+  expect([slideshow.pass,slideshow.movingShare < 0.75]).toEqual([false,true]);
+  expect((await report('evals/calibration-bands.json')).cases['case-2']).toContainEqual({dimension:'2', max:7});
 });
 
 test(`${runtime}: the eval grader accepts a worst issue in any damaged shot and rejects one outside them`, async () => {

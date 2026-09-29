@@ -1,0 +1,79 @@
+{
+  "video": "moving.mkv",
+  "sha256": "2dbf481d00015940178019ff52a08742455303631b5346ba46df35cd9ae4d27d",
+  "method": {
+    "sampleFps": 12,
+    "width": 320,
+    "height": 180,
+    "noiseFloor": {
+      "factor": 3,
+      "percentile": 5,
+      "min": 0.03,
+      "max": 0.25
+    },
+    "pixelShare": 0.0005,
+    "pixelDelta": 6,
+    "blackLuma": 8,
+    "endCardSeconds": 0.5
+  },
+  "durationSeconds": 12,
+  "samples": 144,
+  "noiseFloor": 0.03,
+  "contentSeconds": 11.917,
+  "excluded": [],
+  "movingShare": 0.832,
+  "movingShareWholeFilm": 0.832,
+  "stillShare": {
+    "over0_5": 0,
+    "over1": 0,
+    "over2": 0
+  },
+  "longestStillSeconds": 0.083,
+  "stillSpans": [],
+  "advisory": {
+    "longestMotionRunSeconds": 0.417,
+    "cuts": [],
+    "cutsBothMoving": null,
+    "cutRate": null,
+    "onsetsPerSecond": 0.084
+  },
+  "limits": [
+    {
+      "metric": "moving share",
+      "value": 0.832,
+      "limit": 0.75,
+      "direction": "min",
+      "pass": true
+    },
+    {
+      "metric": "still over 0.5 s share",
+      "value": 0,
+      "limit": 0.1,
+      "direction": "max",
+      "pass": true
+    },
+    {
+      "metric": "still over 1 s share",
+      "value": 0,
+      "limit": 0.05,
+      "direction": "max",
+      "pass": true
+    },
+    {
+      "metric": "still over 2 s share",
+      "value": 0,
+      "limit": 0.04,
+      "direction": "max",
+      "pass": true
+    },
+    {
+      "metric": "longest still span",
+      "value": 0.083,
+      "limit": 2,
+      "direction": "max",
+      "pass": true
+    }
+  ],
+  "failures": [],
+  "pass": true
+}
