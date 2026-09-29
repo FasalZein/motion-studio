@@ -6,6 +6,11 @@ Status: **worked**.
 - Type pairing (free fonts): Newsreader (headlines) + DM Mono (values and sources).
 - Nearest HyperFrames frame preset: `cobalt-grid` (nearest gridded data surface; change ink and marker to sourced brand colors).
 - Motion signature: `mask-line-reveal`, `word-cued-reveal`, `straight-cut`, `push-in`. Draw only the comparison needed for the claim.
+- Motion signature fields (the look test shows them, D61):
+  - Easing family: `ease-in-out` for chart marks; values land with `ease-out`.
+  - Camera behavior: `push-in` toward the compared value, then a slow `drift` while the value reads.
+  - Light behavior: flat newsprint light; a `marker-sweep` highlight moves the viewer's attention.
+  - Transition family: `straight-cut` between evidence; `line-draw` to build the next chart.
 - Variation axis 1: Evidence form: chart or map.
 - Variation axis 2: annotation voice: inline label or margin source rail.
 - HyperFrames feasibility: SVG chart marks and DOM source labels; animate one data encoding at a time.

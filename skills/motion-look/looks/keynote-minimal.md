@@ -6,6 +6,11 @@ Status: **worked**.
 - Type pairing (free fonts): Geist (headline and UI) + Instrument Serif (short editorial claim).
 - Nearest HyperFrames frame preset: `blue-professional` (nearest restrained light canvas; replace its cobalt and card chrome with the product brand).
 - Motion signature: `mask-line-reveal`, `shared-element`, `shape-morph`, `flood`, `closed-form-spring`. Keep product UI the focal object.
+- Motion signature fields (the look test shows them, D61):
+  - Easing family: `closed-form-spring` for UI changes; `ease-out` for type.
+  - Camera behavior: one continuous `push-in` or `drift` toward the product UI (`one-camera-move-per-beat`).
+  - Light behavior: a soft glow follows the product action; the accent `flood` changes the scene light.
+  - Transition family: `shared-element` from UI to page, `shape-morph` and `flood`.
 - Variation axis 1: Canvas temperature: warm paper or brand-neutral white.
 - Variation axis 2: accent carrier: one UI action or one full-frame flood.
 - HyperFrames feasibility: DOM/SVG masks, GSAP transforms and one shared-element layer for a continuous UI-to-page handoff.

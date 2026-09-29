@@ -208,7 +208,7 @@ async function sha256(file:string):Promise<string> {
 }
 const spanText = (p:Place) => p.firstFrame === null ? `at ${p.startSecond} s` : `at frames ${p.firstFrame}-${p.lastFrame} (shot ${p.shots.join(', ')})`;
 /** One summary line and one line per located still span on stdout, one `error:` line per failed limit on stderr. */
-function print(name:string, output:string, r:LivenessReport) {
+export function printLiveness(name:string, output:string, r:LivenessReport) {
   const {movingShare:m, stillShare:s, longestStillSeconds:l} = r;
   console.log(`liveness ${name}: ${r.pass ? 'pass' : 'fail'}: moving ${m}, still over 0.5 s ${s.over0_5}, over 1 s ${s.over1}, over 2 s ${s.over2}, longest still ${l} s (${output})`);
   for (const e of r.excluded) console.log(`  excluded ${e.kind} ${e.seconds} s ${spanText(e)}`);
@@ -229,7 +229,7 @@ export async function livenessFilm(project:Project, formats:Format[], tools:Tool
     const report = await measureLiveness(tools,out.master,relative(root,out.master),{fps:meta.fps, shots},meta.durationFrames/meta.fps);
     const file = livenessFile(out);
     await writeFile(file,JSON.stringify({format,...report},null,2)+'\n');
-    print(format,relative(root,file),report);
+    printLiveness(format,relative(root,file),report);
     if (!report.pass) failures++;
   }
   return failures;
@@ -243,7 +243,7 @@ export async function livenessVideo(video:string, args:string[], tools:Tools):Pr
     throw new CliError(`cannot read video ${video}`);
   });
   if (args[1]) await writeFile(args[1],JSON.stringify(report,null,2)+'\n');
-  print(video,args[1] ?? 'no report file',report);
+  printLiveness(video,args[1] ?? 'no report file',report);
   return report.pass ? 0 : 1;
 }
 

@@ -1,5 +1,5 @@
 import {cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile} from 'node:fs/promises';
-import {dirname, join, relative, resolve} from 'node:path';
+import {basename, dirname, join, relative, resolve} from 'node:path';
 import {createRequire} from 'node:module';
 import {bundle} from '@remotion/bundler';
 import {renderFrames, renderStill, selectComposition} from '@remotion/renderer';
@@ -139,7 +139,8 @@ export async function renderHyperframesFrames(project:Project, shot:Shot, tools:
   const {root,storyboard} = project;
   const layout = layoutOf(storyboard,format);
   const shotDir = join(root,'shots',shot.id);
-  const stage = await mkdtemp(join(root,'shots',`.motion-${shot.id}-`));
+  // Beside the shot folder, at its depth: a look test's folder is shots/_look/<look-id>/.
+  const stage = await mkdtemp(join(dirname(shotDir),`.motion-${basename(shotDir)}-`));
   try {
     await cp(shotDir,stage,{recursive:true});
     await provideVendor(stage);

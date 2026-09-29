@@ -19,7 +19,7 @@ A gate presents the actual artifact, its current input hashes and choices to app
 
 | Phase and artifact | Gate shows | Note re-entry | Reset |
 |---|---|---|---|
-| Brief (at most 3 intake rounds); assets **hero** (track, logo, type, palette, hero screenshots, voice script); `motion-look` and keyframe look tests in `shots/_look/<look-id>/` | G1: filled brief, 2–3 candidate stills with real assets, style-bible take/do-not-take | Brief or look test | G2–G5 |
+| Brief (at most 3 intake rounds); assets **hero** (track, logo, type, palette, hero screenshots, voice script); `motion-look` directions and moving look tests in `shots/_look/<look-id>/` | G1: filled brief, 2–3 directions, each a moving look test (clip, poster and passing liveness report from `motion-studio looktest`) with real assets, style-bible take/do-not-take | Brief or look test | G2–G5 |
 | Board, engine keyframes, real stills | G2: beat contract table with its thread column (what each seam carries) and the start and end stills of each beat, on a contact sheet built from the hashed stills at presentation time | Named beats in board; keyframes as needed | G3–G5; G2 too if beat time changes |
 | Entry/exit still animatic on the track | G3: playable animatic | Board or keyframes for named shots | G4–G5 |
 | Assets **fill**, full build, scan, liveness, critique loop A | G4: full-pass MP4, liveness report and scorecard | Build or board for named shots | G5 |

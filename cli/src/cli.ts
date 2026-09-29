@@ -30,6 +30,7 @@ import {requireOpaque} from './opaque.js';
 import {beatMap} from './voice.js';
 import {filmPacket, videoPacket} from './packet.js';
 import {calibrate} from './bands.js';
+import {looktest} from './looktest.js';
 
 const configuredTimeout = process.env.MOTION_STUDIO_CHILD_TIMEOUT_MS;
 const timeoutMs = configuredTimeout === undefined ? 120_000 : Number(configuredTimeout);
@@ -100,7 +101,7 @@ async function renderShot(shot:Shot, project:Project, format:Format, output:stri
     await verify(output,frameCount,fps,width,height);
   } finally {await rm(temp,{recursive:true,force:true});}
 }
-const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... [--waive liveness] | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>] | animatic <film-dir> | sheet <film-dir> [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] [--shots <id,...>] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | beatmap <film-dir> | assets <film-dir> <list|add|resolve> ... | scan <film-dir> [format] | scan <video-file> [--report <file.json>] | liveness <film-dir> [format] | liveness <video-file> [--report <file.json>] | packet <film-dir> [format] | packet <video-file> --out <dir> | calibrate <scores.json> <bands.json> | repro <film-dir> <shot-id> [format] | taste <show|g1|notes|accept> ... | style-bible <style-bible.md> [--reference <source>]...';
+const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... [--waive liveness] | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>] | animatic <film-dir> | sheet <film-dir> [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] [--shots <id,...>] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | beatmap <film-dir> | assets <film-dir> <list|add|resolve> ... | scan <film-dir> [format] | scan <video-file> [--report <file.json>] | liveness <film-dir> [format] | liveness <video-file> [--report <file.json>] | looktest <film-dir> <look-id> | packet <film-dir> [format] | packet <video-file> --out <dir> | calibrate <scores.json> <bands.json> | repro <film-dir> <shot-id> [format] | taste <show|g1|notes|accept> ... | style-bible <style-bible.md> [--reference <source>]...';
 /** The formats a command works on: one named chosen format, or every chosen format when none is named. */
 function selectFormats(project:Project, named:string|undefined):Format[] {
   const formats = chosenFormats(project.storyboard.meta);
@@ -162,7 +163,7 @@ async function main() {
     for (const line of await (action === 'taste' ? taste : styleBible)(process.argv.slice(3))) console.log(line);
     return;
   }
-  if (!['init','validate','status','gate','render','stitch','still','stills','animatic','sheet','handoff','mix','safezone','beats','beatmap','assets','scan','packet','calibrate','repro','liveness'].includes(action) || !target) throw new CliError(usage);
+  if (!['init','validate','status','gate','render','stitch','still','stills','animatic','sheet','handoff','mix','safezone','beats','beatmap','assets','scan','packet','calibrate','repro','liveness','looktest'].includes(action) || !target) throw new CliError(usage);
   if (action === 'init') {
     console.log(`created ${await initProject(process.cwd(),target)}`);
     return;
@@ -219,6 +220,13 @@ async function main() {
     const parsed = await parseProject(target);
     if (!parsed.ok) {report(parsed.errors,[]); process.exitCode = 1; return;}
     for (const line of await beatMap(parsed.project)) console.log(line);
+    return;
+  }
+  if (action === 'looktest') {
+    // A look test comes before the board (G1), so the film needs only a schema-valid storyboard with its primary layout.
+    const parsed = await parseProject(target);
+    if (!parsed.ok) {report(parsed.errors,[]); process.exitCode = 1; return;}
+    if (!await looktest(parsed.project,process.argv.slice(4),{command,verify},renderShot)) process.exitCode = 1;
     return;
   }
   // scan also reads a lone video file for standalone critique, with no project context.
