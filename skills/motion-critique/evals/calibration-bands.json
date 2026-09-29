@@ -1,0 +1,24 @@
+{
+  "$comment": "Dispatcher only: expected bands of the two calibration cases in ../calibration/cases.md. The reviewer never sees this file. Check with: motion-studio calibrate <scores.json> calibration-bands.json. known-good gives only a 1 fps contact page, so motion quality (3) and technical finish (8) need full-rate evidence it lacks: the rubric requires unverified there.",
+  "cases": {
+    "known-bad": [
+      {"dimension": "1", "max": 7},
+      {"dimension": "2", "max": 7},
+      {"dimension": "7", "max": 7},
+      {"dimension": "7-audible", "unverified": true},
+      {"dimension": "6", "shot": "s03", "max": 7},
+      {"dimension": "8", "shot": "s03", "max": 7}
+    ],
+    "known-good": [
+      {"dimension": "1", "min": 8},
+      {"dimension": "2", "min": 8},
+      {"dimension": "7", "min": 8, "max": 8},
+      {"dimension": "7-audible", "unverified": true},
+      {"dimension": "3", "shot": "*", "unverified": true},
+      {"dimension": "4", "shot": "*", "min": 8},
+      {"dimension": "5", "shot": "*", "min": 8},
+      {"dimension": "6", "shot": "*", "min": 8},
+      {"dimension": "8", "shot": "*", "unverified": true}
+    ]
+  }
+}
