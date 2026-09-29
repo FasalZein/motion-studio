@@ -26,7 +26,7 @@ const GRID = 32;
 export const THRESHOLDS = {structure:0.15, color:0.02};
 type Difference = {structure:number; color:number};
 type Frame = {cells:Buffer; raw:Buffer};
-type Status = 'match'|'mismatch'|'encoded-color-jump';
+type Status = 'match'|'mismatch'|'encoded-color-jump'|'duration-dependent';
 
 /** Decodes frame `index` once: the normalized cell grid and the full frame in its stored yuv444p form. */
 async function decode(tools:Tools, file:string, index:number, fps:number, size:number, out:string):Promise<Frame> {
@@ -67,27 +67,31 @@ export function handoffSeams(shots:Shot[], pair:string[]):[Shot,Shot][] {
 }
 
 /**
- * Renders the frame `shot` would show next (one frame past its end) in its own engine and format, and stores it
- * as a one-frame clip encoded exactly like a shot clip, so it decodes through the same color path as the clip frames
- * it is compared with. Remotion bundles are cached in `bundles` across formats.
+ * Renders the frame `shot` would show next (one frame past its end) in its own engine and format, plus its last frame
+ * from the same one-frame-longer render, and stores each as a one-frame clip encoded exactly like a shot clip, so they
+ * decode through the same color path as the clip frames they are compared with. Remotion bundles are cached in
+ * `bundles` across formats.
  */
-async function renderNextFrame(project:Project, shot:Shot, format:Format, output:string, scratch:string, tools:Tools, bundles:Map<string,Promise<{serveUrl:string; dispose:() => Promise<void>}>>) {
+async function renderNextFrame(project:Project, shot:Shot, format:Format, output:{next:string; last:string}, scratch:string, tools:Tools, bundles:Map<string,Promise<{serveUrl:string; dispose:() => Promise<void>}>>) {
   const dir = await mkdtemp(join(scratch,'next-'));
-  let png = join(dir,'next.png');
+  const length = shot.endFrame-shot.startFrame;
+  let png = join(dir,'next.png'), lastPng = join(dir,'last.png');
   if (shot.engine === 'remotion') {
     if (!bundles.has(shot.id)) bundles.set(shot.id,remotionBundle(project,shot,false));
-    await renderRemotionNextFrame(project,shot,(await bundles.get(shot.id)!).serveUrl,format,png);
+    await renderRemotionNextFrame(project,shot,(await bundles.get(shot.id)!).serveUrl,format,png,lastPng);
   } else {
     const framesDir = join(dir,'frames');
     await mkdir(framesDir);
     await renderHyperframesFrames(project,shot,tools,{format,framesDir,pastEnd:true});
     const pngs = (await readdir(framesDir)).filter(f => f.endsWith('.png')).sort();
-    const length = shot.endFrame-shot.startFrame;
     if (pngs.length !== length+1) throw new CliError(`rendered frame count mismatch: ${shot.id} one frame past its end got ${pngs.length} frames, expected ${length+1}`);
     png = join(framesDir,pngs[length]);
+    lastPng = join(framesDir,pngs[length-1]);
   }
-  await requireOpaque(tools,shot,format,[{frame:shot.endFrame-shot.startFrame, png}],dir);
-  await tools.command('ffmpeg',['-hide_banner','-loglevel','error','-y','-i',png,'-frames:v','1','-an','-vf','setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709','-c:v','ffv1','-level','3','-pix_fmt','yuv444p','-colorspace','bt709','-color_trc','bt709','-color_primaries','bt709',output]);
+  await requireOpaque(tools,shot,format,[{frame:length, png},{frame:length-1, png:lastPng}],dir);
+  for (const [file,clip] of [[png,output.next],[lastPng,output.last]]) {
+    await tools.command('ffmpeg',['-hide_banner','-loglevel','error','-y','-i',file,'-frames:v','1','-an','-vf','setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709','-c:v','ffv1','-level','3','-pix_fmt','yuv444p','-colorspace','bt709','-color_trc','bt709','-color_primaries','bt709',clip]);
+  }
 }
 
 /**
@@ -132,27 +136,33 @@ async function handoff(project:Project, out:Outputs, selected:[Shot,Shot][], nam
     for (const [from,to] of selected) {
       for (const shot of [from,to]) await tools.verify(out.clip(shot.id),shot.endFrame-shot.startFrame,fps,width,height);
       const cut = to.startFrame;
-      const nextClip = join(temp,'next.mkv');
-      await renderNextFrame(project,from,out.format,nextClip,temp,tools,bundles);
-      const next = await decode(tools,nextClip,0,fps,size,join(temp,'next'));
+      const clips = {next:join(temp,'next.mkv'), last:join(temp,'longer-last.mkv')};
+      await renderNextFrame(project,from,out.format,clips,temp,tools,bundles);
+      const next = await decode(tools,clips.next,0,fps,size,join(temp,'next'));
       const last = await decode(tools,out.clip(from.id),from.endFrame-from.startFrame-1,fps,size,join(temp,'last'));
+      // The render one frame longer must repeat A's last clip frame exactly. When it does not, A's motion depends on its
+      // own duration (for example interpolate over [0, durationInFrames]), so the frame past its end is not what A would
+      // show next and the pair comparison would be meaningless.
+      const longerLast = await decode(tools,clips.last,0,fps,size,join(temp,'longer-last'));
+      const durationIndependent = longerLast.raw.equals(last.raw);
       const first = await decode(tools,out.clip(to.id),0,fps,size,join(temp,'first'));
       const before = await decode(tools,master,cut-1,fps,size,join(temp,'before'));
       const after = await decode(tools,master,cut,fps,size,join(temp,'after'));
       const pairDifference = difference(next.cells,first.cells);
       // The pair limits also apply across the cut in the master. Motion continues through the seam, so the master frame
       // at the cut is held against A's next frame, not against the master frame before it.
-      const acrossCut = difference(next.cells,after.cells);
+      const nextVsMasterAtCut = difference(next.cells,after.cells);
       // Stitch stream-copies lossless clips, so a master frame must equal its shot frame exactly.
       const identicalToShots = [before.raw.equals(last.raw),after.raw.equals(first.raw)];
-      const status:Status = exceeds(pairDifference) ? 'mismatch' : identicalToShots.includes(false) || exceeds(acrossCut) ? 'encoded-color-jump' : 'match';
+      const status:Status = !durationIndependent ? 'duration-dependent' : exceeds(pairDifference) ? 'mismatch' : identicalToShots.includes(false) || exceeds(nextVsMasterAtCut) ? 'encoded-color-jump' : 'match';
       const name = `handoff-${from.id}-${to.id}`;
       // The strip image lets the creator inspect the two master frames at the cut.
       await tools.command('ffmpeg',['-hide_banner','-loglevel','error','-y','-ss',String((cut-1.25 > 0 ? cut-1.25 : 0)/fps),'-i',master,'-vf','tile=2x1','-frames:v','1',join(output,`${name}.png`)]);
-      await writeFile(join(output,`${name}.json`),JSON.stringify({from:from.id,to:to.id,cutFrame:cut,thresholds:THRESHOLDS,pair:{frames:{from:from.endFrame-from.startFrame,to:0},...pairDifference},strip:{frames:[cut-1,cut],acrossCut,identicalToShots},status},null,2)+'\n');
+      await writeFile(join(output,`${name}.json`),JSON.stringify({from:from.id,to:to.id,cutFrame:cut,thresholds:THRESHOLDS,pair:{frames:{from:from.endFrame-from.startFrame,to:0},...pairDifference},durationIndependent,strip:{masterFrames:[cut-1,cut],identicalToShots,nextVsMasterAtCut},status},null,2)+'\n');
       if (status === 'match') passed.push(`handoff verified ${from.id} -> ${to.id} (${out.format}): ${describe(pairDifference)}`);
+      else if (status === 'duration-dependent') failed.push(`handoff ${from.id} -> ${to.id} (${out.format}): shot ${from.id} renders a different last frame when it is one frame longer, so its motion depends on its duration (for example interpolate over durationInFrames); drive it from the frame number so the frame past its end is what it would show next`);
       else if (status === 'mismatch') failed.push(`handoff mismatch ${from.id} -> ${to.id} (${out.format}): ${describe(pairDifference)}`);
-      else failed.push(`encoded color jump in master strip at frame ${cut} (${out.format}): ${identicalToShots.includes(false) ? `master frames ${cut-1}, ${cut} identical to shot frames: ${identicalToShots.join(', ')}` : describe(acrossCut)}`);
+      else failed.push(`encoded color jump in master strip at frame ${cut} (${out.format}): ${identicalToShots.includes(false) ? `master frames ${cut-1}, ${cut} identical to shot frames: ${identicalToShots.join(', ')}` : describe(nextVsMasterAtCut)}`);
     }
   } finally {await rm(temp,{recursive:true,force:true});}
   if (failed.length) {

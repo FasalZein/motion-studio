@@ -1,6 +1,6 @@
 # Graphic transitions
 
-A handoff across engine shots must match the outgoing last frame to the incoming first frame. Animate a transition inside one engine when possible.
+A handoff across engine shots carries motion through the seam: the frame the outgoing shot would show one past its end must equal the incoming shot's first frame (D63). Animate a transition inside one engine when possible.
 
 - **Wipe** (`wipe`) - A moving edge replaces one image with another.
   - HF: GSAP tween a clipped incoming layer's reveal edge across the frame.

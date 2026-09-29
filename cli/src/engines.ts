@@ -115,14 +115,18 @@ export async function renderRemotionStills(project:Project, shot:Shot, serveUrl:
 }
 
 /**
- * Renders the frame a Remotion shot would show next, one frame past its end, as a PNG (D63). The selected composition
- * is passed to the renderer with one more frame, so the component renders `useCurrentFrame() === length` from the
- * same code; the author's composition is unchanged.
+ * Renders the frame a Remotion shot would show next, one frame past its end, as a PNG (D63), and the shot's last frame
+ * from the same longer render. The selected composition is passed to the renderer with one more frame, so the
+ * component renders `useCurrentFrame() === length` from the same code; the author's composition is unchanged. The
+ * longer composition also reports the longer `durationInFrames` to the component, so the caller checks that the
+ * last frame is unchanged by it.
  */
-export async function renderRemotionNextFrame(project:Project, shot:Shot, serveUrl:string, format:Format, output:string) {
+export async function renderRemotionNextFrame(project:Project, shot:Shot, serveUrl:string, format:Format, next:string, last:string) {
   const {composition,inputProps} = await shotComposition(project,shot,serveUrl,format);
   const length = composition.durationInFrames;
-  await renderStill({serveUrl,composition:{...composition,durationInFrames:length+1},inputProps,chromiumOptions,frame:length,output,imageFormat:'png'});
+  const longer = {...composition,durationInFrames:length+1};
+  await renderStill({serveUrl,composition:longer,inputProps,chromiumOptions,frame:length,output:next,imageFormat:'png'});
+  await renderStill({serveUrl,composition:longer,inputProps,chromiumOptions,frame:length-1,output:last,imageFormat:'png'});
 }
 
 /**

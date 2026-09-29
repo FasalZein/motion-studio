@@ -113,7 +113,7 @@ for (const runtime of ['bun','node']) test(`${runtime}: handoff through motion: 
     for (const folder of folders) for (const [a,b,cut] of seams) {
       const report = await json(join(dir,'renders',folder,`handoff-${a}-${b}.json`));
       // Shot A's frame 6 is one past its last frame 5; it is compared with shot B's frame 0.
-      expect(report).toMatchObject({from:a,to:b,cutFrame:cut,status:'match',pair:{frames:{from:6,to:0}},strip:{frames:[cut-1,cut],identicalToShots:[true,true]}});
+      expect(report).toMatchObject({from:a,to:b,cutFrame:cut,status:'match',durationIndependent:true,pair:{frames:{from:6,to:0}},strip:{masterFrames:[cut-1,cut],identicalToShots:[true,true]}});
       expect(await exists(join(dir,'renders',folder,`handoff-${a}-${b}.png`))).toBe(true);
     }
     const matched = await json(join(output,'handoff-slide-glide.json'));
@@ -128,8 +128,8 @@ for (const runtime of ['bun','node']) test(`${runtime}: handoff through motion: 
     expect(jumpReport.status).toBe('encoded-color-jump');
     expect(jumpReport.pair).toEqual(matched.pair);
     expect(jumpReport.strip.identicalToShots).toEqual([true,false]);
-    expect(jumpReport.strip.acrossCut.structure).toBeLessThanOrEqual(jumpReport.thresholds.structure);
-    expect(jumpReport.strip.acrossCut.color).toBeLessThanOrEqual(jumpReport.thresholds.color);
+    expect(jumpReport.strip.nextVsMasterAtCut.structure).toBeLessThanOrEqual(jumpReport.thresholds.structure);
+    expect(jumpReport.strip.nextVsMasterAtCut.color).toBeLessThanOrEqual(jumpReport.thresholds.color);
 
     // A run that fails before measuring leaves no report from the earlier runs.
     const marker = await readFile(join(output,'render.json'));
@@ -170,6 +170,26 @@ for (const runtime of ['bun','node']) test(`${runtime}: handoff through motion: 
       expect(report.status).toBe('mismatch');
       expect(report.pair.structure).toBeGreaterThan(report.thresholds.structure);
     }
+
+    // Motion written against the shot's duration: slide places the mover with interpolate over [0, durationInFrames].
+    // At its real length of 6 frames that gives the same x = 12 + 5 * frame, so its clip is unchanged, but the render one
+    // frame longer stretches the move (frame 5 at x = 12 + 30 * 5 / 7), so its frame past the end is not what it would
+    // show next. The longer render's last frame differs from the clip's, and the seam fails for that cause.
+    await writeFile(glide,glideSource);
+    const slide = join(dir,'shots','slide','src','index.tsx');
+    const slideSource = await readFile(slide,'utf8');
+    expect(slideSource).toContain('left: 12 + SPEED * (START + frame),');
+    await writeFile(slide,slideSource
+      .replace("import {Composition, registerRoot,","import {Composition, interpolate, useVideoConfig, registerRoot,")
+      .replace('const frame = useCurrentFrame();','const frame = useCurrentFrame();\n  const {durationInFrames} = useVideoConfig();')
+      .replace('left: 12 + SPEED * (START + frame),','left: interpolate(frame, [0, durationInFrames], [12, 12 + SPEED * 6]),'));
+    expect(run(runtime,'render',dir,'16:9').status).toBe(0);
+    expect(run(runtime,'stitch',dir,'16:9').status).toBe(0);
+    const stretched = run(runtime,'handoff',dir,'slide','glide','16:9');
+    expect(stretched.status).toBe(1);
+    expect(stretched.stderr).toContain('handoff slide -> glide (16:9): shot slide renders a different last frame when it is one frame longer');
+    const stretchedReport = await json(join(output,'handoff-slide-glide.json'));
+    expect(stretchedReport).toMatchObject({status:'duration-dependent',durationIndependent:false});
   } finally {await rm(dir,{recursive:true,force:true});}
 }, 600000);
 
