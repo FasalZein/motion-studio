@@ -1,6 +1,6 @@
 ---
 genre: showreel
-status: untested
+status: worked
 duration-seconds: 20
 fps: 30
 primary-format: 16:9

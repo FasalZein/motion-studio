@@ -1,0 +1,19 @@
+[
+  {
+    "id": "raycast-launch",
+    "request": "Make a short launch film for Raycast.",
+    "url": "https://www.raycast.com",
+    "answers": [
+      "Developers and designers on Mac. The message: one shortcut reaches everything. Action: download for Mac. 15 seconds is fine. Formats 16:9 and 9:16.",
+      "use defaults"
+    ]
+  },
+  {
+    "id": "tide-explainer",
+    "request": "Explain in about 30 seconds why tides happen twice a day.",
+    "url": "none",
+    "answers": [
+      "use defaults"
+    ]
+  }
+]

@@ -1,3 +1,13 @@
+---
+genre: social-kinetic-type
+status: untested
+duration-seconds: 12
+fps: 30
+primary-format: 9:16
+extra-formats: 1:1
+audio: track
+---
+
 # Social kinetic type | untested until used
 
 <inputs>Ask: What is the one line viewers must remember, where will it play, and is sound expected? Default: one sourced line, 9:16 primary with safe platform overlays, 8–15 s, licensed track or voiced reading.</inputs>
