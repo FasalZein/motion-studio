@@ -27,8 +27,9 @@ Judge each motion failure below as **present**, **absent** or **unverified**. A 
 | Style-frame alternation (2, 3) | Posed key frames joined by brief transitions: "style frame, transition, style frame". | Contact pages where held poses repeat between seams; `liveness.advisory.longestMotionRunSeconds`; hold strips. |
 | Repeated template layout (1, 5) | The same layout, framing or entry returns shot after shot. | Contact tiles at the named frames of three or more shots. |
 | Idea line not restatable (6, 1) | After the whole sheet, you cannot say in one sentence what the film shows and why. | Your one-sentence restatement beside the packet `logline`, or "cannot restate" with the pages you read. |
+| Placeholder or parked UI (6, 3) | Grey placeholder UI (empty boxes, grey bars for text, windows with no content), or a real capture that only sits in frame with no camera, mask, depth or tilt move (D78). | Contact tiles and native frames of the UI shots; the packet `ledger` for capture entries (source URL and date). |
 
-**Done when:** Each of the five failures has a verdict, and each present or absent verdict names its evidence path and frames.
+**Done when:** Each of the six failures has a verdict, and each present or absent verdict names its evidence path and frames.
 
 ## 4. Write the report
 
@@ -60,6 +61,7 @@ Liveness: <pass | fail | waived | unverified>; content-basis moving share <liven
 | Style-frame alternation | | |
 | Repeated template layout | | |
 | Idea line not restatable | | |
+| Placeholder or parked UI | | |
 
 ## Three worst issues
 1. <shot id>, global frame <n> (<time seconds>), `motion-vocabulary` term `<kebab-id>`: <visible/recorded failure>; repair: <specific edit>. <evidence path>
