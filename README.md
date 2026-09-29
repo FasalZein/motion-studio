@@ -2,7 +2,7 @@
 
 Agent skills for directed motion-graphics films. You act as the director. The agent interviews you, shows you a look test, a beat map with real stills, and an animatic, and then builds the film. It can use Remotion and HyperFrames shots in the same video, and it scores the result for taste before you see it.
 
-> **Status: v0 preview.** The four skills work today. They call `hyperframes`, `remotion` and `ffmpeg` directly, and mark any check they cannot run as unverified. Progress is tracked in [issue #1](https://github.com/FasalZein/motion-studio/issues/1).
+> **Status: v0 preview.** The five skills work today. They call `hyperframes`, `remotion` and `ffmpeg` directly, and mark any check they cannot run as unverified. Progress is tracked in [issue #1](https://github.com/FasalZein/motion-studio/issues/1).
 >
 > The `motion-studio` CLI in `cli/` is partly built. When it is installed, the skills use it for `init`, `validate`, `status`, `handoff` and `mix`. The documented CLI route from render to mix, and fixes to its frame clock and output paths, are tracked in issue #22.
 >
@@ -61,7 +61,7 @@ These are optional local fallbacks that `hyperframes doctor` lists: `brew instal
 ## Install the skills
 
 ```bash
-# all four skills, globally, for every supported agent (pi, Claude Code, and others)
+# all five skills, globally, for every supported agent (pi, Claude Code, and others)
 npx skills add FasalZein/motion-studio -g -a '*' -y
 
 # or install one skill only (standalone critique)
@@ -71,7 +71,7 @@ npx skills add FasalZein/motion-studio -g --skill motion-critique motion-vocabul
 npx skills add FasalZein/motion-studio --list
 ```
 
-`bunx skills add ...` works the same way. Install all four skills together, because `motion-studio` loads the other three by name. `motion-critique` and `motion-vocabulary` also work alone.
+`bunx skills add ...` works the same way. Install all five skills together, because `motion-studio` loads the other four by name. `motion-critique`, `motion-vocabulary` and `motion-direction` also work alone.
 
 Update later with `npx skills update -g`.
 
@@ -109,7 +109,7 @@ Your taste profile is stored in `~/.motion-studio/taste.json`, and each film kee
 ## Repository
 
 ```text
-skills/     the four skills (installable with `npx skills add`)
+skills/     the five skills (installable with `npx skills add`)
 cli/        the motion-studio CLI (partly built; see the status above)
 docs/       SPEC.md (source of truth), DECISIONS.md, v0-contract.md
 ```

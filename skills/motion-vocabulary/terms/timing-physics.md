@@ -1,10 +1,10 @@
 # Timing and physics
 
-Use frame-based timing. A hold can be a purposeful beat, not an animation failure.
+Use frame-based timing. A hold is a living hold: the viewer reads or listens while something keeps moving, and it stays inside the D59 liveness limits (`motion-direction` `reference/living-holds.md`).
 
-- **Hold** (`hold`) - The picture remains stable while the viewer reads or listens.
-  - HF: Set the final pose on the paused timeline and leave a timed gap before the next tween.
-  - Remotion: Clamp the prior `interpolate()` value and keep the pose across the held frames.
+- **Hold** (`hold`) - A living hold: the read element stays legible while the viewer reads or listens, and camera drift, parallax, light or UI behavior keeps moving. Use only inside a beat that has a motion event, sized to reading time.
+  - HF: Land the read element's tween, then run a slow drift, parallax or light tween on the paused timeline across the held frames until the next move.
+  - Remotion: Clamp the read element's `interpolate()` value and keep a frame-driven drift, parallax or light value moving across the held frames.
 - **Ease-out** (`ease-out`) - A move starts quickly and slows as it reaches its target.
   - HF: GSAP `fromTo` with a decelerating `power3.out` ease.
   - Remotion: Apply `Easing.bezier()` to a clamped `interpolate()` frame interval.
@@ -29,6 +29,6 @@ Use frame-based timing. A hold can be a purposeful beat, not an animation failur
 - **Beat hit** (`beat-hit`) - A pose reaches its emphasis exactly at a chosen beat frame.
   - HF: Place the landing tween's endpoint on the beat's paused-timeline label.
   - Remotion: Set the `interpolate()` endpoint to the beat frame and clamp after it.
-- **Dead time** (`dead-time`) - A gap has no new information despite room for a purposeful reveal or hold.
+- **Dead time** (`dead-time`) - A stretch tells nothing new or nothing in it moves; move the next reveal onto its cue, give the stretch live motion, or trim it.
   - HF: Move the next GSAP reveal to the relevant word cue or shorten the unused scene interval.
   - Remotion: Shift the next `<Sequence>` to the word cue or trim the empty frame range.
