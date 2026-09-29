@@ -175,7 +175,13 @@
         "inputHashes": {"type": "object", "additionalProperties": {"$ref": "#/definitions/sha256"}},
         "decision": {"type": ["string", "null"]},
         "notes": {"type": "array", "items": {"type": "string"}},
-        "rounds": {"type": "integer", "minimum": 0}
+        "rounds": {"type": "integer", "minimum": 0},
+        "waiver": {
+          "type": "object",
+          "required": ["check", "reason"],
+          "properties": {"check": {"enum": ["liveness"]}, "reason": {"type": "string", "minLength": 1}},
+          "description": "A check the director waived at this approval, with the written reason (D60). Only G4 records one; a later decision on the gate drops it."
+        }
       }
     },
     "critique": {

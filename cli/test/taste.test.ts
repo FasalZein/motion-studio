@@ -237,7 +237,9 @@ test('taste accept records the accepted look, signature moves and pacing after G
     await edit(film,s => {s.look.id = 'keynote-minimal';});
     fails(home,['taste','accept',film],'taste accept needs G5 approved and not stale; G5 is pending');
     ok(home,['gate',film,'G1','approve','--note','keynote']);
-    for (const gate of ['G2','G3','G4']) ok(home,['gate',film,gate,'approve']);
+    for (const gate of ['G2','G3']) ok(home,['gate',film,gate,'approve']);
+    // The fixture has no rendered master to measure, so G4 is approved with a liveness waiver (D60).
+    ok(home,['gate',film,'G4','approve','--waive','liveness','--note','no master in this fixture']);
     ok(home,['gate',film,'G5','approve','--note','ship it']);
     fails(home,['taste','accept',film,'--move','whoosh-in'],'taste accept: move "whoosh-in" is not a motion-vocabulary term id or custom:<description>');
     fails(home,['taste','accept',film,'--move','custom: '],'taste accept: move "custom: " is not a motion-vocabulary term id or custom:<description>');
