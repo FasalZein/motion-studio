@@ -1,15 +1,15 @@
 {
-  "$comment": "Grader only: expected bands per side (motion-studio calibrate <scores.json> expect.json). A bad side must score below 8 on its damaged dimension and name the damaged shot and frames; a good side must reach 8 on the applicable dimensions.",
+  "$comment": "Grader only: expected bands per side (motion-studio calibrate <scores.json> expect.json). A bad side must score below 8 on its damaged dimension and name a damaged shot with a frame inside it; an issue list accepts a finding at any one of its places. A good side must reach 8 on the applicable dimensions.",
   "cases": {
-    "off-beat-sfx/bad": [{"dimension": "7", "max": 7}, {"dimension": "7-audible", "unverified": true}, {"issue": {"shot": "s02", "from": 30, "to": 36}}],
+    "off-beat-sfx/bad": [{"dimension": "7", "max": 7}, {"dimension": "7-audible", "unverified": true}, {"issue": [{"shot": "s02", "from": 30, "to": 35}, {"shot": "s03", "from": 84, "to": 89}, {"shot": "s04", "from": 90, "to": 93}]}],
     "off-beat-sfx/good": [{"dimension": "7", "min": 8, "max": 8}, {"dimension": "7-audible", "unverified": true}],
-    "default-look/bad": [{"dimension": "1", "max": 7}, {"issue": {"shot": "s01", "from": 0, "to": 119}}],
+    "default-look/bad": [{"dimension": "1", "max": 7}, {"issue": [{"shot": "s01", "from": 0, "to": 29}, {"shot": "s02", "from": 30, "to": 59}, {"shot": "s03", "from": 60, "to": 89}, {"shot": "s04", "from": 90, "to": 119}]}],
     "default-look/good": [{"dimension": "1", "min": 8}],
-    "slideshow-pace/bad": [{"dimension": "2", "max": 7}],
+    "slideshow-pace/bad": [{"dimension": "2", "max": 7}, {"issue": [{"shot": "s01", "from": 0, "to": 29}, {"shot": "s02", "from": 30, "to": 59}, {"shot": "s03", "from": 60, "to": 89}, {"shot": "s04", "from": 90, "to": 119}]}],
     "slideshow-pace/good": [{"dimension": "2", "min": 8}],
     "effect-stack/bad": [{"dimension": "4", "shot": "s02", "max": 7}, {"issue": {"shot": "s02", "from": 30, "to": 59}}],
     "effect-stack/good": [{"dimension": "4", "shot": "*", "min": 8}],
-    "data-story/bad": [{"dimension": "6", "shot": "s03", "max": 7}],
+    "data-story/bad": [{"dimension": "6", "shot": "s03", "max": 7}, {"issue": [{"shot": "s01", "from": 0, "to": 29}, {"shot": "s02", "from": 30, "to": 59}, {"shot": "s03", "from": 60, "to": 89}]}],
     "data-story/good": [{"dimension": "6", "shot": "*", "min": 8}, {"dimension": "1", "min": 8}, {"dimension": "2", "min": 8}]
   }
 }

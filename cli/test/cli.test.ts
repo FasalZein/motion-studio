@@ -115,6 +115,10 @@ test('packed CLI renders stills and video under both runtimes', async () => {
       const stitch = spawnSync(runtime,[binary,'stitch',project],{encoding:'utf8',timeout:180000});
       expect(stitch.status).toBe(0);
       expect(Number(probe(join(project,'renders','16x9','master.mkv')).streams[0].nb_read_frames)).toBe(12);
+      // The motion-look pattern lists ship inside the package too (#17): the installed packet carries them.
+      expect(spawnSync(runtime,[binary,'packet',project],{encoding:'utf8',timeout:60000}).status).toBe(0);
+      const packet = JSON.parse(await (await import('node:fs/promises')).readFile(join(project,'critique','packet-16x9','packet.json'),'utf8'));
+      expect(packet.patterns.shared.length).toBeGreaterThan(0);
     }
   } finally {await rm(dir,{recursive:true,force:true});}
 }, 600000);

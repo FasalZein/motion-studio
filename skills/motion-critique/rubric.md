@@ -13,10 +13,11 @@ Score 1 to 10. Use the nearest evidence-backed anchor and explain intermediate s
 | 7 Sound and sync / film | Measured hits and cuts are widely misaligned, or the mix is unusable. | The report shows noticeable offsets or inconsistent level, though key events can be followed. | The sync report shows **every intended SFX hit within 1 frame** of its event and **every beat-targeted cut within 1 frame** of a beat; measured loudness meets the mix target. | All events meet 8; the measured placement and level create intentional contrast without masking important sound. Confirm timbral judgment only if audio is heard. |
 | 8 Technical finish / shot | Blank or clipped essential frames, unintended pops, or severe rendering defects. | Minor clipping, ghosting or color jumps remain at inspected frames. | Full-rate strips and sampled frames show no visible defect; blocking scan flags are resolved. | Frame-by-frame inspection, including fast motion and joins, finds no defect and repeated renders agree where tested. |
 
-For dimension 7, use the measured report, not a contact sheet or an imagined soundtrack. `motion-studio packet` derives it with this rule (`dimension7` in `packet.json`):
+For dimension 7, use the measured report, not a contact sheet or an imagined soundtrack. `motion-studio packet` derives it with this rule (`dimension7` in `packet.json`). The 8 anchor (every hit and beat-targeted cut within 1 frame) comes from the SPEC critique rubric, and the level limits (-14 LUFS within 0.5 LU, true peak at or below -1 dBTP) from D53. The other boundaries and the 5 and 2 scores are D69 (provisional): revisit them at the first eval run or tracer film.
 
 - Timing error: each SFX hit's `|offsetFrames - plannedOffsetFrames|` and each beat-targeted cut's `|offsetFrames|`. A cut with an `offBeatCut` reason is judged against its declared timing and left out.
 - Timing points: worst error at most 1 frame gives 8; 2 or 3 frames gives 5; 4 or more gives 2.
+- A hit not found gives 2. `mix` looks for each SFX peak only `syncWindowFrames` (3) frames either side of its planned peak, so an SFX error at that edge means the hit was not found within the window.
 - Level points: within 0.5 LU of the target and true peak at or below -1 dBTP gives 8; within 2 LU and at or below 0 dBTP gives 5; otherwise 2.
 - The score is the lower of the two. Nothing timed leaves level only, with "no SFX hit tested". No report gives unverified.
 - The rule stops at 8. Score 9 or 10 only when you heard the audio; otherwise mark `7-audible` unverified.

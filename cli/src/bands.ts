@@ -9,14 +9,15 @@ import {CliError} from './project.js';
  *   "worstIssues": [{"shot", "frame", "term", "repair"}]}}}
  * bands.json: {"cases": {"<case>": [rule, ...]}}; a rule is a score band {"dimension", "shot"?, "min"?, "max"?},
  * an unverified marker {"dimension", "shot"?, "unverified": true} or a finding {"issue": {"shot", "from", "to"}}.
- * "shot": "*" applies the rule to every scored shot.
+ * "shot": "*" applies a band or marker to every scored shot. "issue" may also be a list of places: a worst issue at any
+ * one of them passes (a damage that spans several shots).
  */
 type Value = number|'unverified';
 type CaseScores = {film:Record<string,Value>; shots:Record<string,Record<string,Value>>; worstIssues:{shot:string; frame:number; term:string; repair:string}[]};
 type Rule =
   | {kind:'band'; dimension:string; shot:string|null; min:number; max:number}
   | {kind:'unverified'; dimension:string; shot:string|null}
-  | {kind:'issue'; shot:string; from:number; to:number};
+  | {kind:'issue'; places:{shot:string; from:number; to:number}[]};
 
 const isObject = (v:unknown):v is Record<string,unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isValue = (v:unknown):v is Value => v === 'unverified' || (typeof v === 'number' && v >= 1 && v <= 10);
@@ -43,10 +44,10 @@ function parseBands(file:string, raw:unknown):Record<string,Rule[]> {
     if (!Array.isArray(rules) || !rules.length) throw bad(`case ${name} needs a list of rules`);
     out[name] = rules.map((r,i):Rule => {
       if (!isObject(r)) throw bad(`case ${name} rule ${i+1} is not an object`);
-      if (isObject(r.issue)) {
-        const {shot,from,to} = r.issue;
-        if (typeof shot !== 'string' || !Number.isInteger(from) || !Number.isInteger(to) || (to as number) < (from as number)) throw bad(`case ${name} rule ${i+1}: issue needs shot and a frame range from <= to`);
-        return {kind:'issue', shot, from:from as number, to:to as number};
+      if (r.issue !== undefined) {
+        const places = Array.isArray(r.issue) ? r.issue : [r.issue];
+        if (!places.length || !places.every(p => isObject(p) && typeof p.shot === 'string' && Number.isInteger(p.from) && Number.isInteger(p.to) && (p.to as number) >= (p.from as number))) throw bad(`case ${name} rule ${i+1}: issue needs shot and a frame range from <= to, or a list of them`);
+        return {kind:'issue', places:places as {shot:string; from:number; to:number}[]};
       }
       const shot = r.shot === undefined ? null : r.shot;
       if (typeof r.dimension !== 'string' || (shot !== null && typeof shot !== 'string')) throw bad(`case ${name} rule ${i+1}: needs a dimension and an optional shot`);
@@ -59,7 +60,7 @@ function parseBands(file:string, raw:unknown):Record<string,Rule[]> {
   return out;
 }
 
-const describe = (r:Rule) => r.kind === 'issue' ? `a worst issue in ${r.shot} at frames ${r.from}-${r.to} with a term and a repair`
+const describe = (r:Rule) => r.kind === 'issue' ? `a worst issue in ${r.places.map(p => `${p.shot} at frames ${p.from}-${p.to}`).join(' or ')} with a term and a repair`
   : `${r.shot === null ? 'film' : `shot ${r.shot}`} dimension ${r.dimension} ${r.kind === 'unverified' ? 'unverified' : r.min === r.max ? `= ${r.min}` : r.max === 10 ? `>= ${r.min}` : r.min === 1 ? `<= ${r.max}` : `${r.min}-${r.max}`}`;
 /** The values a rule reads, or a reason it cannot read any. */
 function valuesOf(r:Exclude<Rule,{kind:'issue'}>, c:CaseScores):{values:(Value|undefined)[]}|{missing:string} {
@@ -69,7 +70,7 @@ function valuesOf(r:Exclude<Rule,{kind:'issue'}>, c:CaseScores):{values:(Value|u
   return all.length ? {values:all.map(s => s[r.dimension])} : {missing:'no shot scores'};
 }
 function check(r:Rule, c:CaseScores):string|null {
-  if (r.kind === 'issue') return c.worstIssues.some(i => i.shot === r.shot && i.frame >= r.from && i.frame <= r.to && i.term.trim() && i.repair.trim()) ? null : 'no matching worst issue';
+  if (r.kind === 'issue') return c.worstIssues.some(i => r.places.some(p => i.shot === p.shot && i.frame >= p.from && i.frame <= p.to) && i.term.trim() && i.repair.trim()) ? null : 'no matching worst issue';
   const read = valuesOf(r,c);
   if ('missing' in read) return read.missing;
   for (const v of read.values) {

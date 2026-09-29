@@ -1,10 +1,11 @@
 import {createHash} from 'node:crypto';
 import {createReadStream} from 'node:fs';
-import {access, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile} from 'node:fs/promises';
-import {basename, join, relative} from 'node:path';
+import {access, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile} from 'node:fs/promises';
+import {basename, dirname, join, relative} from 'node:path';
+import {fileURLToPath} from 'node:url';
 
 import {CliError, formatDir, type Format, type Project} from './project.js';
-import {frozenDir, revisionId} from './gates.js';
+import {frozenDir, gateViews, revisionId} from './gates.js';
 import type {Outputs} from './outputs.js';
 import {scanVideo, type ScanReport} from './scan.js';
 import {tile, tiling, SHEET_COLUMNS} from './sheet.js';
@@ -28,6 +29,12 @@ const readJson = async (file:string):Promise<any> => JSON.parse(await readFile(f
 const extractFrame = (tools:Tools, video:string, frame:number, file:string) =>
   tools.command('ffmpeg',['-hide_banner','-loglevel','error','-nostdin','-y','-i',video,'-vf',`select='eq(n\\,${frame})'`,'-fps_mode','passthrough','-frames:v','1','-pix_fmt','rgb24',file]);
 
+// dist/patterns.json is generated at build time from skills/motion-look (scripts/patterns.mjs) and ships beside
+// this module, like vocabulary.json.
+type Pair = {pattern:string; replacement:string};
+const patternsFile = join(dirname(fileURLToPath(import.meta.url)),'patterns.json');
+const loadPatterns = async ():Promise<{shared:Pair[]; looks:Record<string,Pair[]>}> => readJson(patternsFile);
+
 /** Replaces `dir` with what `build` writes into a staging folder, so a failed run leaves no half packet. */
 async function replaceDir(dir:string, build:(staging:string) => Promise<void>) {
   await mkdir(join(dir,'..'),{recursive:true});
@@ -36,6 +43,26 @@ async function replaceDir(dir:string, build:(staging:string) => Promise<void>) {
     await build(staging);
     await rm(dir,{recursive:true,force:true});
     await rename(staging,dir);
+  } finally {await rm(staging,{recursive:true,force:true});}
+}
+
+// The files a standalone packet writes. An existing --out folder is reused only when it holds a standalone packet and
+// nothing else, so the command never deletes a file it did not write (the input video, the user's notes).
+const STANDALONE_FILE = /^(packet\.json|scan\.json|contact-sheet-\d{3}\.png)$/;
+/** Writes a standalone packet into `dir`: a new folder, an empty folder, or a folder that holds only an earlier packet. */
+async function intoOutDir(dir:string, build:(staging:string) => Promise<void>) {
+  const info = await stat(dir).catch(() => null);
+  if (info === null) return replaceDir(dir,build);
+  if (!info.isDirectory()) throw new CliError(`--out ${dir} is not a folder`);
+  const entries = await readdir(dir);
+  const earlier = entries.includes('packet.json') && (await readJson(join(dir,'packet.json')).catch(() => null))?.mode === 'standalone';
+  const foreign = entries.filter(e => !earlier || !STANDALONE_FILE.test(e));
+  if (foreign.length) throw new CliError(`--out ${dir} holds files no packet wrote (${foreign.slice(0,3).join(', ')}${foreign.length > 3 ? ', ...' : ''}); name a new or empty folder`);
+  const staging = await mkdtemp(join(dir,'.motion-packet-'));
+  try {
+    await build(staging);
+    for (const e of entries) await rm(join(dir,e));
+    for (const e of await readdir(staging)) await rename(join(staging,e),join(dir,e));
   } finally {await rm(staging,{recursive:true,force:true});}
 }
 
@@ -50,6 +77,11 @@ export async function filmPacket(project:Project, out:Outputs, tools:Tools):Prom
   if (!hasMaster) throw new CliError(`stitched master required before packet: ${rel(out.master)} (run render and stitch)`);
   const masterHash = await sha256(out.master);
   const final = join(out.dir,'final.mkv');
+  // Effective (hash-checked) gate states: a stale approval is not the current reference.
+  const views = await gateViews(project);
+  const approved = views.filter(v => v.state === 'approved').map(v => v.gate);
+  const g2 = views.find(v => v.gate.id === 'G2');
+  const patterns = await loadPatterns();
   let written = '';
   await replaceDir(dir, async staging => {
     // Brief, look and patterns: the reviewer reads these files; the packet names them and what is absent.
@@ -58,13 +90,14 @@ export async function filmPacket(project:Project, out:Outputs, tools:Tools):Prom
     if (!s.meta.logline.trim()) missing.push({item:'logline', unverified:['6 message truth','2 continuity against the stated sequence'], action:'set meta.logline'});
     const styleBible = s.look.styleBible && await exists(join(root,s.look.styleBible)) ? s.look.styleBible : null;
     if (s.look.id === null && !styleBible) missing.push({item:'look or style bible', unverified:['1 distinctiveness against the chosen look'], action:'record the chosen look in storyboard look'});
+    const lookPairs = s.look.id === null ? [] : patterns.looks[s.look.id] ?? null;
+    if (lookPairs === null) missing.push({item:`look-specific patterns of ${s.look.id} (not a motion-look catalogue look)`, unverified:['1 distinctiveness against the look-specific patterns'], action:'name the look\'s pattern additions in its style bible'});
     const tasteSnapshot = s.look.tasteSnapshot && await exists(join(root,s.look.tasteSnapshot)) ? s.look.tasteSnapshot : null;
 
     // Frozen approved stills beside the exact rendered frame (D43): the copies in stills/approved/G2-<hash8>/<format>/.
-    const g2 = s.gates.find(g => g.id === 'G2');
     const stillPairs:{shot:string; localFrame:number; globalFrame:number; approved:string; rendered:string}[] = [];
     if (g2?.state === 'approved') {
-      const frozen = join(frozenDir('G2',g2.inputHashes),formatDir(format));
+      const frozen = join(frozenDir('G2',g2.gate.inputHashes),formatDir(format));
       for (const file of (await readdir(join(root,frozen)).catch(() => [] as string[])).sort()) {
         const m = /^(.+)-f(\d+)\.png$/.exec(file);
         const shot = m && s.shots.find(x => x.id === m[1]);
@@ -76,7 +109,8 @@ export async function filmPacket(project:Project, out:Outputs, tools:Tools):Prom
         stillPairs.push({shot:shot.id, localFrame, globalFrame, approved:`${frozen}/${file}`, rendered:`${rel(dir)}/${rendered}`});
       }
     }
-    if (!stillPairs.length) missing.push({item:'frozen approved stills', unverified:['still match, drift or departure'], action:g2?.state === 'approved' ? `no frozen stills for ${format} in the G2 approval` : 'approve G2 (stills) first'});
+    if (!stillPairs.length) missing.push({item:'frozen approved stills', unverified:['still match, drift or departure'], action:g2?.state === 'approved' ? `no frozen stills for ${format} in the G2 approval`
+      : g2?.state === 'stale' ? `G2 approval is stale (${g2.reason}); approve G2 again` : 'approve G2 (stills) first'});
 
     // Sheets and strips: render and stitch delete them, so an existing sheet.json describes this master.
     const sheetFile = join(out.dir,'sheet.json');
@@ -104,16 +138,17 @@ export async function filmPacket(project:Project, out:Outputs, tools:Tools):Prom
     const packet = {
       mode:'in-studio', format, fps:s.meta.fps, durationFrames:s.meta.durationFrames,
       render:{draft, master:rel(out.master), masterSha256:masterHash, readableVideo:'only when the harness can read video; otherwise continuous motion and listening are unverified'},
-      revisionHashes:Object.fromEntries(s.gates.filter(g => g.state === 'approved').map(g => [g.id,revisionId(g.inputHashes)])),
+      revisionHashes:Object.fromEntries(approved.map(g => [g.id,revisionId(g.inputHashes)])),
       logline:s.meta.logline, genre:s.meta.genre, brief,
       shots:s.shots.map(x => ({id:x.id, startFrame:x.startFrame, endFrame:x.endFrame, description:x.description, entry:x.entry, ...(x.offBeatCut === undefined ? {} : {offBeatCut:x.offBeatCut})})),
       look:{id:s.look.id, axes:s.look.axes, styleBible, tasteSnapshot},
-      patterns:'load motion-look: the shared template pattern -> replacement list plus the pairs of look ' + (s.look.id ?? '(none chosen)'),
+      // The shared list applies to every look; a look adds its own pairs (motion-look patterns.md and looks/<id>.md).
+      patterns:{shared:patterns.shared, look:s.look.id, lookPairs},
       stillPairs,
       sheet:sheet ? {index:rel(sheetFile), pages:sheet.contact.pages.map((p:{file:string; frames:number[]}) => ({file:rel(join(out.dir,p.file)), frames:p.frames})), strips:sheet.strips.map((x:{file:string; shots:string[]; cut:number; frames:number[]}) => ({...x, file:rel(join(out.dir,x.file))}))} : null,
       scan:scanCurrent ? {report:rel(scanFile), counts:scan.counts, flags:defects.map(f => ({kind:f.kind, severity:f.severity, frame:f.frame, frames:f.frames, shot:f.shot, localFrame:f.localFrame}))} : null,
       beatGrid:{grid:s.audio.grid, bpm:s.audio.bpm, confidence:s.audio.confidence, beatFrames:s.audio.beatFrames, downbeatFrames:s.audio.downbeatFrames, dropFrames:s.audio.dropFrames},
-      sync:sync ? {report:rel(syncFile), integratedLufs:sync.integratedLufs, truePeakDbtp:sync.truePeakDbtp, sfx:sync.sfx, cuts:sync.cuts} : null,
+      sync:sync ? {report:rel(syncFile), syncWindowFrames:sync.syncWindowFrames, integratedLufs:sync.integratedLufs, truePeakDbtp:sync.truePeakDbtp, sfx:sync.sfx, cuts:sync.cuts} : null,
       dimension7:soundScore(sync),
       handoffs, ledger,
       missing,
@@ -147,7 +182,7 @@ export async function videoPacket(video:string, args:string[], tools:Tools):Prom
   const [num,den] = String(v.r_frame_rate).split('/').map(Number);
   const fps = round3(num/(den || 1));
   let written = '';
-  await replaceDir(dir, async staging => {
+  await intoOutDir(dir, async staging => {
     const scan = await scanVideo({video, label:basename(video), fps, expectedFrames:null, shots:[]}, tools);
     await writeFile(join(staging,'scan.json'),JSON.stringify(scan,null,2)+'\n');
     const frames = scan.frameCount.decoded;
@@ -172,6 +207,7 @@ export async function videoPacket(video:string, args:string[], tools:Tools):Prom
       contactSheets:pages,
       scan:{report:'scan.json', counts:scan.counts, flags:scan.flags.map(f => ({kind:f.kind, severity:f.severity, frame:f.frame, frames:f.frames}))},
       loudness,
+      patterns:{shared:(await loadPatterns()).shared, look:null, lookPairs:[]},
       dimension7:soundScore(null,'standalone: no mix sync report, so hit and cut offsets are unverified'),
       impossible:missing,
       missing,

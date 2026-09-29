@@ -6,6 +6,8 @@
 /** The fields of `sync.json` (written by `mix`) that the rule reads. */
 export type SyncReport = {
   targetLufs:number; integratedLufs:number; truePeakDbtp:number;
+  /** mix looks for each SFX peak only this many frames either side of its planned peak. */
+  syncWindowFrames?:number;
   sfx:{asset:string; eventFrame:number; plannedOffsetFrames:number; offsetFrames:number}[];
   cuts:{shot:string; frame:number; beatFrame:number|null; offsetFrames:number|null; offBeatCut?:string}[];
 };
@@ -24,6 +26,8 @@ const ON_TIME_FRAMES = 1, NOTICEABLE_FRAMES = 3;
 // mix normalizes to -14 LUFS within 0.5 LU and limits true peaks to -1 dBTP (D53).
 const LUFS_TOLERANCE = 0.5, TRUE_PEAK_CEILING_DBTP = -1, NEAR_LUFS = 2, NEAR_TRUE_PEAK_DBTP = 0;
 const SCORE = {onTarget:8, noticeable:5, wide:2} as const;
+// mix's SYNC_WINDOW_FRAMES, for reports written before sync.json recorded it.
+const DEFAULT_SYNC_WINDOW_FRAMES = 3;
 const LISTENING = 'audible sound quality (timbre, masking, intent): needs a reviewer that heard the audio';
 
 const timingPoints = (worst:number) => worst <= ON_TIME_FRAMES ? SCORE.onTarget : worst <= NOTICEABLE_FRAMES ? SCORE.noticeable : SCORE.wide;
@@ -38,7 +42,13 @@ export function soundScore(sync:SyncReport|null, missing = 'no mix sync report')
   if (sync === null) return {score:'unverified', worstOffsetFrames:null, reasons:[missing], unverified:['SFX hit offsets','cut-to-beat offsets','loudness',LISTENING]};
   const reasons:string[] = [], unverified:string[] = [LISTENING];
   // A hit is judged against its declared timing: the planned peak offset is intent, like an off-beat cut.
-  const hits = sync.sfx.map(c => ({what:`SFX ${c.asset} at frame ${c.eventFrame}`, error:Math.abs(c.offsetFrames-c.plannedOffsetFrames)}));
+  // mix reports the loudest point within the window, so an error at the window edge means the hit itself was not
+  // found there: it is at least that far off, and scores as widely misaligned.
+  const window = sync.syncWindowFrames ?? DEFAULT_SYNC_WINDOW_FRAMES;
+  const hits = sync.sfx.map(c => {
+    const error = Math.abs(c.offsetFrames-c.plannedOffsetFrames);
+    return {what:`SFX ${c.asset} at frame ${c.eventFrame}`, error, notFound:error >= window};
+  });
   const cuts = sync.cuts.filter(c => c.offBeatCut === undefined && c.offsetFrames !== null).map(c => ({what:`cut into ${c.shot} at frame ${c.frame}`, error:Math.abs(c.offsetFrames!)}));
   for (const c of sync.cuts.filter(c => c.offBeatCut !== undefined)) reasons.push(`cut into ${c.shot} is declared off-beat (${c.offBeatCut}); judged against its declared timing, not a beat`);
   if (sync.cuts.some(c => c.offBeatCut === undefined && c.offsetFrames === null)) unverified.push('cut-to-beat offsets: no beat grid');
@@ -47,9 +57,12 @@ export function soundScore(sync:SyncReport|null, missing = 'no mix sync report')
   const timed = [...hits,...cuts];
   const worst = timed.length ? Math.max(...timed.map(t => t.error)) : null;
   for (const t of timed) if (t.error > ON_TIME_FRAMES) reasons.push(`${t.what} is ${fmt(t.error)} frames off`);
+  const lost = hits.filter(h => h.notFound);
+  for (const h of lost) reasons.push(`${h.what}: peak at the edge of the ${window}-frame search window, so the hit was not found within it`);
   const lufsError = Math.abs(sync.integratedLufs-sync.targetLufs);
   const level = levelPoints(lufsError,sync.truePeakDbtp);
   reasons.push(`integrated ${fmt(sync.integratedLufs)} LUFS against ${fmt(sync.targetLufs)} (${fmt(lufsError)} LU off), true peak ${fmt(sync.truePeakDbtp)} dBTP`);
-  const score = Math.min(level,worst === null ? SCORE.onTarget : timingPoints(worst));
+  const timing = lost.length ? SCORE.wide : worst === null ? SCORE.onTarget : timingPoints(worst);
+  const score = Math.min(level,timing);
   return {score, worstOffsetFrames:worst, reasons, unverified};
 }
