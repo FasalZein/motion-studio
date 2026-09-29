@@ -9,18 +9,18 @@ Direct a film across HyperFrames and Remotion shots. You are the director and th
 
 ## State and resume
 
-1. For a new film, run `motion-studio init <slug>`. For an existing film, run `motion-studio status films/<slug>` and start at the phase its `next:` line names (the first pending, stale or noted gate). Run `status` again before every gate decision. Without the CLI, use [v0 commands](reference/v0-commands.md) and mark each check it cannot run as unverified. Completion: the next phase and its packet are known.
+1. For a new film, run `motion-studio init <slug>`. For an existing film, run `motion-studio status films/<slug>` and start at the phase its `next:` line names (the first pending, stale or noted gate). Before G1, `next:` names all pre-G1 phases in one line: run each pre-G1 packet's completion check in table order and start at the first that fails. Run `status` again before every gate decision. Without the CLI, use [v0 commands](reference/v0-commands.md) and mark each check it cannot run as unverified. Completion: the next phase and its packet are known.
 2. **Independence.** The critique reviewer and skill evals run in a fresh subagent that receives only their packet. When the harness has no subagent tool, tell the user at the start: `This harness runs without independent subagents; every review is non-independent.` Label each such review **non-independent** beside its scorecard until a fresh session or the user reviews it. Completion: every review shown carries its independence label.
 
 ## Phase packets
 
-A phase packet is a short list of explicit paths: the brief to load, inputs, outputs and the completion check. Load only what the packet names. After the phase, keep its output paths and check result, and drop its working detail. Hero asset capture and renders may go to a helper subagent with the same packet; you inspect its outputs against the check. Packets up to G1:
+A phase packet is a short list of explicit paths: the brief to load, inputs, outputs and the completion check. Load only what the packet names. After the phase, keep its output paths and check result, and drop its working detail. Packets up to G1:
 
 | Phase | Load | Inputs | Outputs | Completion check |
 |---|---|---|---|---|
-| Brief | [agents/brief.md](agents/brief.md), one [playbook](playbooks/) | request, brand URL, `motion-studio taste show` | `BRIEF.md`, `storyboard.json` `meta` | `node evals/check.mjs brief films/<slug>/BRIEF.md` prints `brief ok` (path relative to this skill) |
+| Brief | [agents/brief.md](agents/brief.md), one [playbook](playbooks/) | request, brand URL, `motion-studio taste show` | `BRIEF.md`, `storyboard.json` `meta` | `node <this skill>/evals/check.mjs brief films/<slug>/BRIEF.md` prints `brief ok` |
 | Hero assets | [agents/assets.md](agents/assets.md) mode `hero`, `motion-direction` [reference/asset-first.md](../motion-direction/reference/asset-first.md) | `BRIEF.md`, `ledger.json` | `assets/`, `ledger.json` | its hero completion; `motion-studio assets films/<slug> list` shows logo, fonts, palette and real captures |
-| Directions | `motion-look` steps 1-4; `motion-direction` `reference/idea-and-structure.md`, `reference/world-and-camera.md` | `BRIEF.md`, hero ledger ids, references | `BRIEF.md` `Direction <n>:` lines, `style-bible.md` when a reference exists, one look-test build brief per direction | 2-3 directions, each with a look taken from the brand (a `motion-look` file only as fallback) and naming the ledger ids of its logo, type, palette and captures |
+| Directions | `motion-look` steps 1-4; `motion-direction` `reference/idea-and-structure.md`, `reference/world-and-camera.md` | `BRIEF.md`, hero ledger ids, references | `BRIEF.md` `Direction <n>:` lines and `Logline:` (confirm it, or rewrite it from the hero assets, and copy it to `storyboard.json` `meta.logline`), `style-bible.md` when a reference exists, one look-test build brief per direction | 2-3 directions, each with a look taken from the brand (a `motion-look` file only as fallback) and naming the ledger ids of its logo, type, palette and captures; the brief check still prints `brief ok` |
 | Look tests | `agents/build-<engine>.md` for each look test | its build brief | `shots/_look/<look-id>/` | `motion-studio looktest films/<slug> <look-id>` exits 0 for each |
 | G1 | [reference/g1.md](reference/g1.md) | brief, ledger, `stills/G1/`, `style-bible.md` | G1 gate record | `motion-studio status` shows the decision |
 
