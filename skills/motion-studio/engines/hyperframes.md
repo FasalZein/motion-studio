@@ -5,8 +5,9 @@ This contract owns the shot. Work only inside `shots/<id>/`, or `shots/_look/<lo
 ## Entrypoint and time
 
 - **Entrypoint:** the shot's `index.html`, named by `entrypoint` in `storyboard.json` (for example `shots/s02/index.html`). Its root element carries `data-composition-id`, `data-width` and `data-height` (the primary canvas) and `data-duration` (the shot length in seconds), and is sized `width:100%; height:100%`.
-- **Timeline:** register one paused GSAP timeline as `window.__timelines["<composition id>"]`, at the end of the `document.fonts.ready` callback, after every tween is added.
-- **Time determinism:** each frame is a pure function of shot-local time. Use finite, seek-safe tweens and one closed-form spring per target change. Take randomness from a fixed seed. Read time only from the timeline, never from a clock or a frame loop.
+- **Timeline:** register one paused GSAP timeline at the end of the `document.fonts.ready` callback, after every tween is added, with these literal lines (`hyperframes lint` reads them): `window.__timelines = window.__timelines || {};` then `window.__timelines["<composition id>"] = tl;`.
+- **Time determinism:** each frame is a pure function of shot-local time. Use finite, seek-safe tweens and one closed-form spring per target change. Take randomness from a fixed seed. Read time only from the timeline. `motion-studio validate` errors when shot sources use `requestAnimationFrame`, `Date.now`, `performance.now`, a three `Clock` or `Math.random`, or load a script or asset from the network (D66).
+- **Libraries (D65):** load GSAP and three.js from the shot's `vendor/` folder, never from a CDN. The CLI copies the pinned files (GSAP 3.15.0, three 0.181.2) into `vendor/` of the staged shot on every render: `gsap.min.js`, `SplitText.min.js`, `Flip.min.js`, `MorphSVGPlugin.min.js`, `DrawSVGPlugin.min.js`, `MotionPathPlugin.min.js`, `three.module.min.js` and `three.core.min.js`. Load GSAP with `<script src="vendor/gsap.min.js"></script>` and one such tag per plugin, then call `gsap.registerPlugin(SplitText, Flip)` with the plugins the shot uses. Load three through `<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>` and `import * as THREE from 'three'` in a `<script type="module">`. For a manual `hyperframes check` or preview, copy the same files from the CLI's `node_modules/gsap/dist/` and `node_modules/three/build/`.
 - **Files:** write `index.html` by hand from this contract. Keep every asset local and linked to a ledger id. The layout comes from the look, the board and the approved stills; `hyperframes init` templates bring a template layout, so keep them out of the shot.
 - **Catalog motion (D55):** a registry block or component (`npx hyperframes catalog`, `hyperframes add`) may supply motion code: timing, easing and effects. Copy that code into the shot's own elements and layout. The block's layout, placeholder content and sub-composition wiring stay out of the shot; delete the installed block files once their motion is copied.
 
@@ -17,7 +18,23 @@ This contract owns the shot. Work only inside `shots/<id>/`, or `shots/_look/<lo
 
 ## Layout inputs
 
-`motion-studio render` renders every chosen format. It sets the root's `data-width` and `data-height` to the format canvas in a staged copy of the shot folder and passes the layout as variables: `format`, `canvasWidth`, `canvasHeight`, `safeX`, `safeY`, `safeWidth`, `safeHeight`, `overlay` (empty when none). Declare all eight in `data-composition-variables` on `<html>` with the primary layout as defaults. Read them once with `window.__hyperframes.getVariables()` or use `var(--safeX)` and the other CSS properties. Place every held text, logo and key UI element inside the safe rectangle; let text wrap to the safe width. Reframe for each format; never assume 16:9.
+`motion-studio render` renders every chosen format. It sets the root's `data-width` and `data-height` to the format canvas in a staged copy of the shot folder and passes the layout as variables: `format`, `canvasWidth`, `canvasHeight`, `safeX`, `safeY`, `safeWidth`, `safeHeight`, `overlay` (empty when none). Declare all eight in `data-composition-variables` on `<html>` with the primary layout as defaults. The attribute is a JSON array of `{"id","type","label","default"}` objects:
+
+```html
+<html data-composition-variables='[{"id":"format","type":"string","label":"Format","default":"16:9"},{"id":"canvasWidth","type":"number","label":"Canvas width","default":1920},{"id":"canvasHeight","type":"number","label":"Canvas height","default":1080},{"id":"safeX","type":"number","label":"Safe x","default":192},{"id":"safeY","type":"number","label":"Safe y","default":108},{"id":"safeWidth","type":"number","label":"Safe width","default":1536},{"id":"safeHeight","type":"number","label":"Safe height","default":864},{"id":"overlay","type":"string","label":"Overlay preset","default":""}]'>
+```
+
+ Read them once with `window.__hyperframes.getVariables()` or use `var(--safeX)` and the other CSS properties. Place every held text, logo and key UI element inside the safe rectangle; let text wrap to the safe width. Reframe for each format; never assume 16:9.
+
+## 3D
+
+Use three.js only in a shot whose storyboard entry declares `"threeD": {"reason": "..."}`; `validate` errors on a three.js import without it (D65, D66).
+
+- Render from timeline time only: tween a state object on the paused timeline and call `renderer.render(scene, camera)` in its `onUpdate`, plus once after the scene is built.
+- Set `data-duration` on the root; the three adapter does not infer the duration.
+- Create the renderer with `preserveDrawingBuffer: true` and call `renderer.setPixelRatio(1)` and `renderer.setSize(canvasWidth, canvasHeight, false)`.
+- Load models and textures from local files before the timeline registers. Seek a GLTF clip with `mixer.setTime(t)`. Skip post passes that read an earlier frame.
+- Completion adds `motion-studio repro films/<slug> <shot-id>`: it renders the shot twice and exits 0 only when every frame hash matches.
 
 ## Fonts
 
@@ -53,6 +70,11 @@ Read only these installed files, and only the ones the shot needs. `<skills>` is
 - `<skills>/hyperframes-cli/references/lint-validate-inspect.md`
 - `<skills>/hyperframes-cli/references/preview-render.md`
 - `<skills>/hyperframes-animation/rules-index.md` and `<skills>/hyperframes-animation/adapters/gsap.md`
+- `<skills>/hyperframes-animation/adapters/gsap-timeline-and-labels.md`, `<skills>/hyperframes-animation/adapters/gsap-easing-and-stagger.md`, `<skills>/hyperframes-animation/adapters/gsap-transforms-and-perf.md` and `<skills>/hyperframes-animation/adapters/animate-text.md` (GSAP plugin API: SplitText, Flip, MorphSVG, DrawSVG, MotionPath)
+- `<skills>/hyperframes-animation/blueprints-index.md` (then only the blueprint file the board names for the shot)
+- `<skills>/hyperframes-animation/transitions/overview.md`
+- `<skills>/hyperframes-animation/techniques.md` (path drawing, clip-path reveals, velocity-matched transitions, shaders, MotionPath)
+- `<skills>/hyperframes-animation/adapters/three.md` (3D shots only; its CDN imports become the `vendor/` files above)
 - `<skills>/hyperframes-registry/SKILL.md` and `<skills>/hyperframes-registry/references/discovery.md` (catalog motion only, as above)
 
-Every other skill is outside the build. In particular, the `hyperframes` router skill re-plans the film and scaffolds a new project; never invoke it for a shot.
+Every other skill is outside the build, including Lottie, Rive, anime.js and TypeGPU adapters (trial or skip libraries, D65). In particular, the `hyperframes` router skill re-plans the film and scaffolds a new project; never invoke it for a shot.

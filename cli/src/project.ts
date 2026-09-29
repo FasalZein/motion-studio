@@ -14,6 +14,7 @@ export type Shot = {
   id:string; startFrame:number; endFrame:number; engine:Engine; entrypoint:string; description:string; camera:string;
   entry:'cut'|'handoff'; exit:'cut'|'handoff'; transition?:string; offBeatCut?:string; assets:string[];
   thread?:Thread; // required on every shot after the first; validate checks it (D64)
+  threeD?:{reason:string}; // the board's 3D declaration (D65); validate requires it for three.js imports (D66)
   reveals?:Reveal[]; // spoken reveals, checked against the word timings
   soundCues:{asset:string; eventFrame:number; peakOffsetFrames:number; gainDb?:number}[];
   stillFrames:number[]; protected:{id:string; bounds:string; heldFrames:number[]}[]; // bounds: 'measured' or a declared-geometry file

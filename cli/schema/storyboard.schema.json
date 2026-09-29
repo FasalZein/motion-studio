@@ -120,6 +120,13 @@
             "shared": {"type": "string", "description": "The carried thing in words, for example \"the blue search field\"."}
           }
         },
+        "threeD": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason"],
+          "description": "The board's 3D declaration for this shot (D65): the reason 3D serves the idea or the world. validate rejects shot sources that import three.js, @react-three/fiber or @remotion/three without it (D66).",
+          "properties": {"reason": {"type": "string", "minLength": 1}}
+        },
         "offBeatCut": {"type": "string", "minLength": 1, "description": "Optional reason why the cut at this shot's startFrame is intentionally off the beat grid, for example a word-timed reveal (D41)."},
         "assets": {"type": "array", "items": {"$ref": "#/definitions/id"}},
         "reveals": {
