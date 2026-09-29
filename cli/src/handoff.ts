@@ -145,6 +145,7 @@ async function handoff(project:Project, out:Outputs, selected:[Shot,Shot][], nam
       // show next and the pair comparison would be meaningless.
       const longerLast = await decode(tools,clips.last,0,fps,size,join(temp,'longer-last'));
       const durationIndependent = longerLast.raw.equals(last.raw);
+      const lastDrift = difference(longerLast.cells,last.cells);
       const first = await decode(tools,out.clip(to.id),0,fps,size,join(temp,'first'));
       const before = await decode(tools,master,cut-1,fps,size,join(temp,'before'));
       const after = await decode(tools,master,cut,fps,size,join(temp,'after'));
@@ -158,9 +159,12 @@ async function handoff(project:Project, out:Outputs, selected:[Shot,Shot][], nam
       const name = `handoff-${from.id}-${to.id}`;
       // The strip image lets the creator inspect the two master frames at the cut.
       await tools.command('ffmpeg',['-hide_banner','-loglevel','error','-y','-ss',String((cut-1.25 > 0 ? cut-1.25 : 0)/fps),'-i',master,'-vf','tile=2x1','-frames:v','1',join(output,`${name}.png`)]);
-      await writeFile(join(output,`${name}.json`),JSON.stringify({from:from.id,to:to.id,cutFrame:cut,thresholds:THRESHOLDS,pair:{frames:{from:from.endFrame-from.startFrame,to:0},...pairDifference},durationIndependent,strip:{masterFrames:[cut-1,cut],identicalToShots,nextVsMasterAtCut},status},null,2)+'\n');
+      await writeFile(join(output,`${name}.json`),JSON.stringify({from:from.id,to:to.id,cutFrame:cut,thresholds:THRESHOLDS,pair:{frames:{from:from.endFrame-from.startFrame,to:0},...pairDifference},durationIndependent,lastFrameDrift:lastDrift,strip:{masterFrames:[cut-1,cut],identicalToShots,nextVsMasterAtCut},status},null,2)+'\n');
       if (status === 'match') passed.push(`handoff verified ${from.id} -> ${to.id} (${out.format}): ${describe(pairDifference)}`);
-      else if (status === 'duration-dependent') failed.push(`handoff ${from.id} -> ${to.id} (${out.format}): shot ${from.id} renders a different last frame when it is one frame longer, so its motion depends on its duration (for example interpolate over durationInFrames); drive it from the frame number so the frame past its end is what it would show next`);
+      else if (status === 'duration-dependent') {
+        const example = from.engine === 'remotion' ? 'interpolate over useVideoConfig().durationInFrames' : "a tween timed from the root's data-duration";
+        failed.push(`handoff ${from.id} -> ${to.id} (${out.format}): shot ${from.id} renders a different last frame when it is one frame longer (${describe(lastDrift)}), so its motion depends on its duration (for example ${example}); drive it from the frame number so the frame past its end is what it would show next. If the shot has no such motion, check that it renders the same twice with motion-studio repro`);
+      }
       else if (status === 'mismatch') failed.push(`handoff mismatch ${from.id} -> ${to.id} (${out.format}): ${describe(pairDifference)}`);
       else failed.push(`encoded color jump in master strip at frame ${cut} (${out.format}): ${identicalToShots.includes(false) ? `master frames ${cut-1}, ${cut} identical to shot frames: ${identicalToShots.join(', ')}` : describe(nextVsMasterAtCut)}`);
     }
