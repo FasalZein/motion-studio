@@ -84,7 +84,7 @@ async function locked<T>(fn:()=>Promise<T>):Promise<T> {
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
       const age = await stat(lock).then(st => Date.now()-st.mtimeMs,() => 0);
-      if (age > lockStaleMs) {await breakStale(lock); continue;}
+      if (age > lockStaleMs && await breakStale(lock)) continue;
       if (Date.now()-start > lockWaitMs) throw new CliError(`${lock}: another taste command holds the lock; wait for it, or remove the file (and ${lock}.break) if no taste command runs`);
       await new Promise(ok => setTimeout(ok,delay+Math.random()*delay));
     }
@@ -96,17 +96,20 @@ async function locked<T>(fn:()=>Promise<T>):Promise<T> {
 /**
  * Removes a stale lock while holding a second exclusive file, `<lock>.break`, and checks the age again inside it.
  * Without the guard, two waiters can both see the stale lock: the first removes it and takes a fresh one, and the
- * second then removes that fresh lock, so both commands run and one entry is lost. A waiter that finds the guard
- * taken returns and retries the main lock.
+ * second then removes that fresh lock, so both commands run and one entry is lost. Returns true only when this call
+ * removed the lock. A waiter that finds the guard taken gets false and waits like any other waiter, so a guard left
+ * by a crash ends in the timeout error, which names both files, not in a busy loop.
  */
-async function breakStale(lock:string):Promise<void> {
+async function breakStale(lock:string):Promise<boolean> {
   const guard = `${lock}.break`;
   let handle;
   try {handle = await open(guard,'wx');}
-  catch (e) {if ((e as NodeJS.ErrnoException).code === 'EEXIST') return; throw e;}
+  catch (e) {if ((e as NodeJS.ErrnoException).code === 'EEXIST') return false; throw e;}
   try {
     const age = await stat(lock).then(st => Date.now()-st.mtimeMs,() => 0);
-    if (age > lockStaleMs) await rm(lock,{force:true});
+    if (age <= lockStaleMs) return false;
+    await rm(lock,{force:true});
+    return true;
   } finally {await handle.close(); await rm(guard,{force:true});}
 }
 

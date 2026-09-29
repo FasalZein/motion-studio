@@ -217,6 +217,18 @@ test('two taste commands at once keep both notes; a stale lock is removed', asyn
       expect((await profile(home)).notes.map((n:Json) => n.text).sort()).toEqual(['after the crash','note from launch','note from other']);
       expect(await readdir(join(home,'.motion-studio'))).toEqual(['taste.json']);
     }
+    // A stale lock with a guard left by a crash: the command waits the full 60 s bound, then fails and names both files.
+    await rm(join(home,'.motion-studio'),{recursive:true,force:true});
+    await mkdir(join(home,'.motion-studio'),{recursive:true});
+    await writeFile(lock,'99999\n');
+    await utimes(lock,old,old);
+    await writeFile(`${lock}.break`,'');
+    const began = Date.now();
+    const stuck = await start('node',home,['taste','notes',film,'G2']);
+    expect(Date.now()-began).toBeGreaterThanOrEqual(60_000);
+    expect(stuck.status).toBe(1);
+    expect(stuck.stderr).toBe(`error: ${lock}: another taste command holds the lock; wait for it, or remove the file (and ${lock}.break) if no taste command runs\n`);
+    expect((await readdir(join(home,'.motion-studio'))).sort()).toEqual(['taste.json.lock','taste.json.lock.break']);
   });
 });
 
