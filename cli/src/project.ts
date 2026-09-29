@@ -18,7 +18,7 @@ export type Shot = {
   reveals?:Reveal[]; // spoken reveals, checked against the word timings
   soundCues:{asset:string; eventFrame:number; peakOffsetFrames:number; gainDb?:number}[];
   stillFrames:number[]; protected:{id:string; bounds:string; heldFrames:number[]}[]; // bounds: 'measured' or a declared-geometry file
-  holds?:FrameSpan[]; effects?:(FrameSpan & {term:string})[]; // declared context for scan
+  holds?:FrameSpan[]; effects?:(FrameSpan & {term:string})[]; moves?:(FrameSpan & {term:string})[]; // declared context for scan
 };
 /** What the seam into a shot carries: a motion-vocabulary thread id or custom:<description>, and the carried thing in words. */
 export type Thread = {kind:string; shared:string};
