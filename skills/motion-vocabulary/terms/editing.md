@@ -2,7 +2,7 @@
 
 Cuts change shots; audio overlaps belong to the master mix. Match each cut or handoff to the storyboard's frame boundary. Between two storyboard shots, `motion-studio stitch` makes the cut: each shot is its own project, so pose its first and last frame and never put two storyboard shots in one composition. The Remotion `<Series>` and `<Sequence>` recipes below apply only to cuts inside one shot.
 
-- **Straight cut** (`straight-cut`) - One shot replaces another on a single frame without an overlap.
+- **Straight cut** (`straight-cut`) - One shot replaces another on a single frame without an overlap. Use only when the seam still carries a thread, usually a beat cut with motion on both sides (`beat-cut-thread`), or the board states why the break serves the idea.
   - HF: End the first paused timeline and start the second at the cut frame.
   - Remotion: Inside one shot, place adjacent scenes in `<Series>` with no transition or overlapping frames.
 - **Match cut** (`match-cut`) - A cut joins shots that share a shape, action or screen position.

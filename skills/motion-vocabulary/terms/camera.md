@@ -2,9 +2,15 @@
 
 For code-drawn films, a camera often means one transformed world wrapper rather than a physical lens.
 
-- **Locked off** (`locked-off`) - The viewpoint does not move; only elements inside the frame change.
+- **Locked off** (`locked-off`) - The viewpoint does not move; only elements inside the frame change. Use only when the board gives a reason and the elements inside the frame carry continuous motion (D67).
   - HF: Keep the `.world` wrapper untransformed for the whole shot; animate only the elements.
   - Remotion: Apply no frame-driven transform to the scene wrapper; drive motion only on child elements.
+- **Drift** (`drift`) - The viewpoint moves slowly and continuously through a beat, so a reading moment stays alive.
+  - HF: Give the `.world` wrapper one long GSAP tween across the whole beat with a gentle ease; derive any wobble from timeline time, not a clock.
+  - Remotion: `interpolate()` the wrapper translation or scale across the whole beat, or offset it with seeded `noise2D()` from `@remotion/noise`.
+- **Punch-in** (`punch-in`) - The viewpoint snaps closer to one detail and lands on a beat.
+  - HF: A short `coordinate-target-zoom` tween with a fast ease-out that ends on the beat frame; continue with a drift after it lands.
+  - Remotion: `spring()` the wrapper scale and translation toward the detail so the spring reaches the target on the beat frame.
 - **Push-in** (`push-in`) - The viewpoint moves closer to one subject without changing the target mid-move.
   - HF: `coordinate-target-zoom` scales and counter-translates the subject's world wrapper.
   - Remotion: `interpolate()` wrapper scale and translation toward the subject over a fixed frame range.
@@ -34,4 +40,4 @@ For code-drawn films, a camera often means one transformed world wrapper rather 
   - Remotion: Increase wrapper scale beyond full-screen coverage and match the next shot's first pose.
 - **One camera move per beat** (`one-camera-move-per-beat`) - A beat uses one clear camera trajectory before another camera direction begins.
   - HF: Give the world wrapper one directed tween per beat with `viewport-change`; let elements move independently.
-  - Remotion: Use one monotonic wrapper transform segment per beat in `interpolate()`; hold its final pose.
+  - Remotion: Use one monotonic wrapper transform segment per beat in `interpolate()`; let a slow drift carry the frame until the next segment.

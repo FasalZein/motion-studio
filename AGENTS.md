@@ -6,7 +6,7 @@ motion-studio: agent skills (`skills/`) plus a TypeScript CLI (`cli/`) that plan
 
 - `docs/SPEC.md`, `docs/SPEC-motion.md`: source of truth. `docs/DECISIONS.md`: numbered decisions (D0 onward). `CONTEXT.md`: glossary.
 - `cli/src/`: CLI modules; `cli/schema/`: storyboard, ledger and gate-input schemas; `cli/fixtures/`: test films.
-- `skills/`: the installed skills (motion-studio, motion-look, motion-vocabulary, motion-critique).
+- `skills/`: the installed skills (motion-studio, motion-direction, motion-look, motion-vocabulary, motion-critique).
 
 ## Commands (run in `cli/`)
 
