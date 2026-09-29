@@ -6,13 +6,20 @@ import type {Storyboard} from './project.js';
 // dist/vocabulary.json is generated at build time from skills/motion-vocabulary/terms/*.md (scripts/vocabulary.mjs)
 // and ships in the npm package next to this module.
 const glossaryFile = join(dirname(fileURLToPath(import.meta.url)),'vocabulary.json');
-const customPrefix = 'custom:';
+export const customPrefix = 'custom:';
+/** The glossary category of the seam thread kinds: skills/motion-vocabulary/terms/threads.md (D64). */
+const threadCategory = 'threads';
 
-let glossary:Promise<Set<string>>|undefined;
+type Term = {id:string; name:string; category:string};
+let glossary:Promise<Term[]>|undefined;
+const terms = ():Promise<Term[]> => glossary ??= readFile(glossaryFile,'utf8').then(text => (JSON.parse(text) as {terms:Term[]}).terms);
 /** Every motion-vocabulary term id. */
-export function termIds():Promise<Set<string>> {
-  glossary ??= readFile(glossaryFile,'utf8').then(text => new Set((JSON.parse(text) as {terms:{id:string}[]}).terms.map(t => t.id)));
-  return glossary;
+export async function termIds():Promise<Set<string>> {
+  return new Set((await terms()).map(t => t.id));
+}
+/** The motion-vocabulary thread kind ids, the only glossary ids a seam thread may name. */
+export async function threadKindIds():Promise<Set<string>> {
+  return new Set((await terms()).filter(t => t.category === threadCategory).map(t => t.id));
 }
 
 /**

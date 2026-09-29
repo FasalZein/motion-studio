@@ -2,6 +2,7 @@ import {readFile, stat} from 'node:fs/promises';
 import {isAbsolute, relative, resolve} from 'node:path';
 import {CliError, type Fps, type Project, type Shot, type Voice} from './project.js';
 import {secondsToFrame} from './frames.js';
+import {threadCell} from './threads.js';
 
 /** One narration word, in seconds from the start of the narration audio (the HyperFrames words-file shape). */
 export type Word = {text:string; start:number; end:number};
@@ -98,7 +99,8 @@ function entryOf(shot:Shot, index:number, beats:number[]):string {
 
 /**
  * `beatmap <film-dir>`: the beat map as a Markdown table, one row per shot. The spoken line lists the narration words
- * whose nearest frame falls inside the shot, so words and cuts can be read against each other.
+ * whose nearest frame falls inside the shot, so words and cuts can be read against each other. The thread column shows
+ * what each seam carries (D64).
  */
 export async function beatMap(project:Project):Promise<string[]> {
   const {storyboard:{shots,audio,voice,meta:{fps}}} = project;
@@ -107,10 +109,10 @@ export async function beatMap(project:Project):Promise<string[]> {
   const rows = shots.map((shot,i) => {
     const spoken = voice === null ? [] : words.filter(w => {const f = wordFrame(voice,w,fps); return f >= shot.startFrame && f < shot.endFrame;});
     return [shot.id, `[${shot.startFrame}, ${shot.endFrame})`, `${seconds(shot.startFrame)}-${seconds(shot.endFrame)}`, entryOf(shot,i,audio.beatFrames),
-      shot.description, shot.camera, spoken.length ? `"${spoken.map(w => w.text).join(' ')}"` : '',
+      threadCell(shot,i), shot.description, shot.camera, spoken.length ? `"${spoken.map(w => w.text).join(' ')}"` : '',
       (shot.reveals ?? []).map(r => `"${r.text}" f${r.frame}`).join(', '),
       shot.soundCues.map(c => `${c.asset} f${c.eventFrame}`).join(', '), shot.engine].map(cell);
   });
-  const header = ['shot','frames','seconds','entry','visual event','camera','spoken line','reveals','sound cues','engine'];
+  const header = ['shot','frames','seconds','entry','thread','visual event','camera','spoken line','reveals','sound cues','engine'];
   return [header,header.map(() => '---'),...rows].map(r => `| ${r.join(' | ')} |`);
 }

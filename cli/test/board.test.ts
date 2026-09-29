@@ -199,7 +199,7 @@ test('sheet writes 1 fps contact pages and full-rate transition strips from the 
     story.shots[0].endFrame = 400;
     Object.assign(story.shots[1],{startFrame:400, endFrame:785});
     story.shots[1].soundCues[0].eventFrame = 400;
-    story.shots.push({...story.shots[0], id:'tail', startFrame:785, endFrame:790, soundCues:[], stillFrames:[0]});
+    story.shots.push({...story.shots[0], id:'tail', startFrame:785, endFrame:790, soundCues:[], stillFrames:[0], thread:{kind:'shared-element-thread', shared:'the frame counter'}});
     await cp(join(dir,'shots','remotion'),join(dir,'shots','tail'),{recursive:true});
     await writeFile(join(dir,'storyboard.json'),JSON.stringify(story,null,2));
     // The master is built here: testsrc2 changes every frame, so each tile shows exactly one frame.

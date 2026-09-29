@@ -111,6 +111,15 @@
         "entry": {"enum": ["cut", "handoff"], "description": "How the shot starts: a cut, or a handoff from the previous shot (D42)."},
         "exit": {"enum": ["cut", "handoff"], "description": "How the shot ends: a cut, or a handoff to the next shot (D42)."},
         "transition": {"type": "string", "minLength": 1, "description": "Optional motion-vocabulary term (or custom:<description>) for the named move at this shot's entry (D42)."},
+        "thread": {
+          "type": "object",
+          "description": "The seam thread (D64): what the seam into this shot carries from the previous shot. Required on every shot after the first; validate checks this, the kind and a non-empty shared text. The first shot has no seam before it, so it needs none.",
+          "required": ["kind", "shared"],
+          "properties": {
+            "kind": {"type": "string", "description": "motion-vocabulary thread id (terms/threads.md, for example shared-element-thread) or custom:<description>."},
+            "shared": {"type": "string", "description": "The carried thing in words, for example \"the blue search field\"."}
+          }
+        },
         "offBeatCut": {"type": "string", "minLength": 1, "description": "Optional reason why the cut at this shot's startFrame is intentionally off the beat grid, for example a word-timed reveal (D41)."},
         "assets": {"type": "array", "items": {"$ref": "#/definitions/id"}},
         "reveals": {

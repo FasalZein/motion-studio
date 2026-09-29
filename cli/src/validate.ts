@@ -6,6 +6,7 @@ import {gateViews} from './gates.js';
 import {checkScanContext} from './scan.js';
 import {vocabularyWarnings} from './vocabulary.js';
 import {checkVoice} from './voice.js';
+import {threadErrors} from './threads.js';
 
 export type Report = {errors:string[]; warnings:string[]};
 /**
@@ -181,7 +182,10 @@ const checkGateHashes:Check = async project => {
 // Unknown vocabulary terms warn and never block (spec: controlled vocabulary).
 const checkVocabulary:Check = async ({storyboard}) => ({errors:[], warnings:await vocabularyWarnings(storyboard)});
 
-const structuralChecks = (only?:readonly string[]):Check[] => [checkMeta, checkGates, checkTimeline, checkHandoffs, checkSoundCues, checkEntrypoints(only), checkAssetIds, checkLedgerFiles, checkScanContext, checkVocabulary, checkVoice];
+// D64: a seam without a thread is an error; render commands run it too (D44).
+const checkThreads:Check = async project => errorsOnly(await threadErrors(project));
+
+const structuralChecks = (only?:readonly string[]):Check[] => [checkMeta, checkGates, checkTimeline, checkHandoffs, checkThreads, checkSoundCues, checkEntrypoints(only), checkAssetIds, checkLedgerFiles, checkScanContext, checkVocabulary, checkVoice];
 
 /**
  * Which checks run. `validate` runs all of them. Render commands pass `{gates:false}` (D44): re-rendering after an
