@@ -198,7 +198,7 @@ test('G2 binds the beat grid and beat map, not shot descriptions or fill-mode as
     expect(g2.inputHashes[g2Grid]).toBe(sha('{"beatFrames":[3,6],"bpm":null,"downbeatFrames":[],"dropFrames":[]}'));
     expect(g2.inputHashes[g2Map]).toBe(sha('[{"endFrame":6,"id":"remotion","startFrame":0},{"endFrame":12,"id":"hyperframes","startFrame":6}]'));
     expect(g2.inputHashes['storyboard.json#/meta{fps,durationFrames}']).toBe(sha('{"durationFrames":12,"fps":30}'));
-    const approved = lines('G1 approved','G2 approved','G3 approved','G4 pending','G5 pending','next: fill assets, full build and critique loop A, then present G4');
+    const approved = lines('G1 approved','G2 approved','G3 approved','G4 pending','G5 pending',"next: fill assets, full build, polish (D78), liveness and a fresh reviewer's critique loop A, then present G4");
 
     // Fill mode, description and seam-thread edits, grid labels, formats and layouts leave G2 and G3 approved (D43, D64).
     await edit(dir,s => {
@@ -274,7 +274,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     await write(dir,'animatic.mp4','animatic v2');
     await write(dir,'stills/G2/b01.png','beat 1 v2');
     expect(status(dir)).toBe(lines('G1 approved','G2 approved','G3 approved','G4 approved','G5 pending',
-      'next: polish, mix, draft renders per format, critique loop B and license check, then present G5','liveness 16:9 missing (no readable renders/16x9/liveness.json)'));
+      'next: mix, draft renders per format, critique loop B and license check, then present G5','liveness 16:9 missing (no readable renders/16x9/liveness.json)'));
 
     await write(dir,'renders/16x9/safezone.json','{"ok":true}');
     await write(dir,'renders/16x9/scan.json','{"counts":{"blocking":0}}');
@@ -319,7 +319,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     // music bed stales G5 only.
     const approvedStoryboard = await readFile(join(dir,'storyboard.json'),'utf8');
     const g5Only = (key:string) => lines('G1 approved','G2 approved','G3 approved','G4 approved',`G5 stale (changed: ${key})`,
-      'next: G5 is stale: rerun polish, mix, draft renders per format, critique loop B and license check, then present G5 again','liveness 16:9 missing (no readable renders/16x9/liveness.json)');
+      'next: G5 is stale: rerun mix, draft renders per format, critique loop B and license check, then present G5 again','liveness 16:9 missing (no readable renders/16x9/liveness.json)');
     await edit(dir,s => {s.shots[1].soundCues = [];});
     expect(status(dir)).toBe(g5Only('storyboard.json#/shots'));
     await writeFile(join(dir,'storyboard.json'),approvedStoryboard);
@@ -329,7 +329,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     expect(status(dir)).toBe(allApproved);
     await appendFile(join(dir,'shots/hyperframes/index.html'),'<!-- late -->\n');
     expect(status(dir)).toBe(lines('G1 approved','G2 approved','G3 approved','G4 approved','G5 stale (changed: shots/hyperframes/index.html)',
-      'next: G5 is stale: rerun polish, mix, draft renders per format, critique loop B and license check, then present G5 again','liveness 16:9 missing (no readable renders/16x9/liveness.json)'));
+      'next: G5 is stale: rerun mix, draft renders per format, critique loop B and license check, then present G5 again','liveness 16:9 missing (no readable renders/16x9/liveness.json)'));
   });
 });
 
