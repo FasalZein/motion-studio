@@ -3,10 +3,14 @@
 //   node check.mjs brief <BRIEF.md>   a complete brief within 3 intake rounds
 //   node check.mjs playbooks          the five genre playbooks as data
 //   node check.mjs playbook <file.md> one playbook's own rules (the set rules need all five)
+//   node check.mjs board <film>       beat map, storyboard and G2 stills are ready to present at G2
+//   node check.mjs g2 <film>          G2 approved: frozen stills and gate hashes match (board.mjs)
+//   node check.mjs g3 <film>          G3 approved: as g2, plus the frozen animatic
 // Exit 0 and print "ok" lines when every check passes; otherwise print each problem and exit 1.
 import {readFileSync, readdirSync, existsSync} from 'node:fs';
 import {basename, dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {checkFilm} from './board.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const playbookDir = resolve(here, '../playbooks');
@@ -146,7 +150,8 @@ function checkBrief(path) {
 if (mode === 'playbooks') checkPlaybooks();
 else if (mode === 'playbook' && arg) { checkPlaybook(arg); if (!problems.length) console.log(`playbook ok: ${basename(arg)}`); }
 else if (mode === 'brief' && arg) checkBrief(arg);
-else { console.error('usage: node check.mjs brief <BRIEF.md> | playbooks | playbook <file.md>'); process.exit(2); }
+else if (['board', 'g2', 'g3'].includes(mode) && arg) { const ok = checkFilm(resolve(arg), mode, here, problems); if (!problems.length) console.log(ok); }
+else { console.error('usage: node check.mjs brief <BRIEF.md> | playbooks | playbook <file.md> | board|g2|g3 <film>'); process.exit(2); }
 if (problems.length) {
   for (const p of problems) console.error(`check: ${p}`);
   process.exit(1);
