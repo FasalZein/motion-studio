@@ -165,8 +165,10 @@ test(`${runtime}: packet adds the liveness report, the seam threads and strips a
   expect(p.liveness.stillSpans).toHaveLength(1);
   const [hold] = p.liveness.stillSpans;
   expect(hold.shots).toEqual(['hyperframes']);
-  expect(Math.abs(hold.firstFrame-HOLD_FIRST)).toBeLessThanOrEqual(3);
-  expect(Math.abs(hold.lastFrame-HOLD_LAST)).toBeLessThanOrEqual(3);
+  // At 30 fps sample k decodes the last frame n with n < 2.5 k + 1.25: samples 11 and 20 show frames 28 and 51, the
+  // first and last frozen frames, and sample 21 shows moving frame 53. The report and the strip use the same frames.
+  expect([hold.firstFrame,hold.lastFrame]).toEqual([HOLD_FIRST,HOLD_LAST]);
+  expect([hold.frames[0],hold.frames.at(-1)]).toEqual([HOLD_FIRST,HOLD_LAST]);
   expect(hold.file).toBe('critique/packet-16x9/strips/hold-01.png');
   expect(hold.frames).toHaveLength(8);
   for (const f of hold.frames) expect(f >= HOLD_FIRST && f <= HOLD_LAST).toBe(true);

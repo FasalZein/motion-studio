@@ -291,6 +291,31 @@ test(`${runtime}: a small one-frame pop during fast motion is an advisory cell p
   });
 });
 
+test(`${runtime}: a declared move explains a cell pop inside it, but never a pop`, async () => {
+  // The cell pop of the test above (frame 30, local frame 10 of shot hyperframes) inside a declared move over local
+  // frames 8-12: a spring overshoot gives the same per-cell change and return, so the declaration makes it context.
+  const frames = cleanFrames();
+  frames[30] = Buffer.from(frames[30]);
+  for (let y=20;y<40;y++) for (let x=260;x<280;x++) frames[30].set([255,255,255],(y*W+x)*3);
+  await withFilm(frames, async dir => {
+    const result = run(dir);
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+    // Context: the declared hold, the cut and the cell pop.
+    expect(result.stdout).toBe(summary(0,0,3));
+    const flags = (await report(dir)).flags.filter((f:Json) => f.kind === 'cell-pop');
+    expect(flags.map((f:Json) => [f.frame,f.status,f.context])).toEqual([[30,'context','move custom:spring overshoot in shot hyperframes']]);
+  }, s => {s.shots[1].moves = [{start:8, frames:5, term:'custom:spring overshoot'}];});
+  // The whole-frame pop at frame 4 inside a declared move over local frames 2-6 of shot remotion still blocks.
+  const scenes = withDeclaredHold(clean());
+  scenes[4] = {...scenes[4], x:scenes[4].x+100};
+  await withFilm(scenes.map(draw), async dir => {
+    const result = run(dir);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe('error: 16:9: pop at frame 4 (shot remotion, local frame 4)\n');
+  }, s => {s.shots[0].moves = [{start:2, frames:5, term:'custom:spring overshoot'}];});
+});
+
 test(`${runtime}: a frame-count error blocks`, async () => withFilm(cleanFrames().slice(0,FRAMES-1), async dir => {
   const result = run(dir);
   expect(result.status).toBe(1);
@@ -372,8 +397,9 @@ test(`${runtime}: scan needs a stitched master, and validate rejects a hold outs
   expect(result.stderr).toBe('error: successful render and stitch required before scan: 16:9\n');
   const s = JSON.parse(await readFile(join(dir,'storyboard.json'),'utf8'));
   s.shots[1].effects = [{start:19, frames:2, term:'custom:flash'}];
+  s.shots[1].moves = [{start:18, frames:3, term:'custom:spring overshoot'}];
   await writeFile(join(dir,'storyboard.json'),JSON.stringify(s));
   const invalid = spawnSync(runtime,[cli,'validate',dir],{encoding:'utf8'});
   expect(invalid.status).toBe(1);
-  expect(invalid.stderr).toBe('error: shot hyperframes: effect at local frame 19 for 2 frames ends after the shot (shot-local frames 0 to 19)\n');
+  expect(invalid.stderr).toBe('error: shot hyperframes: effect at local frame 19 for 2 frames ends after the shot (shot-local frames 0 to 19)\nerror: shot hyperframes: move at local frame 18 for 3 frames ends after the shot (shot-local frames 0 to 19)\n');
 }));

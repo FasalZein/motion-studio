@@ -4,6 +4,7 @@ import {join, resolve, relative, isAbsolute} from 'node:path';
 
 import {CliError, layoutOf, type Format, type Project, type Rect, type Shot} from './project.js';
 import {framePngs, remotionBundle, renderHyperframesFrames, renderRemotionFrames} from './engines.js';
+import {sourceFiles} from './determinism.js';
 import type {Tools} from './seam.js';
 
 /**
@@ -87,6 +88,25 @@ async function declared(project:Project, shot:Shot, format:Format):Promise<Check
   return checks;
 }
 
+/**
+ * Marker ids written as a literal in the shot's sources: `data-protected="<id>"` (HTML, JSX, CSS selectors) and
+ * `setAttribute('data-protected','<id>')`. An id computed at run time is not seen.
+ */
+const markerPatterns = [/data-protected\s*=\s*\{?\s*["']([A-Za-z0-9_-]+)["']/g, /["']data-protected["']\s*,\s*["']([A-Za-z0-9_-]+)["']/g];
+/**
+ * Layers the shot's author marked `data-protected` but the storyboard does not list in `shots[].protected`: `safezone`
+ * checks only declared entries, so such a layer (a UI panel, its text) escapes the check. Advice, not a failure: a
+ * shared scene file can mark layers that another shot shows.
+ */
+async function undeclaredMarkers(root:string, shot:Shot):Promise<string[]> {
+  const found = new Set<string>();
+  for (const file of await sourceFiles(join(root,'shots',shot.id))) {
+    const text = await readFile(file,'utf8');
+    for (const pattern of markerPatterns) for (const m of text.matchAll(pattern)) found.add(m[1]);
+  }
+  return [...found].filter(id => !shot.protected.some(p => p.id === id)).sort();
+}
+
 /** Parses `safezone` arguments after the film folder: an optional format and `--shots <id,...>`. */
 export function safezoneArgs(args:string[]):{format:string|undefined; shots:string[]|undefined} {
   let format:string|undefined, shots:string[]|undefined;
@@ -121,7 +141,14 @@ export async function safezone(project:Project, formats:Format[], renders:(f:For
     }
     const layout = layoutOf(project.storyboard,format);
     const checks:Check[] = [];
-    for (const shot of selected) checks.push(...await declared(project,shot,format), ...await measure(project,shot,format,tools));
+    const undeclared:{shot:string; id:string}[] = [];
+    for (const shot of selected) {
+      checks.push(...await declared(project,shot,format), ...await measure(project,shot,format,tools));
+      for (const id of await undeclaredMarkers(project.root,shot)) {
+        undeclared.push({shot:shot.id, id});
+        console.log(`safezone ${format} ${shot.id}/${id}: advice: data-protected="${id}" is marked in the shot source but not listed in shots[].protected, so it is not checked; if this shot shows it, declare it with its held frames`);
+      }
+    }
     for (const c of checks) {
       if (c.bounds && within(c.bounds,layout.safe)) c.status = 'inside';
       const where = `safezone ${format} ${c.shot}/${c.id} frame ${c.frame}`;
@@ -131,7 +158,7 @@ export async function safezone(project:Project, formats:Format[], renders:(f:For
     }
     if (!only) {
       const report = join(output,'.safezone.json.tmp');
-      await writeFile(report,JSON.stringify({format, canvas:layout.canvas, safe:layout.safe, overlay:layout.overlay, checks},null,2)+'\n');
+      await writeFile(report,JSON.stringify({format, canvas:layout.canvas, safe:layout.safe, overlay:layout.overlay, checks, undeclared},null,2)+'\n');
       await rename(report,join(output,'safezone.json'));
     }
     console.log(`safezone ${format}: ${checks.length - checks.filter(c => c.status !== 'inside').length} of ${checks.length} checks inside`);

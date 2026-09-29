@@ -266,25 +266,31 @@ function detect({frames,steps,skips}:Measures):Found[] {
   return found.sort((a,b) => a.frame-b.frame || a.kind.localeCompare(b.kind));
 }
 
-/** Declared context of the film: seams (the first frame of every shot after the first), holds and effects. */
+/** Declared context of the film: seams (the first frame of every shot after the first), holds, effects and moves. */
 type Seam = {handoff:boolean; reason:string};
-type Context = {shots:Shot[]; seams:Map<number,Seam>; holds:[number,number][]; effects:[number,number,string][]};
+type Context = {shots:Shot[]; seams:Map<number,Seam>; holds:[number,number][]; effects:[number,number,string][]; moves:[number,number,string][]};
 function contextOf(shots:Shot[]):Context {
   return {
     shots,
     seams:new Map(shots.slice(1).map(s => [s.startFrame,{handoff:s.entry === 'handoff', reason:`${s.entry === 'handoff' ? 'handoff seam' : 'declared cut'} into shot ${s.id}`}])),
     holds:shots.flatMap(s => (s.holds ?? []).map(h => [s.startFrame+h.start,s.startFrame+h.start+h.frames] as [number,number])),
     effects:shots.flatMap(s => (s.effects ?? []).map(e => [s.startFrame+e.start,s.startFrame+e.start+e.frames,`effect ${e.term} in shot ${s.id}`] as [number,number,string])),
+    moves:shots.flatMap(s => (s.moves ?? []).map(m => [s.startFrame+m.start,s.startFrame+m.start+m.frames,`move ${m.term} in shot ${s.id}`] as [number,number,string])),
   };
 }
 /** Why a finding is context, or null when it is a defect. Frame-count errors are never context. */
-function explain(f:Found, {seams,holds,effects}:Context):string|null {
+function explain(f:Found, {seams,holds,effects,moves}:Context):string|null {
   if (f.kind === 'frame-count') return null;
   const first = f.frame, last = f.frame+f.frames-1;
   // A declared run explains a finding only when the finding lies inside it, so a fault that runs past it still shows.
   const inside = ([a,b]:[number,number]|[number,number,string]) => first >= a && last < b;
   const effect = effects.find(inside);
   if (effect) return effect[2];
+  // A spring overshoot or bounce moves an edge into a grid cell and back out: per cell it is the same change-and-return
+  // as a local wrong patch, so only the declaration tells them apart. A declared move explains cell pops only; a
+  // whole-frame pop, a blank or a flash inside it stays a defect.
+  const move = f.kind === 'cell-pop' ? moves.find(inside) : undefined;
+  if (move) return move[2];
   // Seams explain the step-based flags whose change crosses the seam. A pop needs matching neighbors, which a cut
   // never gives, so a pop at a seam is a wrong first or last frame. A cell pop needs only one matching cell, which a
   // cut can give by chance. Blank frames, flashes and blended frames are defects at a cut too: a clean cut has none.
@@ -369,12 +375,12 @@ export async function scanFile(video:string, args:string[], tools:Tools):Promise
   return print(video,args[1] ?? 'no report file',report);
 }
 
-/** validate: holds and effects must lie inside their shot. */
+/** validate: holds, effects and moves must lie inside their shot. */
 export function checkScanContext({storyboard:{shots}}:Project):Report {
   const errors:string[] = [];
   for (const shot of shots) {
     const length = shot.endFrame-shot.startFrame;
-    for (const [name,spans] of [['hold',shot.holds ?? []],['effect',shot.effects ?? []]] as const)
+    for (const [name,spans] of [['hold',shot.holds ?? []],['effect',shot.effects ?? []],['move',shot.moves ?? []]] as const)
       for (const span of spans) if (span.start+span.frames > length) errors.push(`shot ${shot.id}: ${name} at local frame ${span.start} for ${span.frames} frames ends after the shot (shot-local frames 0 to ${length-1})`);
   }
   return {errors, warnings:[]};

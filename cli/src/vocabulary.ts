@@ -23,7 +23,7 @@ export async function threadKindIds():Promise<Set<string>> {
 }
 
 /**
- * Warnings for vocabulary-controlled fields (D42): `shots[].camera`, `shots[].transition`, `shots[].effects[].term`
+ * Warnings for vocabulary-controlled fields (D42): `shots[].camera`, `shots[].transition`, `shots[].effects[].term`, `shots[].moves[].term`
  * and `critique[].worstIssues[].term`. A value must be a glossary term id or `custom:<description>`.
  * `entry` and `exit` are schema enums (`cut` or `handoff`), so the schema checks them, not this glossary.
  */
@@ -39,6 +39,7 @@ export async function vocabularyWarnings({shots,critique}:Storyboard):Promise<st
     use(shot.camera,`shot ${shot.id}: camera`);
     if (shot.transition !== undefined) use(shot.transition,`shot ${shot.id}: transition`);
     for (const effect of shot.effects ?? []) use(effect.term,`shot ${shot.id}: effect at frame ${effect.start} term`);
+    for (const move of shot.moves ?? []) use(move.term,`shot ${shot.id}: move at frame ${move.start} term`);
   }
   for (const round of critique) for (const issue of round.worstIssues) use(issue.term,`critique loop ${round.loop}: worst issue at shot ${issue.shot} frame ${issue.frame} term`);
   return warnings;

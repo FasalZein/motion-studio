@@ -50,6 +50,8 @@ test(`${runtime}: safezone measures wrapped titles in both engines for 16:9, 9:1
     // Per format: title in two shots at frames 2 and 5, and the mark at frames 0 and 5.
     expect(checks.length).toBe(6);
     expect(checks.every(c => c.status === 'inside')).toBe(true);
+    // Both shot sources mark the LIVE label data-protected="corner", and neither shot declares it: advice, not a failure.
+    expect(report.undeclared).toEqual([{shot:'remotion', id:'corner'},{shot:'hyperframes', id:'corner'}]);
     expect(checks.filter(c => c.id === 'mark').map(c => c.bounds)).toEqual([mark[folder],mark[folder]]);
     for (const c of checks.filter(c => c.id === 'title')) {
       const b = c.bounds!;
@@ -60,6 +62,9 @@ test(`${runtime}: safezone measures wrapped titles in both engines for 16:9, 9:1
       expect(b.width).toBeLessThanOrEqual(rect.width);
       heights[c.shot] = {...heights[c.shot], [folder]:b.height};
     }
+  }
+  for (const format of ['16:9','9:16','1:1']) for (const shot of ['remotion','hyperframes']) {
+    expect(result.stdout).toContain(`safezone ${format} ${shot}/corner: advice: data-protected="corner" is marked in the shot source but not listed in shots[].protected, so it is not checked; if this shot shows it, declare it with its held frames`);
   }
   // The narrow portrait safe width wraps the title onto at least one more 24px line than landscape.
   for (const shot of ['remotion','hyperframes']) expect(heights[shot]['9x16']).toBeGreaterThanOrEqual(heights[shot]['16x9'] + 20);

@@ -2,7 +2,7 @@ import {mkdir, readFile} from 'node:fs/promises';
 import {join} from 'node:path';
 
 import {gateWaivers, type Gate, type Shot} from './project.js';
-import {METHOD, type LivenessReport, type Place} from './liveness.js';
+import {METHOD, sampleSpanFrames, type LivenessReport, type Place} from './liveness.js';
 import type {Tools} from './seam.js';
 import {tile, tiling} from './sheet.js';
 
@@ -36,18 +36,14 @@ export async function writeStrip(tools:Tools, video:string, size:{width:number; 
 }
 
 /**
- * The frames of a still span in the video's own frame numbers, both inside the freeze. The span holds samples `start`
- * through `end` at 12 fps. ffmpeg's `fps` filter (rounding `near`) gives input frame n the output time round(n x 12 / fps)
- * and keeps the last frame of each time, so sample k decodes the last frame with n x 12 / fps < k + 0.5. That frame is
- * later than the rounded `firstFrame` of the report (by 1 frame at 30 fps and 2 at 60 fps for an even k), so a strip
- * from `firstFrame` can show a frame before the freeze. Frame timestamps stored in milliseconds can move a frame that
- * falls exactly on k + 0.5 to either side, so the first frame includes that tie (it lies between two frozen samples) and
- * the last frame excludes it.
+ * The frames of a still span in the video's own frame numbers, both inside the freeze, by the rule of the report's
+ * `firstFrame`/`lastFrame` (`sampleSpanFrames`). Read from the span's seconds, so a lone video's report (no film frames)
+ * gets strips too.
  */
 export function spanFrames(span:Place, fps:number) {
   const rate = METHOD.sampleFps;
   const start = Math.round(span.startSecond*rate), end = start+Math.round(span.seconds*rate);
-  return {first:Math.floor((start+0.5)*fps/rate), last:Math.ceil((end+0.5)*fps/rate)-1};
+  return sampleSpanFrames(start,end,fps);
 }
 
 export type HoldStrip = Place & {file:string; frames:number[]};

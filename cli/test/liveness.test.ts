@@ -221,23 +221,27 @@ test(`${runtime}: a film leaves its black head and end card out of the content b
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   const r = await filmReport(dir);
-  // Black head: samples 0-11 (11 still steps, frames 0-22). End card: samples 108-125 (17 steps, frames 216-250).
+  // Each sample k is drawn on frames 2k and 2k+1. ffmpeg's 12 fps sampling decodes frame 2k for sample k (the last frame
+  // n with n x 12 / 24 < k + 0.5), and frame 2k+1 lies exactly on the k + 0.5 tie. A span of samples s-e reports frames
+  // 2s+1 (the tie frame after its first sample) to 2e (its last sample's frame), both inside the drawn span, as hold
+  // strips pick them. Black head: samples 0-11 (11 still steps, drawn frames 0-23, reported 1-22). End card: samples
+  // 108-125 (17 steps, drawn frames 216-251, reported 217-250).
   expect(r.excluded).toEqual([
-    {kind:'black', startSecond:0, seconds:0.917, firstFrame:0, lastFrame:22, shots:['remotion']},
-    {kind:'end-card', startSecond:9, seconds:1.417, firstFrame:216, lastFrame:250, shots:['hyperframes']},
+    {kind:'black', startSecond:0, seconds:0.917, firstFrame:1, lastFrame:22, shots:['remotion']},
+    {kind:'end-card', startSecond:9, seconds:1.417, firstFrame:217, lastFrame:250, shots:['hyperframes']},
   ]);
   // 125 steps less 28 excluded; 9 of the 97 content steps are held. The whole-film share counts the excluded steps.
   expect(r).toMatchObject({format:'16:9', video:'renders/16x9/master.mkv', durationSeconds:10.5, contentSeconds:8.083, movingShare:0.907, movingShareWholeFilm:0.704,
     stillShare:{over0_5:0.093, over1:0, over2:0}, longestStillSeconds:0.75, pass:true});
-  // The hold repeats sample 79 (frame 158) up to sample 88 (frame 176), inside shot hyperframes.
-  expect(r.stillSpans).toEqual([{startSecond:6.583, seconds:0.75, firstFrame:158, lastFrame:176, shots:['hyperframes']}]);
+  // The hold repeats sample 79 up to sample 88 (drawn frames 158-177), inside shot hyperframes: frames 159-176.
+  expect(r.stillSpans).toEqual([{startSecond:6.583, seconds:0.75, firstFrame:159, lastFrame:176, shots:['hyperframes']}]);
   expect(r.advisory.cuts).toEqual([{shot:'hyperframes', frame:120, bothMove:true}]);
   expect(r.sha256).toMatch(/^[0-9a-f]{64}$/);
   expect(result.stdout).toBe([
     'liveness 16:9: pass: moving 0.907, still over 0.5 s 0.093, over 1 s 0, over 2 s 0, longest still 0.75 s (renders/16x9/liveness.json)',
-    '  excluded black 0.917 s at frames 0-22 (shot remotion)',
-    '  excluded end-card 1.417 s at frames 216-250 (shot hyperframes)',
-    '  still 0.75 s at frames 158-176 (shot hyperframes)',
+    '  excluded black 0.917 s at frames 1-22 (shot remotion)',
+    '  excluded end-card 1.417 s at frames 217-250 (shot hyperframes)',
+    '  still 0.75 s at frames 159-176 (shot hyperframes)',
   ].join('\n')+'\n');
 }));
 
@@ -245,8 +249,8 @@ test(`${runtime}: a slideshow film fails, and the report locates the hold across
   const result = run('liveness',dir,'16:9');
   expect(result.status).toBe(1);
   const r = await filmReport(dir);
-  // The hold repeats sample 58 (frame 116) up to sample 88 (frame 176), across the cut at frame 120.
-  expect(r.stillSpans).toEqual([{startSecond:4.833, seconds:2.5, firstFrame:116, lastFrame:176, shots:['remotion','hyperframes']}]);
+  // The hold repeats sample 58 up to sample 88 (drawn frames 116-177), across the cut at frame 120: frames 117-176.
+  expect(r.stillSpans).toEqual([{startSecond:4.833, seconds:2.5, firstFrame:117, lastFrame:176, shots:['remotion','hyperframes']}]);
   expect(r.advisory.cuts).toEqual([{shot:'hyperframes', frame:120, bothMove:false}]);
   expect(result.stderr).toContain('error: 16:9: longest still span 2.5 s is above the maximum 2 s (film under 90 s)\n');
   expect(run('liveness',dir,'9:16').stderr).toBe('error: format 9:16 is not a chosen format (16:9)\n');

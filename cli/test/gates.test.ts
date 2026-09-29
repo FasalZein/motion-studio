@@ -106,6 +106,30 @@ test('approve binds the gate to its input hashes and freezes the approved stills
   });
 });
 
+test('G1 approve needs a passing look-test report with the SHA-256 of each look-test clip (D77)', async () => {
+  await withFilm(async dir => {
+    // A clip copied in by hand, with no report beside it.
+    await write(dir,'stills/G1/look-b.mkv','clip B');
+    const hint = `; run motion-studio looktest ${dir} <look-id> for each look test`;
+    await refused(dir,['G1','approve'],`cannot approve G1: stills/G1/look-b.mkv has no readable look-test report stills/G1/look-b.liveness.json${hint}`);
+    // A passing report of another render.
+    await write(dir,'stills/G1/look-b.liveness.json',JSON.stringify({sha256:sha('clip B v0'), pass:true}));
+    await refused(dir,['G1','approve'],`cannot approve G1: stills/G1/look-b.liveness.json describes another clip than stills/G1/look-b.mkv${hint}`);
+    // A failing report of this clip; a second hand-copied clip in a subfolder is named too.
+    await write(dir,'stills/G1/look-b.liveness.json',JSON.stringify({sha256:sha('clip B'), pass:false}));
+    await write(dir,'stills/G1/extra/look-c.mkv','clip C');
+    await refused(dir,['G1','approve'],`cannot approve G1: stills/G1/extra/look-c.mkv has no readable look-test report stills/G1/extra/look-c.liveness.json; stills/G1/look-b.liveness.json does not pass${hint}`);
+    // Each clip with a passing report of its own bytes: G1 approves.
+    await write(dir,'stills/G1/look-b.liveness.json',JSON.stringify({sha256:sha('clip B'), pass:true}));
+    await write(dir,'stills/G1/extra/look-c.liveness.json',JSON.stringify({sha256:sha('clip C'), pass:true}));
+    ok(['gate',dir,'G1','approve']);
+    expect(status(dir).split('\n')[0]).toBe('G1 approved');
+    // The check guards approval only: changes and rescope need no report.
+    await write(dir,'stills/G1/look-b.mkv','clip B v2');
+    ok(['gate',dir,'G1','changes','--note','warmer']);
+  });
+});
+
 test('G1 binds the look id and axes, not the taste snapshot written after the decision', async () => {
   await withFilm(async dir => {
     ok(['gate',dir,'G1','approve','--note','keynote minimal']);

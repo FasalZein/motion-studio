@@ -7,6 +7,7 @@ import AjvModule from 'ajv';
 import {CliError, gateIds, writeStoryboard, type Gate, type GateId, type GateState, type Project, type Waivable, type Waiver} from './project.js';
 import {livenessRefusals} from './liveness.js';
 import {critiqueRefusals, type CritiqueRule} from './critiquegate.js';
+import {lookTestRefusals} from './looktest.js';
 
 /** Note rounds allowed per gate before the user must accept, rescope or stop. */
 export const noteRounds = 3;
@@ -229,6 +230,10 @@ export async function recordGate(project:Project, id:GateId, decision:Decision, 
   for (const w of waivers) {
     if (id !== 'G4' || decision !== 'approve') throw new CliError(`--waive ${w.check} applies only to G4 approve`);
     if (!w.reason) throw new CliError(`--waive ${w.check} needs a --note with the reason`);
+  }
+  if (id === 'G1' && decision === 'approve') {
+    const refusals = await lookTestRefusals(project.root);
+    if (refusals.length) throw new CliError(`cannot approve G1: ${refusals.join('; ')}; run motion-studio looktest ${project.root} <look-id> for each look test`);
   }
   if (id === 'G4' && decision === 'approve' && !waived('liveness')) {
     const refusals = await livenessRefusals(project);
