@@ -4,6 +4,7 @@ import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
+import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 
 // Black-box liveness fixtures (spec seam 1). Every video is drawn here sample by sample: a 40x40 box on a fixed
@@ -50,11 +51,24 @@ function samples(segments:Segment[], start:Picture|null = {kind:'box', pos:0}):P
   }
   return out;
 }
+/**
+ * Runs ffmpeg with raw input from a temp file instead of stdin: under load, spawnSync with a large `input` hung
+ * twice with ffmpeg waiting on stdin and the test process idle (full suite, 2026-09-29).
+ */
+function ffmpegWithInput(args:string[], input:Buffer) {
+  const file = join(mkdtempSync(join(tmpdir(),'motion-studio-raw-')),'input.raw');
+  // A 60 s bound, as in the scan and critique CLI runs, so a stall fails the test instead of hanging the suite.
+  try {
+    writeFileSync(file,input);
+    return spawnSync('ffmpeg',args.map((a,i) => a === '-' && args[i-1] === '-i' ? file : a),{maxBuffer:1<<30,timeout:60000});
+  }
+  finally {rmSync(dirname(file),{recursive:true,force:true});}
+}
 function encode(pictures:Picture[], file:string, fps:number, codec:'ffv1'|'h264') {
   const repeat = fps/12;
   const raw = Buffer.concat(pictures.flatMap(p => Array(repeat).fill(draw(p))));
   const args = codec === 'ffv1' ? ['-c:v','ffv1','-pix_fmt','gray'] : ['-c:v','libx264','-crf','23','-pix_fmt','yuv420p'];
-  const result = spawnSync('ffmpeg',['-hide_banner','-loglevel','error','-y','-f','rawvideo','-pix_fmt','gray','-s',`${W}x${H}`,'-r',String(fps),'-i','-',...args,file],{input:raw,maxBuffer:1<<30});
+  const result = ffmpegWithInput(['-hide_banner','-loglevel','error','-y','-f','rawvideo','-pix_fmt','gray','-s',`${W}x${H}`,'-r',String(fps),'-i','-',...args,file],raw);
   if (result.status !== 0) throw Error(`ffmpeg failed: ${result.stderr}`);
 }
 
