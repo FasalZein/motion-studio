@@ -38,6 +38,7 @@ In-studio, write `critique/loop-<n>.md` under the film project. For standalone r
 # Critique loop N
 Mode: in-studio | standalone; independence: independent | non-independent
 Render: <path>; format: <format>; fps: <fps>; revision hashes: <hashes or unavailable>
+Packet: critique/packet-<format folder>/packet.json; master sha256: <the packet's render.masterSha256>
 Evidence: <readable paths>; missing/unreadable: <items and affected judgments>
 Calibration: case-1 <dimension: score or unverified, per dimension>; case-2 <dimension: score or unverified, per dimension>
 Liveness: <pass | fail | waived | unverified>; content-basis moving share <liveness.movingShare>; failed limits <list or none>
@@ -75,6 +76,8 @@ Liveness: <pass | fail | waived | unverified>; content-basis moving share <liven
 - <previous score → current score for each dimension and shot; first loop: baseline>
 - Decision: pass | repair | escalate; <all scores >= 8, unverified status, blocking scan flags>
 ```
+
+Write the `Mode` and `Packet` lines exactly in this shape: `gate G4 approve` reads them and refuses without an independent report whose `Packet` line names the current packet and master hash (D78). One report may carry one `Packet` line per format it reviewed. Standalone reports leave the `Packet` line out.
 
 Name exactly three worst issues when three actionable issues exist. If fewer exist, list only observed issues and state the count; never invent defects to fill slots. Put the worst issues first, and name the affected shot and exact frame. Each issue names a `motion-vocabulary` kebab id and a concrete repair. For a missing evidence issue, state its frame as unverified and request the evidence instead of making up a defect. Give **one line per frozen approved still**, even when it matches. Note intentional design departures separately from accidental ones; approval still controls whether a departure is acceptable. Compare previous loop scores only when hashes identify the same revision; otherwise label the new loop a new baseline.
 

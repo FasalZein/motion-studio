@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import AjvModule from 'ajv';
 import {CliError, gateIds, writeStoryboard, type Gate, type GateId, type GateState, type Project, type Waivable} from './project.js';
 import {livenessRefusals} from './liveness.js';
+import {critiqueRefusals, type CritiqueRule} from './critiquegate.js';
 
 /** Note rounds allowed per gate before the user must accept, rescope or stop. */
 export const noteRounds = 3;
@@ -13,12 +14,13 @@ export const noteRounds = 3;
 // schema/gate-inputs.json lists what each gate hashes. It is data so later tickets add inputs without code changes.
 type Source = {file:string; exclude?:string[]}|{storyboard:string; fields?:string[]}|{storyboardPath:string};
 type GateInput = {name:string; freeze?:boolean; sources:Source[]};
-type GateInputs = Record<GateId,GateInput[]>;
+type GateInputs = Record<GateId,GateInput[]> & {critique:CritiqueRule};
 
 const pointer = {type:'string', pattern:'^(/[^/]*)+$'};
 const inputsSchema = {
-  type:'object', required:gateIds, additionalProperties:false,
-  properties:{$comment:{type:'string'}, ...Object.fromEntries(gateIds.map(id => [id,{type:'array', items:{
+  type:'object', required:[...gateIds,'critique'], additionalProperties:false,
+  properties:{$comment:{type:'string'}, critique:{type:'object', required:['gate','packet','reports'], additionalProperties:false, properties:{
+    $comment:{type:'string'}, gate:{enum:gateIds}, packet:{type:'string', pattern:'\\{format\\}'}, reports:{type:'string', minLength:1}}}, ...Object.fromEntries(gateIds.map(id => [id,{type:'array', items:{
     type:'object', required:['name','sources'], additionalProperties:false,
     properties:{name:{type:'string', minLength:1}, freeze:{type:'boolean'}, sources:{type:'array', items:{oneOf:[
       {type:'object', required:['file'], additionalProperties:false, properties:{file:{type:'string', minLength:1}, exclude:{type:'array', minItems:1, items:{type:'string', minLength:1}}}},
@@ -209,7 +211,8 @@ async function freeze(project:Project, id:GateId, hashes:Record<string,string>, 
  * Records one decision on a gate, bound to the hashes of its current inputs.
  * Every earlier gate must be approved and not stale. A note or rescope resets every later gate that is not pending.
  * G4 approval needs a current passing liveness report for every chosen format, unless `waive` names the check and a
- * note gives the reason (D60); the gate record keeps the waiver.
+ * note gives the reason (D60); the gate record keeps the waiver. The critique gate (G4) also needs a current critique
+ * report per chosen format (D78, the `critique` entry of schema/gate-inputs.json); no waiver lifts that check.
  */
 export async function recordGate(project:Project, id:GateId, decision:Decision, notes:string[], waive?:Waivable):Promise<string[]> {
   const views = await gateViews(project);
@@ -226,6 +229,12 @@ export async function recordGate(project:Project, id:GateId, decision:Decision, 
   if (id === 'G4' && decision === 'approve' && !waive) {
     const refusals = await livenessRefusals(project);
     if (refusals.length) throw new CliError(`cannot approve G4: ${refusals.join('; ')}; run motion-studio liveness ${project.root}, or approve with --waive liveness --note <reason>`);
+  }
+  // The critique check has no waiver: the approval shows the user a fresh reviewer's report of this master (D78).
+  const {critique} = await gateInputs();
+  if (id === critique.gate && decision === 'approve') {
+    const refusals = await critiqueRefusals(project,critique);
+    if (refusals.length) throw new CliError(`cannot approve ${id}: ${refusals.join('; ')}; run motion-studio packet ${project.root} and dispatch a fresh motion-critique reviewer (its report header names the packet and master sha256)`);
   }
   const gate = view.gate;
   if (decision === 'changes' && gate.rounds >= noteRounds) throw new CliError(`${id} used ${gate.rounds} of ${noteRounds} note rounds; approve to accept, rescope or stop`);

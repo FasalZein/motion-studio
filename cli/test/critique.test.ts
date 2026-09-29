@@ -180,6 +180,8 @@ test(`${runtime}: packet adds the liveness report, the seam threads and strips a
   expect(result.stdout).toContain('liveness fail (dimension 2 at most 7)');
   // A written G4 waiver lifts the dimension 2 cap and is shown to the reviewer.
   for (const id of ['G1','G2','G3']) expect(run('gate',dir,id,'approve').status).toBe(0);
+  // G4 approval also needs a fresh reviewer's report naming this packet and its master (D78).
+  await writeFile(join(dir,'critique/loop-1.md'),`# Critique loop 1\nMode: in-studio; independence: independent\nPacket: critique/packet-16x9/packet.json; master sha256: ${p.render.masterSha256}\n`);
   expect(run('gate',dir,'G4','approve','--waive','liveness','--note','deliberate hold for the title').status).toBe(0);
   expect(run('packet',dir).status).toBe(0);
   expect((await packet(dir)).liveness).toMatchObject({pass:false, waiver:{reason:'deliberate hold for the title'}, dimension2Max:null});

@@ -5,9 +5,20 @@ import {fileURLToPath} from 'node:url';
 import {mkdtemp, cp, rm, readFile, writeFile, readdir, stat, mkdir, realpath} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 
 const test = (name:string, fn:()=>Promise<void>, timeout=120000) => nodeTest(name,{timeout},fn);
 const here = dirname(fileURLToPath(import.meta.url));
+
+/** A stand-in master with what `packet` and a fresh reviewer write for it, which G4 approval needs (D78). */
+async function fakeCritique(film:string) {
+  const sha = createHash('sha256').update('master v1').digest('hex');
+  await mkdir(join(film,'renders/16x9'),{recursive:true});
+  await mkdir(join(film,'critique/packet-16x9'),{recursive:true});
+  await writeFile(join(film,'renders/16x9/master.mkv'),'master v1');
+  await writeFile(join(film,'critique/packet-16x9/packet.json'),JSON.stringify({render:{masterSha256:sha}}));
+  await writeFile(join(film,'critique/loop-1.md'),`Mode: in-studio; independence: independent\nPacket: critique/packet-16x9/packet.json; master sha256: ${sha}\n`);
+}
 const cli = resolve(here,'../dist/cli.js');
 const fixture = resolve(here,'../fixtures/two-engine');
 const runtimes = ['node','bun'];
@@ -301,10 +312,11 @@ test('status reports gate states and the next step', async () => {
       expect(result.stdout).toBe(expected);
     }
     await edit(dir,'storyboard.json',s => {for (const g of s.gates) {g.state = 'pending'; g.rounds = 0;}});
-    // The fixture has no rendered master to measure, so G4 is approved with a liveness waiver (D60).
+    // The stand-in master cannot be measured, so G4 is approved with a liveness waiver (D60).
+    await fakeCritique(dir);
     for (const id of ['G1','G2','G3','G4','G5']) expect(run('bun',['gate',dir,id,'approve',...(id === 'G4' ? ['--waive','liveness','--note','no master'] : [])]).status).toBe(0);
     const approved = run('node',['status',dir]);
-    expect(approved.stdout).toBe('G1 approved\nG2 approved\nG3 approved\nG4 approved\nG5 approved\nnext: final render, then user acceptance of the files\n');
+    expect(approved.stdout).toBe('G1 approved\nG2 approved\nG3 approved\nG4 approved\nG5 approved\nnext: final render, then user acceptance of the files\nliveness 16:9 missing (no readable renders/16x9/liveness.json)\n');
     // An unfinished film with cross-reference errors still gets its status. Expected errors: gap [6, 7), still frame 5
     // outside the shortened shot, coverage [0, 12) vs 900 frames, the cut at frame 7 off the beat grid, and the
     // sound cue at frame 6, now outside its shot.
@@ -312,7 +324,7 @@ test('status reports gate states and the next step', async () => {
     const unfinished = run('node',['status',dir]);
     expect(unfinished.stderr).toBe('');
     expect(unfinished.status).toBe(0);
-    expect(unfinished.stdout).toBe(`G1 pending\nG2 pending\nG3 pending\nG4 pending\nG5 pending\nnext: brief, hero assets and look test, then present G1\nvalidation: 5 errors; run motion-studio validate ${dir}\n`);
+    expect(unfinished.stdout).toBe(`G1 pending\nG2 pending\nG3 pending\nG4 pending\nG5 pending\nnext: brief, hero assets and look test, then present G1\nliveness 16:9 missing (no readable renders/16x9/liveness.json)\nvalidation: 5 errors; run motion-studio validate ${dir}\n`);
     // A schema failure stops status with one line per problem and no stack trace.
     await edit(dir,'storyboard.json',s => {s.meta.fps = 29.97;});
     const broken = run('bun',['status',dir]);
