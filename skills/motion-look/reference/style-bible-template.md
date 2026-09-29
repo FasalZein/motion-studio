@@ -18,7 +18,7 @@ Use this as an output template. A video supplies motion evidence; a single image
 - Take: <specific visual method to adapt to the product>
 - Do not take: <subject, identifiable composition, logo, exact copy or other source-specific material; state the replacement>
 
-Repeat this section for **every** reference. Distinguish conflicting references and choose one rule when they disagree.
+Repeat this section for **every** reference. Distinguish conflicting references and choose one rule when they disagree. Keep the `- Evidence:`, `- Take:` and `- Do not take:` line starts: `motion-studio style-bible <path> --reference <source>` checks that each `###` section under `## References` fills them, with no `<placeholder>` left, and that a heading names each supplied source.
 
 ## Build handoff
 - Hero pose: <product asset, claim, focal point, layout for each format>

@@ -301,7 +301,13 @@ const Shot = () => <TransitionSeries>
 </TransitionSeries>;
 registerRoot(() => <Composition id="Shot" component={Shot} durationInFrames={6} fps={30} width={320} height={180} />);
 `);
+    // The bundle writes no webpack cache: each film folder would add a new entry that nothing removes. Webpack puts
+    // the cache under the package.json nearest the working directory; npm test runs in cli/, so that is this folder.
+    const cacheDir = resolve(here,'../node_modules/.cache/webpack');
+    const cacheEntries = async () => (await readdir(cacheDir,{recursive:true}).catch(() => [])).length;
+    const cachedBefore = await cacheEntries();
     expect(ok('node','stills',dir,'remotion','--frames','0,5')).toBe('stills 16:9: remotion 0,5 -> stills/G2/16x9/\n');
+    expect(await cacheEntries()).toBe(cachedBefore);
     const still = (frame:string) => rgb(join(dir,'stills','G2','16x9',`remotion-f${frame}.png`),0,'1:1:160:90');
     expect(diff(still('000'),new Uint8Array([0xaa,0x22,0x00]))).toBeLessThanOrEqual(1);
     expect(diff(still('005'),new Uint8Array([0x00,0x22,0xaa]))).toBeLessThanOrEqual(1);
