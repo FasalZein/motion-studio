@@ -18,18 +18,26 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/vocabulary.mjs && node scripts/patterns.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check:allowlist": "node scripts/allowlist.mjs",
     "test": "npm run test:prepare && npm run test:node && npm run test:bun",
     "test:prepare": "npm run build && npm pack --silent",
-    "test:node": "node --experimental-strip-types --test test/project.test.ts test/cli.test.ts test/seam.test.ts test/gates.test.ts test/beats.test.ts test/safezone.test.ts test/assets.test.ts test/board.test.ts test/scan.test.ts test/voice.test.ts test/taste.test.ts test/critique.test.ts",
-    "test:bun": "bun test test/project.test.ts test/cli.test.ts test/seam.test.ts test/gates.test.ts test/beats.test.ts test/safezone.test.ts test/assets.test.ts test/board.test.ts test/scan.test.ts test/voice.test.ts test/taste.test.ts test/critique.test.ts"
+    "test:node": "node --experimental-strip-types --test test/project.test.ts test/cli.test.ts test/seam.test.ts test/gates.test.ts test/beats.test.ts test/safezone.test.ts test/assets.test.ts test/board.test.ts test/scan.test.ts test/voice.test.ts test/taste.test.ts test/critique.test.ts test/technique.test.ts test/liveness.test.ts",
+    "test:bun": "bun test test/project.test.ts test/cli.test.ts test/seam.test.ts test/gates.test.ts test/beats.test.ts test/safezone.test.ts test/assets.test.ts test/board.test.ts test/scan.test.ts test/voice.test.ts test/taste.test.ts test/critique.test.ts test/technique.test.ts test/liveness.test.ts"
   },
   "dependencies": {
+    "@react-three/fiber": "9.8.1",
     "@remotion/bundler": "4.0.529",
+    "@remotion/motion-blur": "4.0.529",
+    "@remotion/noise": "4.0.529",
+    "@remotion/paths": "4.0.529",
     "@remotion/renderer": "4.0.529",
+    "@remotion/three": "4.0.529",
     "@remotion/transitions": "4.0.529",
     "ajv": "8.20.0",
+    "gsap": "3.15.0",
     "hyperframes": "0.8.81",
-    "remotion": "4.0.529"
+    "remotion": "4.0.529",
+    "three": "0.181.2"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

@@ -301,7 +301,8 @@ test('status reports gate states and the next step', async () => {
       expect(result.stdout).toBe(expected);
     }
     await edit(dir,'storyboard.json',s => {for (const g of s.gates) {g.state = 'pending'; g.rounds = 0;}});
-    for (const id of ['G1','G2','G3','G4','G5']) expect(run('bun',['gate',dir,id,'approve']).status).toBe(0);
+    // The fixture has no rendered master to measure, so G4 is approved with a liveness waiver (D60).
+    for (const id of ['G1','G2','G3','G4','G5']) expect(run('bun',['gate',dir,id,'approve',...(id === 'G4' ? ['--waive','liveness','--note','no master'] : [])]).status).toBe(0);
     const approved = run('node',['status',dir]);
     expect(approved.stdout).toBe('G1 approved\nG2 approved\nG3 approved\nG4 approved\nG5 approved\nnext: final render, then user acceptance of the files\n');
     // An unfinished film with cross-reference errors still gets its status. Expected errors: gap [6, 7), still frame 5

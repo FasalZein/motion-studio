@@ -5,8 +5,8 @@ This contract owns the shot. Work only inside `shots/<id>/`, or `shots/_look/<lo
 ## Entrypoint and time
 
 - **Entrypoint:** `shots/<id>/src/index.tsx` (or `index.ts`) calls `registerRoot()` with a root that registers one `<Composition>`. Its `id` is the shot's `entrypoint` in `storyboard.json`. Its `durationInFrames` is `endFrame-startFrame`, its `fps` is the project fps, and frame zero is the shot entry. Static files live in `shots/<id>/public/` and load with `staticFile()`.
-- **Imports:** import only `react`, `remotion` and `@remotion/transitions` (with its subpaths, for example `@remotion/transitions/fade`); the CLI bundles the shot with its own copies of these (D54).
-- **Time determinism:** drive every pose from `useCurrentFrame()` and props. Use `interpolate()` and closed-form springs, one per target change, and `random(<seed>)` for randomness. Keep no state between frames, and read time only from the frame.
+- **Imports:** import only `react`, `remotion`, `@remotion/transitions`, `@remotion/noise`, `@remotion/motion-blur`, `@remotion/paths`, and for a declared 3D shot `three`, `@react-three/fiber` and `@remotion/three` (with their subpaths, for example `@remotion/transitions/fade`). The CLI bundles the shot with its own pinned copies of these (D54, D65).
+- **Time determinism:** drive every pose from `useCurrentFrame()` and props. Use `interpolate()` and closed-form springs, one per target change, and `random(<seed>)` or `noise2D(<seed>, x, y)` for randomness. Keep no state between frames, and read time only from the frame. `motion-studio validate` errors when shot sources use `useFrame`, `requestAnimationFrame`, `Date.now`, `performance.now`, a three `Clock` or `Math.random`, or load a script or asset from the network (D66).
 - **Files:** write the component by hand from this contract. The layout comes from the look, the board and the approved stills; `npx create-video` and template projects bring a template layout, so keep them out of the shot.
 
 ## Frame
@@ -21,6 +21,16 @@ This contract owns the shot. Work only inside `shots/<id>/`, or `shots/_look/<lo
 ## Handoff seams
 
 At a seam declared `handoff`, motion continues through the seam (D63). Shot A's motion continues one frame past its end, and that frame equals shot B's first frame; B then moves on at the same velocity. `motion-studio handoff` renders that frame: it passes the selected composition to `renderStill` with `durationInFrames` one larger and renders frame `durationInFrames`, with the same component and props. Drive every element that carries across the seam from `useCurrentFrame()` so it keeps moving at that frame: its `interpolate()` extrapolates or its range reaches past the end, and its `<Sequence>` lasts past the end. When this shot is B, its frame 0 is the pose and motion step the previous shot shows one frame past its end.
+
+## 3D
+
+Use three.js only in a shot whose storyboard entry declares `"threeD": {"reason": "..."}`; `validate` errors on a three.js import without it (D65, D66).
+
+- Draw the scene inside `<ThreeCanvas width={canvas.width} height={canvas.height}>` from `@remotion/three`, and set every pose from `useCurrentFrame()`. React Three Fiber's own frame loop is not frame-exact.
+- Inside the canvas, wrap timed parts in `<Sequence layout="none">`.
+- Load models and textures with `staticFile()` and hold the render with `delayRender()` until they load.
+- The CLI renders with the `angle` GL backend on macOS and `swangle` on Linux and records it in `render.json`. Pixels differ between backends, so compare stills only within one backend.
+- Completion adds `motion-studio repro films/<slug> <shot-id>`: it renders the shot twice and exits 0 only when every frame hash matches.
 
 ## Fonts
 
@@ -55,5 +65,9 @@ Read only these installed files, and only the ones the shot needs. `<skills>` is
 - `<skills>/remotion-markup/timing.md`
 - `<skills>/remotion-markup/measuring-dom-nodes.md`
 - `<skills>/remotion-render/SKILL.md` (manual renders only)
+- `<skills>/remotion-markup/transitions.md`
+- `<skills>/remotion-markup/effects.md`
+- `<skills>/remotion-markup/text-highlights.md`
+- `<skills>/remotion-markup/3d.md` (3D shots only)
 
-Every other skill is outside the build. In particular, the `remotion-best-practices` router skill re-plans the video and scaffolds a new project; never invoke it for a shot, and read `remotion-markup` files from the standalone `remotion-markup` folder, not from inside the router.
+Every other skill is outside the build, including Lottie, Rive, drei and postprocessing (trial libraries that each need a determinism probe first, D65). In particular, the `remotion-best-practices` router skill re-plans the video and scaffolds a new project; never invoke it for a shot, and read `remotion-markup` files from the standalone `remotion-markup` folder, not from inside the router.

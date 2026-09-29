@@ -1,0 +1,23 @@
+{
+  "version": "0",
+  "meta": {"title": "Technique stack", "logline": "Pinned local 3D, GSAP plugins and seeded noise in both engines.", "genre": null, "formats": {"primary": "16:9", "extra": []}, "fps": 30, "durationFrames": 18,
+    "layouts": {
+      "16:9": {"canvas": {"width": 160, "height": 90}, "safe": {"x": 16, "y": 9, "width": 128, "height": 72}, "overlay": null}
+    }},
+  "look": {"id": null, "styleBible": null, "axes": {}, "tasteSnapshot": null},
+  "audio": {"track": null, "grid": null, "bpm": null, "beatFrames": [], "downbeatFrames": [], "dropFrames": [], "confidence": null},
+  "voice": null,
+  "shots": [
+    {"id": "hf3d", "startFrame": 0, "endFrame": 6, "engine": "hyperframes", "entrypoint": "shots/hf3d/index.html", "description": "A lit solid turns behind a SplitText title while two blocks swap places with Flip", "camera": "custom:slow push", "entry": "cut", "exit": "cut", "assets": [], "soundCues": [], "stillFrames": [0, 5], "protected": [], "threeD": {"reason": "the solid is the product object the film orbits"}},
+    {"id": "r3d", "startFrame": 6, "endFrame": 12, "engine": "remotion", "entrypoint": "Shot", "description": "The same solid turns in a three canvas", "camera": "custom:locked", "entry": "cut", "exit": "cut", "assets": [], "soundCues": [], "stillFrames": [0, 5], "protected": [], "thread": {"kind": "shape-match-thread", "shared": "the turning solid"}, "threeD": {"reason": "the solid is the product object the film orbits"}},
+    {"id": "rnoise", "startFrame": 12, "endFrame": 18, "engine": "remotion", "entrypoint": "Shot", "description": "Warm dots drift on seeded noise", "camera": "custom:locked", "entry": "cut", "exit": "cut", "assets": [], "soundCues": [], "stillFrames": [0, 5], "protected": [], "thread": {"kind": "light-thread", "shared": "the warm red of the solid"}}
+  ],
+  "gates": [
+    {"id": "G1", "state": "pending", "inputHashes": {}, "decision": null, "notes": [], "rounds": 0},
+    {"id": "G2", "state": "pending", "inputHashes": {}, "decision": null, "notes": [], "rounds": 0},
+    {"id": "G3", "state": "pending", "inputHashes": {}, "decision": null, "notes": [], "rounds": 0},
+    {"id": "G4", "state": "pending", "inputHashes": {}, "decision": null, "notes": [], "rounds": 0},
+    {"id": "G5", "state": "pending", "inputHashes": {}, "decision": null, "notes": [], "rounds": 0}
+  ],
+  "critique": []
+}

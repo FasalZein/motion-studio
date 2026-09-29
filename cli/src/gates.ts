@@ -4,7 +4,8 @@ import {createHash} from 'node:crypto';
 import {dirname, isAbsolute, join, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import AjvModule from 'ajv';
-import {CliError, gateIds, writeStoryboard, type Gate, type GateId, type GateState, type Project} from './project.js';
+import {CliError, gateIds, writeStoryboard, type Gate, type GateId, type GateState, type Project, type Waivable} from './project.js';
+import {livenessRefusals} from './liveness.js';
 
 /** Note rounds allowed per gate before the user must accept, rescope or stop. */
 export const noteRounds = 3;
@@ -207,8 +208,10 @@ async function freeze(project:Project, id:GateId, hashes:Record<string,string>, 
 /**
  * Records one decision on a gate, bound to the hashes of its current inputs.
  * Every earlier gate must be approved and not stale. A note or rescope resets every later gate that is not pending.
+ * G4 approval needs a current passing liveness report for every chosen format, unless `waive` names the check and a
+ * note gives the reason (D60); the gate record keeps the waiver.
  */
-export async function recordGate(project:Project, id:GateId, decision:Decision, notes:string[]):Promise<string[]> {
+export async function recordGate(project:Project, id:GateId, decision:Decision, notes:string[], waive?:Waivable):Promise<string[]> {
   const views = await gateViews(project);
   const order = (g:GateId) => gateIds.indexOf(g);
   // Every gate needs exactly one record; a missing earlier record would let a later gate skip it.
@@ -218,6 +221,12 @@ export async function recordGate(project:Project, id:GateId, decision:Decision, 
   const earlier = views.find(v => order(v.gate.id) < order(id) && v.state !== 'approved');
   if (earlier) throw new CliError(`cannot record ${id}: ${earlier.gate.id} is not approved (${earlier.state}${earlier.reason ? `: ${earlier.reason}` : ''}); approve ${earlier.gate.id} first`);
   if (decision !== 'approve' && !notes.length) throw new CliError(`${decision} needs at least one --note`);
+  if (waive && (id !== 'G4' || decision !== 'approve')) throw new CliError(`--waive ${waive} applies only to G4 approve`);
+  if (waive && !notes.length) throw new CliError(`--waive ${waive} needs a --note with the reason`);
+  if (id === 'G4' && decision === 'approve' && !waive) {
+    const refusals = await livenessRefusals(project);
+    if (refusals.length) throw new CliError(`cannot approve G4: ${refusals.join('; ')}; run motion-studio liveness ${project.root}, or approve with --waive liveness --note <reason>`);
+  }
   const gate = view.gate;
   if (decision === 'changes' && gate.rounds >= noteRounds) throw new CliError(`${id} used ${gate.rounds} of ${noteRounds} note rounds; approve to accept, rescope or stop`);
   const files = await filmFiles(project.root);
@@ -229,12 +238,16 @@ export async function recordGate(project:Project, id:GateId, decision:Decision, 
   const effective = new Map(views.map(v => [v.gate,v.state]));
   const state:Record<Decision,GateState> = {approve:'approved', changes:'changes', rescope:'pending'};
   const gates:Gate[] = project.storyboard.gates.map(g => {
-    if (g === gate) return {...g, state:state[decision], inputHashes:hashes, decision, notes:[...g.notes,...notes],
-      rounds:decision === 'changes' ? g.rounds+1 : decision === 'rescope' ? 0 : g.rounds};
+    // A waiver belongs to the one approval that records it; any later decision drops it.
+    if (g === gate) {
+      const {waiver:_, ...rest} = g;
+      return {...rest, state:state[decision], inputHashes:hashes, decision, notes:[...g.notes,...notes],
+        rounds:decision === 'changes' ? g.rounds+1 : decision === 'rescope' ? 0 : g.rounds, ...(waive ? {waiver:{check:waive, reason:notes.join('\n')}} : {})};
+    }
     const current = effective.get(g) ?? g.state;
     return {...g, state:decision !== 'approve' && order(g.id) > order(id) && current !== 'pending' ? 'stale' : current};
   });
 
   await writeStoryboard(project.root,{...project.storyboard, gates});
-  return [`recorded ${id} ${decision}: ${Object.keys(hashes).length} inputs, revision ${revisionId(hashes)}`, ...(frozen ? [`frozen stills: ${frozen}`] : [])];
+  return [`recorded ${id} ${decision}: ${Object.keys(hashes).length} inputs, revision ${revisionId(hashes)}`, ...(waive ? [`waived: ${waive}`] : []), ...(frozen ? [`frozen stills: ${frozen}`] : [])];
 }

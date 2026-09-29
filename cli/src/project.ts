@@ -14,6 +14,7 @@ export type Shot = {
   id:string; startFrame:number; endFrame:number; engine:Engine; entrypoint:string; description:string; camera:string;
   entry:'cut'|'handoff'; exit:'cut'|'handoff'; transition?:string; offBeatCut?:string; assets:string[];
   thread?:Thread; // required on every shot after the first; validate checks it (D64)
+  threeD?:{reason:string}; // the board's 3D declaration (D65); validate requires it for three.js imports (D66)
   reveals?:Reveal[]; // spoken reveals, checked against the word timings
   soundCues:{asset:string; eventFrame:number; peakOffsetFrames:number; gainDb?:number}[];
   stillFrames:number[]; protected:{id:string; bounds:string; heldFrames:number[]}[]; // bounds: 'measured' or a declared-geometry file
@@ -30,7 +31,9 @@ export type FrameSpan = {start:number; frames:number};
 export type Rect = {x:number; y:number; width:number; height:number};
 /** Layout inputs of one format. Both engines receive the same values (Remotion as props, HyperFrames as variables). */
 export type Layout = {canvas:{width:number; height:number}; safe:Rect; overlay:string|null};
-export type Gate = {id:GateId; state:GateState; inputHashes:Record<string,string>; decision:string|null; notes:string[]; rounds:number};
+/** A check the director may waive at a gate with a written reason (D60). */
+export type Waivable = 'liveness';
+export type Gate = {id:GateId; state:GateState; inputHashes:Record<string,string>; decision:string|null; notes:string[]; rounds:number; waiver?:{check:Waivable; reason:string}};
 export type Storyboard = {
   version:'0';
   meta:{title:string; logline:string; genre:string|null; formats:{primary:Format; extra:Format[]}; fps:Fps; durationFrames:number; layouts:Partial<Record<Format,Layout>>};

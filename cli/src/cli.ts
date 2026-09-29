@@ -6,7 +6,8 @@ import {join, resolve} from 'node:path';
 
 import {chosenFormats, CliError, gateIds, initProject, layoutOf, parseProject, type Format, type Project, type Shot} from './project.js';
 import {checkProject, validateProject} from './validate.js';
-import {framePngs, remotionBundle, renderHyperframesFrames, renderRemotionFrames} from './engines.js';
+import {repro} from './repro.js';
+import {framePngs, glBackend, hyperframesGpu, remotionBundle, renderHyperframesFrames, renderRemotionFrames} from './engines.js';
 import {safezone, safezoneArgs} from './safezone.js';
 import {statusLines} from './status.js';
 import {decisions, gateViews, recordGate} from './gates.js';
@@ -22,6 +23,7 @@ import {animatic} from './animatic.js';
 import {clearSheetOutputs, sheet} from './sheet.js';
 import {outputsOf, type Outputs} from './outputs.js';
 import {scanFile, scanFilm} from './scan.js';
+import {livenessFilm, livenessLines, livenessVideo} from './liveness.js';
 import {taste} from './taste.js';
 import {styleBible} from './stylebible.js';
 import {requireOpaque} from './opaque.js';
@@ -98,7 +100,7 @@ async function renderShot(shot:Shot, project:Project, format:Format, output:stri
     await verify(output,frameCount,fps,width,height);
   } finally {await rm(temp,{recursive:true,force:true});}
 }
-const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>] | animatic <film-dir> | sheet <film-dir> [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] [--shots <id,...>] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | beatmap <film-dir> | assets <film-dir> <list|add|resolve> ... | scan <film-dir> [format] | scan <video-file> [--report <file.json>] | packet <film-dir> [format] | packet <video-file> --out <dir> | calibrate <scores.json> <bands.json> | taste <show|g1|notes|accept> ... | style-bible <style-bible.md> [--reference <source>]...';
+const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... [--waive liveness] | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>] | animatic <film-dir> | sheet <film-dir> [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] [--shots <id,...>] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | beatmap <film-dir> | assets <film-dir> <list|add|resolve> ... | scan <film-dir> [format] | scan <video-file> [--report <file.json>] | liveness <film-dir> [format] | liveness <video-file> [--report <file.json>] | packet <film-dir> [format] | packet <video-file> --out <dir> | calibrate <scores.json> <bands.json> | repro <film-dir> <shot-id> [format] | taste <show|g1|notes|accept> ... | style-bible <style-bible.md> [--reference <source>]...';
 /** The formats a command works on: one named chosen format, or every chosen format when none is named. */
 function selectFormats(project:Project, named:string|undefined):Format[] {
   const formats = chosenFormats(project.storyboard.meta);
@@ -118,7 +120,7 @@ async function renderFormat(project:Project, out:Outputs) {
     for (const shot of shots) await renderShot(shot,project,format,join(staging,`${shot.id}.mkv`));
     await mkdir(out.shots,{recursive:true});
     for (const shot of shots) await rename(join(staging,`${shot.id}.mkv`),out.clip(shot.id));
-    await writeFile(out.marker, JSON.stringify({format, shots:shots.map(s => ({id:s.id, startFrame:s.startFrame, endFrame:s.endFrame}))}));
+    await writeFile(out.marker, JSON.stringify({format, renderer:{remotionGl:glBackend, hyperframesGpu}, shots:shots.map(s => ({id:s.id, startFrame:s.startFrame, endFrame:s.endFrame}))}));
   } finally {await rm(staging,{recursive:true,force:true});}
 }
 /** Captures one shot-local frame of one shot (default 0) into renders/<format>/shots/<shot-id>.png. */
@@ -160,7 +162,7 @@ async function main() {
     for (const line of await (action === 'taste' ? taste : styleBible)(process.argv.slice(3))) console.log(line);
     return;
   }
-  if (!['init','validate','status','gate','render','stitch','still','stills','animatic','sheet','handoff','mix','safezone','beats','beatmap','assets','scan','packet','calibrate'].includes(action) || !target) throw new CliError(usage);
+  if (!['init','validate','status','gate','render','stitch','still','stills','animatic','sheet','handoff','mix','safezone','beats','beatmap','assets','scan','packet','calibrate','repro','liveness'].includes(action) || !target) throw new CliError(usage);
   if (action === 'init') {
     console.log(`created ${await initProject(process.cwd(),target)}`);
     return;
@@ -179,6 +181,7 @@ async function main() {
     // Stale gates show in the gate lines, so the error count covers only the structural checks.
     const {errors} = await checkProject(parsed.project,{gates:false});
     for (const line of statusLines(await gateViews(parsed.project))) console.log(line);
+    for (const line of await livenessLines(parsed.project)) console.log(line);
     if (errors.length) console.log(`validation: ${errors.length} error${errors.length === 1 ? '' : 's'}; run motion-studio validate ${target}`);
     return;
   }
@@ -186,7 +189,9 @@ async function main() {
     // A gate records state on an unfinished film, so only the schema must pass; validate and render check the rest.
     const [id,decision,...rest] = process.argv.slice(4);
     const notes:string[] = [];
+    let waive:'liveness'|undefined;
     for (let i=0;i<rest.length;i+=2) {
+      if (rest[i] === '--waive' && rest[i+1] === 'liveness') {waive = 'liveness'; continue;}
       if (rest[i] !== '--note' || !rest[i+1]) throw new CliError(usage);
       notes.push(rest[i+1]);
     }
@@ -195,7 +200,7 @@ async function main() {
     if (!gate || !choice) throw new CliError(usage);
     const parsed = await parseProject(target);
     if (!parsed.ok) {report(parsed.errors,[]); process.exitCode = 1; return;}
-    for (const line of await recordGate(parsed.project,gate,choice,notes)) console.log(line);
+    for (const line of await recordGate(parsed.project,gate,choice,notes,waive)) console.log(line);
     const updated = await parseProject(target);
     if (updated.ok) for (const line of statusLines(await gateViews(updated.project))) console.log(line);
     return;
@@ -234,6 +239,11 @@ async function main() {
     console.log('calibration within bands');
     return;
   }
+  // liveness also measures a lone video file for standalone critique.
+  if (action === 'liveness' && await stat(target).then(s => s.isFile(),() => false)) {
+    if (await livenessVideo(target,process.argv.slice(4),{command,verify})) process.exitCode = 1;
+    return;
+  }
   if (action === 'assets') {
     // Assets come before shots, so assets needs only a schema-valid project.
     const parsed = await parseProject(target);
@@ -244,7 +254,7 @@ async function main() {
   // stills and safezone named to some shots check only those shots' entrypoints: an engine builder checks its own
   // shots while the other engine's shots do not exist yet.
   const zone = action === 'safezone' ? safezoneArgs(process.argv.slice(4)) : undefined;
-  const named = action === 'stills' ? stillsArgs(process.argv.slice(4)).ids : zone?.shots;
+  const named = action === 'stills' ? stillsArgs(process.argv.slice(4)).ids : action === 'repro' ? process.argv.slice(4,5) : zone?.shots;
   const project = await loadProject(target,named?.length ? named : undefined);
   const {root:base, storyboard:{shots, meta}} = project;
   if (!shots.length) throw new CliError('project has no shots');
@@ -281,6 +291,17 @@ async function main() {
   }
   if (action === 'scan') {
     if (await scanFilm(project,selectFormats(project,process.argv[4]),outputs,{command,verify})) process.exitCode = 1;
+    return;
+  }
+  if (action === 'repro') {
+    const [shotId,format,...extra] = process.argv.slice(4);
+    if (!shotId || extra.length) throw new CliError(usage);
+    for (const f of selectFormats(project,format)) console.log(await repro(project,shotId,outputs(f),{command,verify}));
+    return;
+  }
+  if (action === 'liveness') {
+    if (process.argv.length > 5) throw new CliError(usage);
+    if (await livenessFilm(project,selectFormats(project,process.argv[4]),{command,verify})) process.exitCode = 1;
     return;
   }
   if (action === 'safezone') {
