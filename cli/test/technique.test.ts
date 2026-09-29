@@ -38,9 +38,15 @@ test(`${runtime}: validate accepts the declared 3D fixture and rejects each bann
 
   // The CLI-provided vendor/ folder is not an author source: pinned GSAP itself reads clocks, and that must not count.
   await mkdir(join(dir,'shots/hf3d/vendor'));
-  await cp(resolve(here,'../node_modules/gsap/dist/gsap.js'),join(dir,'shots/hf3d/vendor/gsap.js'));
-  expect(await readFile(join(dir,'shots/hf3d/vendor/gsap.js'),'utf8')).toContain('requestAnimationFrame');
+  await cp(resolve(here,'../node_modules/gsap/dist/gsap.min.js'),join(dir,'shots/hf3d/vendor/gsap.min.js'));
+  expect(await readFile(join(dir,'shots/hf3d/vendor/gsap.min.js'),'utf8')).toContain('requestAnimationFrame');
   expect(run('validate',dir).status).toBe(0);
+  // Any other file in vendor/ is author code and is scanned.
+  await writeFile(join(dir,'shots/hf3d/vendor/helper.js'),'export const t = () => Date.now();\n');
+  const hidden = run('validate',dir);
+  expect(hidden.status).toBe(1);
+  expect(hidden.stderr).toContain('shot hf3d: shots/hf3d/vendor/helper.js:1 uses Date.now;');
+  await rm(join(dir,'shots/hf3d/vendor/helper.js'));
 
   const noise = await readFile(join(dir,noiseEntry),'utf8');
   const html = await readFile(join(dir,hfEntry),'utf8');

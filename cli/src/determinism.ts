@@ -12,10 +12,12 @@ import type {Project, Shot} from './project.js';
 
 /** The folder, inside a HyperFrames shot, where the CLI provides the pinned GSAP and three files (see engines.ts). */
 export const vendorDir = 'vendor';
-/** Author source files; media, fonts and the CLI-provided vendor files are not sources. */
+/** The pinned library files the CLI writes into `<shot>/vendor/` (engines.ts `provideVendor`). */
+export const vendorFileNames = ['gsap.min.js','SplitText.min.js','Flip.min.js','MorphSVGPlugin.min.js','DrawSVGPlugin.min.js','MotionPathPlugin.min.js','three.module.min.js','three.core.min.js'];
+/** Author source files; media and fonts are not sources. */
 const sourceExtensions = new Set(['.ts','.tsx','.js','.jsx','.mjs','.cjs','.html','.htm','.css']);
 /** Folders inside a shot that hold dependencies or engine output, not author sources. */
-const skippedDirs = new Set([vendorDir,'node_modules','snapshots','renders','beats','out','outputs','build','dist','coverage']);
+const skippedDirs = new Set(['node_modules','snapshots','renders','beats','out','outputs','build','dist','coverage']);
 
 const banned:{name:string; pattern:RegExp}[] = [
   {name:'useFrame', pattern:/\buseFrame\b/},
@@ -41,14 +43,19 @@ const threeImport:RegExp[] = [
   /["'][^"'\s]*\bthree(?:\.module|\.core|\.webgpu)?(?:\.min)?\.js["']/,
 ];
 
-async function sourceFiles(dir:string):Promise<string[]> {
+/**
+ * Author source files under `dir`. Only the CLI's own files in `<shot>/vendor/` are skipped (pinned GSAP reads
+ * clocks by design); any other file there is author code and is scanned.
+ */
+async function sourceFiles(dir:string, shotDir = dir):Promise<string[]> {
   const entries = await readdir(dir,{withFileTypes:true}).catch(() => []);
   const files:string[] = [];
+  const inVendor = dir === join(shotDir,vendorDir);
   for (const entry of entries) {
     if (entry.name.startsWith('.')) continue;
     const full = join(dir,entry.name);
-    if (entry.isDirectory()) { if (!skippedDirs.has(entry.name)) files.push(...await sourceFiles(full)); }
-    else if (entry.isFile() && sourceExtensions.has(extname(entry.name).toLowerCase())) files.push(full);
+    if (entry.isDirectory()) { if (!skippedDirs.has(entry.name)) files.push(...await sourceFiles(full,shotDir)); }
+    else if (entry.isFile() && sourceExtensions.has(extname(entry.name).toLowerCase()) && !(inVendor && vendorFileNames.includes(entry.name))) files.push(full);
   }
   return files.sort();
 }

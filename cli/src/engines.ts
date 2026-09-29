@@ -7,7 +7,7 @@ import {renderFrames, renderStill, selectComposition} from '@remotion/renderer';
 import {CliError, layoutOf, type Format, type Layout, type Project, type Shot} from './project.js';
 import {remotionEntry} from './validate.js';
 import type {Tools} from './seam.js';
-import {vendorDir} from './determinism.js';
+import {vendorDir, vendorFileNames} from './determinism.js';
 
 const require = createRequire(import.meta.url);
 const hfBin = resolve(dirname(require.resolve('hyperframes/package.json')), 'bin/hyperframes.mjs');
@@ -32,13 +32,10 @@ export const hyperframesGpu = 'auto';
  * the CLI provides in every staged HyperFrames shot as `vendor/<file>` (D65). Shots load them with relative paths,
  * so a render never fetches a library from a CDN.
  */
-const vendorSources:{file:string; from:string}[] = [
-  ...['gsap.min.js','SplitText.min.js','Flip.min.js','MorphSVGPlugin.min.js','DrawSVGPlugin.min.js','MotionPathPlugin.min.js']
-    .map(file => ({file, from:join(dirname(require.resolve('gsap/package.json')),'dist',file)})),
-  // three's package exports hide package.json; its main entry sits in build/ beside the module files.
-  ...['three.module.min.js','three.core.min.js'].map(file => ({file, from:join(dirname(require.resolve('three')),file)})),
-];
-export const vendorFiles = vendorSources.map(v => v.file);
+// three's package exports hide package.json; its main entry sits in build/ beside the module files.
+const vendorSources:{file:string; from:string}[] = vendorFileNames.map(file => ({file, from:file.startsWith('three.')
+  ? join(dirname(require.resolve('three')),file)
+  : join(dirname(require.resolve('gsap/package.json')),'dist',file)}));
 /** Copies the pinned library files into `<shotDir>/vendor/`, replacing any copy the author made. */
 export async function provideVendor(shotDir:string) {
   await mkdir(join(shotDir,vendorDir),{recursive:true});

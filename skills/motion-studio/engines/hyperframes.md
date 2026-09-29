@@ -33,7 +33,7 @@ Use three.js only in a shot whose storyboard entry declares `"threeD": {"reason"
 - Render from timeline time only: tween a state object on the paused timeline and call `renderer.render(scene, camera)` in its `onUpdate`, plus once after the scene is built.
 - Set `data-duration` on the root; the three adapter does not infer the duration.
 - Create the renderer with `preserveDrawingBuffer: true` and call `renderer.setPixelRatio(1)` and `renderer.setSize(canvasWidth, canvasHeight, false)`.
-- Load models and textures from local files before the timeline registers. Seek a GLTF clip with `mixer.setTime(t)`. Skip post passes that read an earlier frame.
+- Load textures from local files before the timeline registers. Build geometry in code: the CLI provides no three addons, so `GLTFLoader` has no local source here; put a GLTF model in a Remotion shot (`@remotion/three`). Skip post passes that read an earlier frame.
 - Completion adds `motion-studio repro films/<slug> <shot-id>`: it renders the shot twice and exits 0 only when every frame hash matches.
 
 ## Fonts
