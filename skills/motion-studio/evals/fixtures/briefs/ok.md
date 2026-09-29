@@ -24,7 +24,7 @@ Formats: primary 16:9; extra 9:16
 Arc: 0-2 s hook on a keypress; 2-6 s the query types over the real launcher capture; 6-10 s results bloom on the drop; 10-13 s extension proof; 13-15 s logo, "Your shortcut to everything" and "Download for Mac". No spoken words.
 </structure>
 
-<build>HyperFrames for captures and kinetic type; Remotion only where the typing behavior needs rebuilt UI. Layout inputs per format for 16:9 and 9:16. No paid generation (default). Deliverables: MP4 per format, poster, contact sheet.</build>
+<build>HyperFrames for captures and kinetic type; Remotion only where the typing behavior needs rebuilt UI, one `<Composition>` per shot. Layout inputs per format for 16:9 and 9:16. No paid generation (default). Deliverables: MP4 per format, poster, contact sheet.</build>
 
 <gotchas>Only the three sourced claims may appear. Logo SVG and font licences are not yet recorded. The 9:16 frame must reframe the wide launcher capture, not crop it.</gotchas>
 

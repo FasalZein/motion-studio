@@ -87,7 +87,9 @@ function field(body, name) {
 function checkUnfilled(text, sec) {
   const sectionTag = new RegExp(`^</?(${SECTIONS.join('|')})>$`);
   text.split('\n').forEach((l, i) => {
-    for (const t of l.match(/<[^<>\n]*>/g) ?? []) if (!sectionTag.test(t)) problems.push(`line ${i + 1}: unfilled template token ${t}`);
+    // Code in backticks (for example a Remotion `<Composition>`) is filled content, not a template token.
+    const prose = l.replace(/`[^`]*`/g, '');
+    for (const t of prose.match(/<[^<>\n]*>/g) ?? []) if (!sectionTag.test(t)) problems.push(`line ${i + 1}: unfilled template token ${t}`);
     for (const t of l.match(/\b(TODO|TBD)\b/g) ?? []) problems.push(`line ${i + 1}: unfilled template token ${t}`);
   });
   if (!existsSync(briefTemplate)) return;
