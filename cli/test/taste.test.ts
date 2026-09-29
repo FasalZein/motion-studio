@@ -205,6 +205,18 @@ test('two taste commands at once keep both notes; a stale lock is removed', asyn
     ok(home,['taste','notes',film,'G2']);
     expect((await profile(home)).notes.map((n:Json) => n.text)).toContain('after the crash');
     expect(await readdir(join(home,'.motion-studio'))).toEqual(['taste.json']);
+    // Two commands that both find the stale lock: only one may remove it, so the other never deletes the fresh lock.
+    for (let round = 0; round < 10; round++) {
+      await rm(join(home,'.motion-studio'),{recursive:true,force:true});
+      await mkdir(join(home,'.motion-studio'),{recursive:true});
+      await writeFile(lock,'99999\n');
+      await utimes(lock,old,old);
+      const runtime = runtimes[round % 2];
+      const results = await Promise.all([start(runtime,home,['taste','notes',film,'G2']),start(runtime,home,['taste','notes',other,'G2'])]);
+      for (const r of results) {expect(r.stderr).toBe(''); expect(r.status).toBe(0);}
+      expect((await profile(home)).notes.map((n:Json) => n.text).sort()).toEqual(['after the crash','note from launch','note from other']);
+      expect(await readdir(join(home,'.motion-studio'))).toEqual(['taste.json']);
+    }
   });
 });
 

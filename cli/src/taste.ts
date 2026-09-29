@@ -84,13 +84,30 @@ async function locked<T>(fn:()=>Promise<T>):Promise<T> {
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
       const age = await stat(lock).then(st => Date.now()-st.mtimeMs,() => 0);
-      if (age > lockStaleMs) {await rm(lock,{force:true}); continue;}
-      if (Date.now()-start > lockWaitMs) throw new CliError(`${lock}: another taste command holds the lock; wait for it, or remove the file if no taste command runs`);
+      if (age > lockStaleMs) {await breakStale(lock); continue;}
+      if (Date.now()-start > lockWaitMs) throw new CliError(`${lock}: another taste command holds the lock; wait for it, or remove the file (and ${lock}.break) if no taste command runs`);
       await new Promise(ok => setTimeout(ok,delay+Math.random()*delay));
     }
   }
   try {return await fn();}
   finally {await rm(lock,{force:true});}
+}
+
+/**
+ * Removes a stale lock while holding a second exclusive file, `<lock>.break`, and checks the age again inside it.
+ * Without the guard, two waiters can both see the stale lock: the first removes it and takes a fresh one, and the
+ * second then removes that fresh lock, so both commands run and one entry is lost. A waiter that finds the guard
+ * taken returns and retries the main lock.
+ */
+async function breakStale(lock:string):Promise<void> {
+  const guard = `${lock}.break`;
+  let handle;
+  try {handle = await open(guard,'wx');}
+  catch (e) {if ((e as NodeJS.ErrnoException).code === 'EEXIST') return; throw e;}
+  try {
+    const age = await stat(lock).then(st => Date.now()-st.mtimeMs,() => 0);
+    if (age > lockStaleMs) await rm(lock,{force:true});
+  } finally {await handle.close(); await rm(guard,{force:true});}
 }
 
 /** Appends an entry unless the same kind, value and note are already in the list, so a rerun adds nothing. */
