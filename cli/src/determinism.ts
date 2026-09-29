@@ -48,7 +48,7 @@ const threeImport:RegExp[] = [
  * Author source files under `dir`. Only the CLI's own files in `<shot>/vendor/` are skipped (pinned GSAP reads
  * clocks by design); any other file there is author code and is scanned.
  */
-async function sourceFiles(dir:string, shotDir = dir):Promise<string[]> {
+export async function sourceFiles(dir:string, shotDir = dir):Promise<string[]> {
   const entries = await readdir(dir,{withFileTypes:true}).catch(() => []);
   const files:string[] = [];
   const inVendor = dir === join(shotDir,vendorDir);
