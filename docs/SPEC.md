@@ -1,6 +1,6 @@
 # motion-studio: specification
 
-Status: approved v2 (2026-09-28). Decision log: `docs/DECISIONS.md` (D0-D38). v2 applies the findings of two independent spec reviews (Astra, Fable).
+Status: approved v2 (2026-09-28), amended 2026-09-29 by the motion amendment `docs/SPEC-motion.md` (world-class motion of any length). Decision log: `docs/DECISIONS.md` (D0-D67). Glossary: `CONTEXT.md`. v2 applies the findings of two independent spec reviews (Astra, Fable).
 
 ## Problem Statement
 
@@ -16,19 +16,20 @@ The user wants a repeatable studio: direction and storyboards first, then a buil
 
 `motion-studio` is a public, MIT-licensed suite of agent skills plus one CLI.
 
-- **Four visible skills:**
+- **Five visible skills:**
   - `motion-studio`: the orchestrator. It holds project state and gates, and it dispatches each phase to a fresh subagent.
   - `motion-critique`: a taste review for any rendered video.
   - `motion-look`: named looks, reference extraction and the taste profile.
   - `motion-vocabulary`: a film and motion-graphics glossary. Each term maps to an engine recipe.
+  - `motion-direction`: the motion craft: idea and world, camera, seam threads, in-betweens, living holds, choreography, and structure for any length (D57).
 - **Internal phase briefs** that only subagents load: brief, assets, board, build-hyperframes, build-remotion and render. The orchestrator never loads engine rules.
 - **One CLI, `motion-studio`.** It is written in TypeScript and published to npm. It wraps Remotion and HyperFrames behind one command set, and it does every deterministic job: state and gates, beat grids, the asset ledger, stills, animatics, contact sheets and glitch flags, handoff checks, stitching, the audio mix, and renders in several formats. The agent does the creative work. The CLI measures, assembles and verifies.
 
 The user works as a director. The agent interviews the user in capped grilling rounds. The user sees real renders at five gates, and each gate shows a different thing:
-1. A look test built with the product's real assets.
-2. The beat map with stills.
-3. An animatic with the entry and exit frame of each shot.
-4. The full pass with its scorecard.
+1. A moving look test for each direction, built with the product's real assets (D61).
+2. The beat map with its seam threads and stills.
+3. A moving animatic of blocking renders on the real track (D62).
+4. The full pass with its scorecard and liveness report (D59, D60).
 5. The delivery check.
 
 A separate reviewer subagent scores the film against the approved stills, the look and the logline. The builder then fixes the three worst issues, and the loop stops when all scores are 8 or more, or after a fixed budget.
@@ -125,15 +126,16 @@ A separate reviewer subagent scores the film against the approved stills, the lo
 - **Phase briefs (internal, subagent-only).** `brief`, `assets` (with hero and fill modes), `board`, `build-hyperframes` and `build-remotion` (each with keyframe and full modes), and `render`. Each brief ends on a completion criterion that the CLI can check.
 - **`motion-look`.** Holds 8 looks as compact data files. Each look has palette and type (citing the nearest HyperFrames frame preset where one exists), a motion signature, two variation axes the agent must set per project, one feasibility line per engine, references, and look-specific additions to the pattern list. It also does reference extraction (frames to a style bible) and owns taste-profile reads and writes.
 - **`motion-critique`.** The reviewer brief, the rubric, the calibration sheets, the evidence packet contract and the output format.
+- **`motion-direction`.** The motion craft skill (D57, D58). The board, the look-test builders, the shot builders and the reviewer load it. Rules are distilled from studio practice and external skills with attribution. See `docs/SPEC-motion.md`.
 - **`motion-vocabulary`.** A self-contained glossary in the style of animation-vocabulary. It has 9 categories: editing, camera, kinetic type, graphic transitions, timing and physics, composition, finishing, audio sync, and interface motion inside a shot. Each term has a one-line definition and its HyperFrames rule or Remotion recipe.
 - **Genre playbooks (all 5, compact data plus guidance).** Each playbook holds its intake questions and defaults, beat templates, genre timing rules (for example reading holds for explainers), the genre evidence required for "message truth", and gotchas. The launch and explainer playbooks get worked examples and evals. The other 3 are marked "untested until used".
 - **Engine contracts.** One short contract per engine covers:
   - Determinism, and the shot entrypoint (the composition or file id).
   - How layout inputs arrive.
-  - Keyframe mode (static poses at named local times) and full mode.
+  - Keyframe mode (static poses at named local times), blocking mode (real timing, camera paths, seams and living holds at placeholder fidelity, D62) and full mode.
   - How protected-element bounds are exported.
   - The render command.
-  - An **allow-list of exact installed files** that the builder may read for API depth. Invoking the `hyperframes` or `remotion-best-practices` router skills is forbidden, because they re-plan or scaffold a new project.
+  - An **allow-list of exact installed files** that the builder may read for API depth, including the files for the distilled motion techniques (D58). Invoking the `hyperframes` or `remotion-best-practices` router skills is forbidden, because they re-plan or scaffold a new project.
 - **CLI.** Written in TypeScript and developed with Bun. The npm package is Node-compatible, and Node 22+ is required because the HyperFrames CLI needs it. The Bun runtime is supported where the packed-CLI render smoke test passes. The CLI uses the Remotion renderer API in-process and the `hyperframes` CLI as a subprocess. Tested engine versions are pinned.
 
 ### Skill descriptions (trigger branches)
@@ -149,16 +151,16 @@ Phases run in this order. Each gate lists what it shows, what a note re-runs, an
 |---|---|---|---|---|
 | 1 | brief (max 3 rounds) | none | none | none |
 | 2 | assets, hero mode: track, logo, type, palette, hero screenshots, voice script if any | none | none | none |
-| 3 | look test: keyframe build of 1 hero still for each of 2-3 candidate looks | **G1: filled brief + look-test stills + style-bible take and do-not-take lines** | brief or look test | G2-G5 |
-| 4 | board: beat map and per-shot description; then keyframe builds per engine; then `stills` | **G2: beat map + one still per beat** | board for named beats only | G3-G5, and G2 only when a beat time changes |
-| 5 | `animatic` | **G3: animatic with entry and exit frame of each shot on the track** | board or keyframes for named shots | G4-G5 |
-| 6 | assets, fill mode (SFX, stock, icons, code and AI assets); full build extends keyframes; critique loop A | **G4: full-pass MP4 + scorecard** | build or board for named shots | G5 |
+| 3 | look test: `looktest` clip and poster for each of 2-3 directions (idea device, world and camera logic, look; D61) | **G1: filled brief + moving look tests + style-bible take and do-not-take lines** | brief or look test | G2-G5 |
+| 4 | board: beat contract, seam threads and per-shot description; then keyframe builds per engine; then `stills` | **G2: beat map with threads + one still per beat** | board for named beats only | G3-G5, and G2 only when a beat time changes |
+| 5 | blocking builds; `render` and `stitch` of the primary format; `animatic` (D62) | **G3: moving animatic on the track, with its liveness report as advice** | board, keyframes or blocking for named shots | G4-G5 |
+| 6 | assets, fill mode (SFX, stock, icons, code and AI assets); full build extends blocking; `liveness`; critique loop A | **G4: full-pass MP4 + scorecard + liveness report; approval refused on a failing report unless waived (D60)** | build or board for named shots | G5 |
 | 7 | polish; `mix`; per-format renders at draft quality; critique loop B on the real deliverables | none | none | none |
 | 8 | license check (D37), then approve the final render cost | **G5: delivery check (poster, contact sheet, safe-zone report, unresolved-license list); "use defaults" allowed** | render only | none |
 | 9 | final render, then user acceptance of the files | acceptance | render only | none |
 
 - **Revision binding.** The CLI hashes each gate's input artifacts: brief, look, beat grid, stills, shot sources, ledger and layout. Approvals and critique results store those hashes. A changed hash marks that gate and every later gate stale. Approved stills and other rendered media shown at a gate are frozen copies, not live paths (D43).
-- **Critique loop.** `scan` runs first, then the reviewer. The budget is 3 loops per revision. When the budget runs out, the orchestrator shows the user the scorecard with the change per loop and three options: accept at the current scores, give notes, or rescope. Loop A scores the full pass. Loop B scores the polished, mixed, per-format drafts.
+- **Critique loop.** `scan` and `liveness` run first, then the reviewer. The budget is 3 loops per revision. When the budget runs out, the orchestrator shows the user the scorecard with the change per loop and three options: accept at the current scores, give notes, or rescope. Loop A scores the full pass. Loop B scores the polished, mixed, per-format drafts.
 - **Taste profile writes:** at G1 (chosen look liked, shown-and-passed looks rejected), at every gate note (the note text tagged with the vocabulary terms it names), and at acceptance (look, signature moves, pacing profile). **Reads:** in the brief phase, for the recommended answers.
 
 ### Project contract
@@ -180,7 +182,7 @@ Phases run in this order. Each gate lists what it shows, what a note re-runs, an
 - **Shot renders are video only**, at the master dimensions of each format, in one lossless intermediate format with BT.709 SDR tags and one pixel format.
 - **Audio has one owner: the master `mix`.** It runs at 48 kHz stereo. Engine-side audio is disabled in shot renders.
 - **Fonts are local pinned files** used by both engines. The engine contracts define how each engine waits until fonts are loaded.
-- **`handoff`** compares shot A's rendered last frame with shot B's rendered first frame after normalization, against a fixed threshold. It then checks a transition strip cut from the stitched master, so encoded color jumps are caught.
+- **`handoff`** compares the frame shot A would show next (A rendered one frame past its end) with shot B's rendered first frame after normalization, against a fixed threshold, so motion continues through the seam (D63). It then checks a transition strip cut from the stitched master, so encoded color jumps are caught.
 
 ### Multi-format layout
 - Each format has canvas width and height, a safe rectangle and an optional platform-overlay preset. The same layout inputs reach Remotion (as props) and HyperFrames (as project data).
@@ -190,14 +192,17 @@ Phases run in this order. Each gate lists what it shows, what a note re-runs, an
 - `init`: create the project folder layout and an empty project file.
 - `doctor`: report Node, ffmpeg, Chromium, both engines, the heygen CLI (>= 0.3.0 and its readiness check) and the image provider. It reports capability; it does not install anything.
 - `status`: show gate states, stale gates and the next step.
-- `validate`: check the schema, cross-references, beat-grid alignment, ledger paths and hashes, and vocabulary terms.
+- `validate`: check the schema, cross-references, beat-grid alignment, ledger paths and hashes, vocabulary terms, seam threads (D64), the 3D declaration and the determinism guard (D66).
 - `beats`: propose a grid with confidence, and accept a corrected or imported grid. Silence or a missing drop gives an explicit result, not a guess.
 - `assets`: add, resolve, import and list ledger entries across all source kinds. A provider failure leaves no partial entry.
 - `stills`: render named shots at shot-local frames through each engine.
-- `animatic`: assemble the frozen stills and the track into an MP4.
+- `animatic`: stitch the current blocking renders of the primary format and mux the real track and narration into the animatic; refuse a shot render older than its source (D62).
+- `looktest`: render a look test from `shots/_look/<look-id>/` in its engine at the primary layout into a clip, a poster still and a liveness report in `stills/G1/` (D61).
+- `liveness`: measure stillness of the stitched master of each chosen format, or of any video file, against the D59 limits; locate each still span by shot and frame; non-zero exit on a failed limit.
+- `repro`: render one shot twice and compare per-frame hashes (D66).
 - `sheet`: make contact sheets (1 frame per second) and per-transition strips.
 - `scan`: frame-difference flags (pop, stutter, hitch, flash, blank, color jump, ghost). It knows the declared cuts, holds and effects. Blank frames (a sudden flat dropout or a fully flat shot, D47), frame-count errors and unintended single-frame pops block. The other flags are advisory evidence for the reviewer.
-- `handoff`: as defined in the media contract.
+- `handoff`: as defined in the media contract. Without handoff seams it exits 0; a named cut seam is refused (D63).
 - `render`: render shots per engine and per format, at draft or final quality.
 - `stitch`: join shot clips on the master timeline and verify the frame count and timestamps.
 - `mix`: place SFX at measured peaks, mix under the track, normalize to -14 LUFS, and write a sync report (SFX-peak-to-event offsets and cut-to-beat offsets in frames, integrated LUFS).
@@ -214,6 +219,7 @@ Phases run in this order. Each gate lists what it shows, what a note re-runs, an
   - the 1-per-second contact sheet;
   - per-transition strips at full frame rate;
   - the `scan` report;
+  - the `liveness` report, the seam threads, and frame strips around each seam and inside each hold (D59, D64);
   - the beat grid and the `mix` sync report;
   - a draft clip, when the harness can read video.
 - **Rubric.** 8 dimensions with genre-neutral 1/5/8/10 anchors. Dimension 6 is "message truth": the visuals explain the stated message and factual claims have sources. Each playbook adds genre evidence: authentic UI for launches, data provenance and truthful encoding for data stories. Film-level dimensions are 1 distinctiveness, 2 continuity and pacing, and 7 sound and sync. Per-shot dimensions are 3 motion quality, 4 restraint, 5 hierarchy and composition, 6 message truth, and 8 technical finish. Dimension 7 is scored from the `mix` sync report: 8 means every hit is within 1 frame and every cut is within 1 frame of a beat. The ledger shows whether each SFX is real.
@@ -239,7 +245,7 @@ Phases run in this order. Each gate lists what it shows, what a note re-runs, an
 - **Normal mode:** each phase and the reviewer run in fresh subagents. The orchestrator receives compact summaries and report paths only.
 - **Degraded mode** (no subagent tool): phases run inline in sequence, and state passes through files. The review is labeled non-independent until the user reviews it or a fresh session re-runs it.
 - **Requirements:** Node 22+, ffmpeg and Chromium are required. HeyGen catalog features need the heygen CLI to be ready. Without it, the assets phase uses the other sources and records the gap. It never starts paid generation without consent.
-- **Repository and publication.** The public repo is `FasalZein/motion-studio` under MIT. `docs/SPEC.md` is the source of truth, and one tracking issue parents the ticket issues. The 4 skills are installable skill roots, and each bundles its internal briefs, contracts, rubric, calibration sheets, looks, playbooks and glossary inside the repo. Nothing depends on files outside the repo or on optional engine skills. Installation targets are `~/.agents/skills` (pi) and `~/.claude/skills` (Claude Code).
+- **Repository and publication.** The public repo is `FasalZein/motion-studio` under MIT. `docs/SPEC.md` is the source of truth, and one tracking issue parents the ticket issues. The 5 skills are installable skill roots, and each bundles its internal briefs, contracts, rubric, calibration sheets, looks, playbooks and glossary inside the repo. Nothing depends on files outside the repo or on optional engine skills. Installation targets are `~/.agents/skills` (pi) and `~/.claude/skills` (Claude Code).
 - **Licensing and attribution.** Content copied from other projects comes only from MIT or Apache-2.0 sources, with attribution. Unlicensed repos are reference only. The README states the Remotion company-license requirement.
 
 ### Delivery order
@@ -256,7 +262,8 @@ Phases run in this order. Each gate lists what it shows, what a note re-runs, an
   - **Real two-engine fixture:** the delivery-order-1 proof. Check frame count, timestamps, continuity across the handoff, detection of the mismatch, and SFX peak placement at the seam, in every format.
   - **beats:** a click track with known BPM, a music track, silence, music with no drop, ambiguous meter, and a manually corrected grid.
   - **scan:** paired clips for each flag (pop, stutter, flash, blank, color jump, ghost) against counterexamples (clean hard cut, intentional hold, fast motion blur).
-  - **handoff:** a matching pair, a mismatched pair, and an encoded color jump in the stitched strip.
+  - **handoff:** a matching pair, a mismatched pair, motion at constant velocity through the seam, a velocity jump, and an encoded color jump in the stitched strip.
+  - **liveness:** synthetic videos with known still spans on both sides of each limit, content-basis exclusions, the 90 s rule, and the G4 refusal and waiver (docs/SPEC-motion.md).
   - **safezone:** landscape, portrait and square layouts in both engines, with text wrapping, full-bleed art, and protected text outside the safe zone.
   - **mix:** loudness at -14 LUFS within tolerance, and the offsets in the sync report.
   - **validate:** each invalid project kind (missing engine, asset not in the ledger, off-grid shot, gap or overlap, stale hash) is rejected with a clear message; an unknown vocabulary term gets a warning (D56).
