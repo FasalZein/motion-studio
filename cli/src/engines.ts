@@ -58,8 +58,12 @@ export const hyperframesVariables = (format:Format, {canvas,safe,overlay}:Layout
  */
 const hideCss = (id:string) => `[data-protected="${id}"]{opacity:0 !important}`;
 
-/** Options for one engine render into a folder of numbered PNGs, one per shot-local frame. */
-export type FrameRender = {format:Format; framesDir:string; hide?:string};
+/**
+ * Options for one engine render into a folder of numbered PNGs, one per shot-local frame. `pastEnd` renders one
+ * frame more than the shot has: the frame the shot would show next, which `handoff` compares with the next shot's
+ * first frame (D63).
+ */
+export type FrameRender = {format:Format; framesDir:string; hide?:string; pastEnd?:boolean};
 
 /**
  * A Remotion bundle for one shot. `withHide` wraps the author's entry so that the input prop
@@ -111,12 +115,27 @@ export async function renderRemotionStills(project:Project, shot:Shot, serveUrl:
 }
 
 /**
+ * Renders the frame a Remotion shot would show next, one frame past its end, as a PNG (D63), and the shot's last frame
+ * from the same longer render. The selected composition is passed to the renderer with one more frame, so the
+ * component renders `useCurrentFrame() === length` from the same code; the author's composition is unchanged. The
+ * longer composition also reports the longer `durationInFrames` to the component, so the caller checks that the
+ * last frame is unchanged by it.
+ */
+export async function renderRemotionNextFrame(project:Project, shot:Shot, serveUrl:string, format:Format, next:string, last:string) {
+  const {composition,inputProps} = await shotComposition(project,shot,serveUrl,format);
+  const length = composition.durationInFrames;
+  const longer = {...composition,durationInFrames:length+1};
+  await renderStill({serveUrl,composition:longer,inputProps,chromiumOptions,frame:length,output:next,imageFormat:'png'});
+  await renderStill({serveUrl,composition:longer,inputProps,chromiumOptions,frame:length-1,output:last,imageFormat:'png'});
+}
+
+/**
  * Renders a HyperFrames shot for one format. The CLI stages a copy of `shots/<id>/` beside it,
  * sets the root's data-width and data-height to the format canvas, and passes the layout as variables.
  * The copy keeps the folder depth, so relative paths such as ../../assets still resolve. The CLI adds the pinned
  * GSAP and three files to the copy's `vendor/` folder.
  */
-export async function renderHyperframesFrames(project:Project, shot:Shot, tools:Tools, {format,framesDir,hide}:FrameRender) {
+export async function renderHyperframesFrames(project:Project, shot:Shot, tools:Tools, {format,framesDir,hide,pastEnd}:FrameRender) {
   const {root,storyboard} = project;
   const layout = layoutOf(storyboard,format);
   const shotDir = join(root,'shots',shot.id);
@@ -129,7 +148,13 @@ export async function renderHyperframesFrames(project:Project, shot:Shot, tools:
     let html = await readFile(entry,'utf8');
     const rootTag = /<[a-zA-Z][^>]*\bdata-composition-id\s*=[^>]*>/.exec(html);
     if (!rootTag || !/\bdata-width\s*=\s*"\d+"/.test(rootTag[0]) || !/\bdata-height\s*=\s*"\d+"/.test(rootTag[0])) throw new CliError(`HyperFrames root needs data-composition-id, data-width and data-height: ${shot.entrypoint}`);
-    const sized = rootTag[0].replace(/\bdata-width\s*=\s*"\d+"/,`data-width="${layout.canvas.width}"`).replace(/\bdata-height\s*=\s*"\d+"/,`data-height="${layout.canvas.height}"`);
+    let sized = rootTag[0].replace(/\bdata-width\s*=\s*"\d+"/,`data-width="${layout.canvas.width}"`).replace(/\bdata-height\s*=\s*"\d+"/,`data-height="${layout.canvas.height}"`);
+    // HyperFrames renders as many frames as the root's data-duration holds, so one more frame of duration renders the
+    // frame past the end. Clips inside keep their own data-start and data-duration.
+    if (pastEnd) {
+      const duration = `data-duration="${(shot.endFrame-shot.startFrame+1)/storyboard.meta.fps}"`;
+      sized = /\bdata-duration\s*=\s*"[^"]*"/.test(sized) ? sized.replace(/\bdata-duration\s*=\s*"[^"]*"/,duration) : sized.replace(/>$/,` ${duration}>`);
+    }
     html = html.slice(0,rootTag.index) + sized + html.slice(rootTag.index + rootTag[0].length);
     if (hide) html = html.includes('</head>') ? html.replace('</head>',`<style>${hideCss(hide)}</style></head>`) : `<style>${hideCss(hide)}</style>` + html;
     await writeFile(entry,html);

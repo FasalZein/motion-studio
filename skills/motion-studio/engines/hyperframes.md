@@ -36,6 +36,10 @@ Use three.js only in a shot whose storyboard entry declares `"threeD": {"reason"
 - Load textures from local files before the timeline registers. Build geometry in code: the CLI provides no three addons, so `GLTFLoader` has no local source here; put a GLTF model in a Remotion shot (`@remotion/three`). Skip post passes that read an earlier frame.
 - Completion adds `motion-studio repro films/<slug> <shot-id>`: it renders the shot twice and exits 0 only when every frame hash matches.
 
+## Handoff seams
+
+At a seam declared `handoff`, motion continues through the seam (D63). Shot A's motion continues one frame past its end, and that frame equals shot B's first frame; B then moves on at the same velocity. `motion-studio handoff` renders that frame: it sets the staged root's `data-duration` one frame longer (`(length + 1) / fps`) and keeps the last rendered frame. Keep every tween, seek function and clip that carries an element across the seam running past the shot's end: a clip whose `data-start` + `data-duration` ends at the shot end is hidden in that frame, so give it a `data-duration` that reaches past the end. Time tweens in seconds from the timeline start, not from the root's `data-duration`: `handoff` fails the seam as `duration-dependent` when the longer render's last frame differs from the clip's. When this shot is B, its frame 0 is the pose and motion step the previous shot shows one frame past its end.
+
 ## Fonts
 
 Load pinned local font files with `@font-face` (a path relative to the shot, for example `url('Inter.ttf')`), and build the timeline inside `document.fonts.ready`. In each still, check the font family and the actual glyph shapes: a fallback font shows as different letterforms and line breaks.

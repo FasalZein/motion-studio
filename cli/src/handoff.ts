@@ -1,18 +1,21 @@
-import {mkdtemp, readdir, readFile, rm, writeFile} from 'node:fs/promises';
+import {mkdir, mkdtemp, readdir, readFile, rm, writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
-import {CliError, layoutOf, type Project, type Shot} from './project.js';
+import {CliError, layoutOf, type Format, type Project, type Shot} from './project.js';
 import {isHandoffOutput, requireMaster, round3, type Tools} from './seam.js';
 import type {Outputs} from './outputs.js';
+import {remotionBundle, renderHyperframesFrames, renderRemotionNextFrame} from './engines.js';
+import {requireOpaque} from './opaque.js';
 
-// A handoff compares shot A's last frame with shot B's first frame for identity, so the moving
-// element must land on a still pose at the seam. One frame of motion (about 2 px at 320x180) already
-// exceeds the structure limit.
+// A handoff lets motion continue through the seam (D63). It compares shot B's first frame with the frame shot A
+// would show next: A rendered one frame past its end, in A's engine, at the format's layout inputs. That frame
+// equals B's first frame only when both pose and velocity carry across the seam; an element that stops at the seam
+// (B starts at A's last pose while A still moves) fails.
 //
 // Normalization: every frame is decoded through its own color tags to RGB and area-averaged onto a
 // fixed GRID x GRID cell grid, whatever the format. The grid hides sub-pixel rasterization
 // differences between the two engines.
 const GRID = 32;
-// Two fixed thresholds for the A-last / B-first pair, each from 0 (same) to 1:
+// Two fixed thresholds for the A-next / B-first pair, each from 0 (same) to 1:
 // - structure: the worst cell's mean absolute RGB difference. Measured on the 320x180 fixtures:
 //   matching two-engine handoff 0.077 (text rasterization), one-digit text change 0.184,
 //   text cut 0.272, 12 px slide 0.316.
@@ -23,7 +26,7 @@ const GRID = 32;
 export const THRESHOLDS = {structure:0.15, color:0.02};
 type Difference = {structure:number; color:number};
 type Frame = {cells:Buffer; raw:Buffer};
-type Status = 'match'|'mismatch'|'encoded-color-jump';
+type Status = 'match'|'mismatch'|'encoded-color-jump'|'duration-dependent';
 
 /** Decodes frame `index` once: the normalized cell grid and the full frame in its stored yuv444p form. */
 async function decode(tools:Tools, file:string, index:number, fps:number, size:number, out:string):Promise<Frame> {
@@ -48,30 +51,82 @@ function difference(a:Buffer, b:Buffer):Difference {
 const exceeds = (d:Difference) => d.structure > THRESHOLDS.structure || d.color > THRESHOLDS.color;
 const describe = (d:Difference) => `structure ${d.structure}, color ${d.color} (limits ${THRESHOLDS.structure}, ${THRESHOLDS.color})`;
 
-/** The seams to check: an explicit adjacent pair, or every seam declared `exit: handoff`. */
-function seams(shots:Shot[], pair:string[]):[Shot,Shot][] {
+/**
+ * The seams to check: an explicit adjacent pair, which must be a declared handoff, or every seam declared
+ * `exit: handoff` (none is a valid answer).
+ */
+export function handoffSeams(shots:Shot[], pair:string[]):[Shot,Shot][] {
   if (pair.length) {
     const [from,to] = pair.map(id => shots.find(s => s.id === id));
     if (pair.length !== 2 || !from || !to) throw new CliError('usage: motion-studio handoff <film-dir> [<shot-a> <shot-b>]');
     if (from.endFrame !== to.startFrame) throw new CliError(`shot ${to.id} does not directly follow shot ${from.id}`);
+    if (from.exit !== 'handoff') throw new CliError(`seam ${from.id} -> ${to.id} is a declared cut, not a handoff; handoff checks only seams declared exit: handoff`);
     return [[from,to]];
   }
-  const declared = shots.slice(0,-1).flatMap((shot,i):[Shot,Shot][] => shot.exit === 'handoff' ? [[shot,shots[i+1]]] : []);
-  if (!declared.length) throw new CliError('no handoff seams declared (exit: handoff); name a pair: motion-studio handoff <film-dir> <shot-a> <shot-b>');
-  return declared;
+  return shots.slice(0,-1).flatMap((shot,i):[Shot,Shot][] => shot.exit === 'handoff' ? [[shot,shots[i+1]]] : []);
 }
 
 /**
- * Checks each seam of one format, writes `handoff-<a>-<b>.json` and `.png` per seam, prints one line per
+ * Renders the frame `shot` would show next (one frame past its end) in its own engine and format, plus its last frame
+ * from the same one-frame-longer render, and stores each as a one-frame clip encoded exactly like a shot clip, so they
+ * decode through the same color path as the clip frames they are compared with. Remotion bundles are cached in
+ * `bundles` across formats.
+ */
+async function renderNextFrame(project:Project, shot:Shot, format:Format, output:{next:string; last:string}, scratch:string, tools:Tools, bundles:Map<string,Promise<{serveUrl:string; dispose:() => Promise<void>}>>) {
+  const dir = await mkdtemp(join(scratch,'next-'));
+  const length = shot.endFrame-shot.startFrame;
+  let png = join(dir,'next.png'), lastPng = join(dir,'last.png');
+  if (shot.engine === 'remotion') {
+    if (!bundles.has(shot.id)) bundles.set(shot.id,remotionBundle(project,shot,false));
+    await renderRemotionNextFrame(project,shot,(await bundles.get(shot.id)!).serveUrl,format,png,lastPng);
+  } else {
+    const framesDir = join(dir,'frames');
+    await mkdir(framesDir);
+    await renderHyperframesFrames(project,shot,tools,{format,framesDir,pastEnd:true});
+    const pngs = (await readdir(framesDir)).filter(f => f.endsWith('.png')).sort();
+    if (pngs.length !== length+1) throw new CliError(`rendered frame count mismatch: ${shot.id} one frame past its end got ${pngs.length} frames, expected ${length+1}`);
+    png = join(framesDir,pngs[length]);
+    lastPng = join(framesDir,pngs[length-1]);
+  }
+  await requireOpaque(tools,shot,format,[{frame:length, png},{frame:length-1, png:lastPng}],dir);
+  for (const [file,clip] of [[png,output.next],[lastPng,output.last]]) {
+    await tools.command('ffmpeg',['-hide_banner','-loglevel','error','-y','-i',file,'-frames:v','1','-an','-vf','setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709','-c:v','ffv1','-level','3','-pix_fmt','yuv444p','-colorspace','bt709','-color_trc','bt709','-color_primaries','bt709',clip]);
+  }
+}
+
+/**
+ * `handoff <film-dir> [<shot-a> <shot-b>] [format]` over the selected formats. Returns the lines to print; throws one
+ * error listing every failing seam of every format. A film without handoff seams needs no check and no render.
+ */
+export async function handoffFilm(project:Project, outs:Outputs[], pair:string[], tools:Tools):Promise<string[]> {
+  const selected = handoffSeams(project.storyboard.shots,pair);
+  if (!selected.length) return ['no handoff seams; nothing to check'];
+  const bundles = new Map<string,Promise<{serveUrl:string; dispose:() => Promise<void>}>>();
+  const lines:string[] = [], failures:string[] = [];
+  try {
+    // Each format renders at its own canvas, so a seam can pass in one format and fail in another: check every format.
+    for (const out of outs) {
+      try {lines.push(...await handoff(project,out,selected,pair.length > 0,tools,bundles));}
+      catch (e) {if (!(e instanceof CliError)) throw e; failures.push(e.message);}
+    }
+  } finally {for (const bundle of bundles.values()) await bundle.then(b => b.dispose(),() => {});}
+  if (failures.length) {
+    for (const line of lines) console.log(line);
+    throw new CliError(failures.join('\nerror: '));
+  }
+  return lines;
+}
+
+/**
+ * Checks each seam of one format, writes `handoff-<a>-<b>.json` and `.png` per seam, returns one line per
  * passing seam and fails with one line per failing seam.
  */
-export async function handoff(project:Project, out:Outputs, pair:string[], tools:Tools):Promise<void> {
-  const {shots,meta:{fps}} = project.storyboard;
+async function handoff(project:Project, out:Outputs, selected:[Shot,Shot][], named:boolean, tools:Tools, bundles:Map<string,Promise<{serveUrl:string; dispose:() => Promise<void>}>>):Promise<string[]> {
+  const {meta:{fps}} = project.storyboard;
   const {width,height} = layoutOf(project.storyboard,out.format).canvas;
   const output = out.dir;
-  const selected = seams(shots,pair);
   // Old reports must never survive a failed run: checking every seam clears every report.
-  const stale = pair.length ? selected.map(([a,b]) => `handoff-${a.id}-${b.id}`).flatMap(n => [`${n}.json`,`${n}.png`]) : (await readdir(output).catch(() => [] as string[])).filter(isHandoffOutput);
+  const stale = named ? selected.map(([a,b]) => `handoff-${a.id}-${b.id}`).flatMap(n => [`${n}.json`,`${n}.png`]) : (await readdir(output).catch(() => [] as string[])).filter(isHandoffOutput);
   for (const file of stale) await rm(join(output,file),{force:true});
   const master = await requireMaster(project,out,tools);
   const size = width*height*3;
@@ -81,24 +136,42 @@ export async function handoff(project:Project, out:Outputs, pair:string[], tools
     for (const [from,to] of selected) {
       for (const shot of [from,to]) await tools.verify(out.clip(shot.id),shot.endFrame-shot.startFrame,fps,width,height);
       const cut = to.startFrame;
+      const clips = {next:join(temp,'next.mkv'), last:join(temp,'longer-last.mkv')};
+      await renderNextFrame(project,from,out.format,clips,temp,tools,bundles);
+      const next = await decode(tools,clips.next,0,fps,size,join(temp,'next'));
       const last = await decode(tools,out.clip(from.id),from.endFrame-from.startFrame-1,fps,size,join(temp,'last'));
+      // The render one frame longer must repeat A's last clip frame exactly. When it does not, A's motion depends on its
+      // own duration (for example interpolate over [0, durationInFrames]), so the frame past its end is not what A would
+      // show next and the pair comparison would be meaningless.
+      const longerLast = await decode(tools,clips.last,0,fps,size,join(temp,'longer-last'));
+      const durationIndependent = longerLast.raw.equals(last.raw);
+      const lastDrift = difference(longerLast.cells,last.cells);
       const first = await decode(tools,out.clip(to.id),0,fps,size,join(temp,'first'));
       const before = await decode(tools,master,cut-1,fps,size,join(temp,'before'));
       const after = await decode(tools,master,cut,fps,size,join(temp,'after'));
-      const pairDifference = difference(last.cells,first.cells);
-      const acrossCut = difference(before.cells,after.cells);
+      const pairDifference = difference(next.cells,first.cells);
+      // The pair limits also apply across the cut in the master. Motion continues through the seam, so the master frame
+      // at the cut is held against A's next frame, not against the master frame before it.
+      const nextVsMasterAtCut = difference(next.cells,after.cells);
       // Stitch stream-copies lossless clips, so a master frame must equal its shot frame exactly.
       const identicalToShots = [before.raw.equals(last.raw),after.raw.equals(first.raw)];
-      const status:Status = exceeds(pairDifference) ? 'mismatch' : identicalToShots.includes(false) || exceeds(acrossCut) ? 'encoded-color-jump' : 'match';
+      const status:Status = !durationIndependent ? 'duration-dependent' : exceeds(pairDifference) ? 'mismatch' : identicalToShots.includes(false) || exceeds(nextVsMasterAtCut) ? 'encoded-color-jump' : 'match';
       const name = `handoff-${from.id}-${to.id}`;
       // The strip image lets the creator inspect the two master frames at the cut.
       await tools.command('ffmpeg',['-hide_banner','-loglevel','error','-y','-ss',String((cut-1.25 > 0 ? cut-1.25 : 0)/fps),'-i',master,'-vf','tile=2x1','-frames:v','1',join(output,`${name}.png`)]);
-      await writeFile(join(output,`${name}.json`),JSON.stringify({from:from.id,to:to.id,cutFrame:cut,declared:from.exit === 'handoff',thresholds:THRESHOLDS,pair:pairDifference,strip:{frames:[cut-1,cut],acrossCut,identicalToShots},status},null,2)+'\n');
+      await writeFile(join(output,`${name}.json`),JSON.stringify({from:from.id,to:to.id,cutFrame:cut,thresholds:THRESHOLDS,pair:{frames:{from:from.endFrame-from.startFrame,to:0},...pairDifference},durationIndependent,lastFrameDrift:lastDrift,strip:{masterFrames:[cut-1,cut],identicalToShots,nextVsMasterAtCut},status},null,2)+'\n');
       if (status === 'match') passed.push(`handoff verified ${from.id} -> ${to.id} (${out.format}): ${describe(pairDifference)}`);
+      else if (status === 'duration-dependent') {
+        const example = from.engine === 'remotion' ? 'interpolate over useVideoConfig().durationInFrames' : "a tween timed from the root's data-duration";
+        failed.push(`handoff ${from.id} -> ${to.id} (${out.format}): shot ${from.id} renders a different last frame when it is one frame longer (${describe(lastDrift)}), so its motion depends on its duration (for example ${example}); drive it from the frame number so the frame past its end is what it would show next. If the shot has no such motion, check that it renders the same twice with motion-studio repro`);
+      }
       else if (status === 'mismatch') failed.push(`handoff mismatch ${from.id} -> ${to.id} (${out.format}): ${describe(pairDifference)}`);
-      else failed.push(`encoded color jump in master strip at frame ${cut} (${out.format}): ${identicalToShots.includes(false) ? `master frames ${cut-1}, ${cut} identical to shot frames: ${identicalToShots.join(', ')}` : describe(acrossCut)}`);
+      else failed.push(`encoded color jump in master strip at frame ${cut} (${out.format}): ${identicalToShots.includes(false) ? `master frames ${cut-1}, ${cut} identical to shot frames: ${identicalToShots.join(', ')}` : describe(nextVsMasterAtCut)}`);
     }
   } finally {await rm(temp,{recursive:true,force:true});}
-  for (const line of passed) console.log(line);
-  if (failed.length) throw new CliError(failed.join('\nerror: '));
+  if (failed.length) {
+    for (const line of passed) console.log(line);
+    throw new CliError(failed.join('\nerror: '));
+  }
+  return passed;
 }

@@ -18,6 +18,10 @@ This contract owns the shot. Work only inside `shots/<id>/`, or `shots/_look/<lo
 
 `motion-studio render` renders every chosen format and passes the input props `{layout:{format, canvas:{width,height}, safe:{x,y,width,height}, overlay}}` (`overlay` is a preset name or `null`). Give the composition `defaultProps` with the primary layout and set its size from the props: `calculateMetadata={({props}) => ({width: props.layout.canvas.width, height: props.layout.canvas.height})}`. The CLI fails when the size, fps or length differs from the storyboard. Place every held text, logo and key UI element inside `layout.safe`; let text wrap to the safe width. Reframe for each format; never assume 16:9.
 
+## Handoff seams
+
+At a seam declared `handoff`, motion continues through the seam (D63). Shot A's motion continues one frame past its end, and that frame equals shot B's first frame; B then moves on at the same velocity. `motion-studio handoff` renders that frame: it passes the selected composition to `renderStill` with `durationInFrames` one larger and renders frame `durationInFrames`, with the same component and props. Drive every element that carries across the seam from `useCurrentFrame()` so it keeps moving at that frame: its `interpolate()` extrapolates or its range reaches past the end, and its `<Sequence>` lasts past the end. Write that motion in frames, never against `useVideoConfig().durationInFrames`: the longer render reports one more frame, so duration-based motion changes, and `handoff` fails the seam as `duration-dependent` when the longer render's last frame differs from the clip's. When this shot is B, its frame 0 is the pose and motion step the previous shot shows one frame past its end.
+
 ## 3D
 
 Use three.js only in a shot whose storyboard entry declares `"threeD": {"reason": "..."}`; `validate` errors on a three.js import without it (D65, D66).
