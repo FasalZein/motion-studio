@@ -139,6 +139,7 @@ from types import SimpleNamespace
 import numpy as np
 sys.path.insert(0, ${JSON.stringify(resolve('../skills/motion-score/scripts'))})
 from arranger import cue_kind, arrange, hit, PALETTES
+import instruments as synth
 shot = {'id':'a', 'startFrame':0, 'endFrame':180, 'description':'', 'entry':'handoff', 'transition':'whip-pan', 'camera':'push'}
 assert cue_kind({**shot, 'description':'key UI events'}, {'asset':'ui-click','eventFrame':45},60,120) == 'click'
 ui_kinds = [cue_kind({**shot, 'description':'Product UI dashboard typing'}, {'asset':asset, 'eventFrame':30},60,120) for asset in ('whoosh-fast','whip','arrival','ui-click','ui-type')]
@@ -150,9 +151,16 @@ for palette, density in [('warm','normal'),('bright','normal'),('dark','normal')
     args = SimpleNamespace(palette=palette,density=density,reveal_frame=60,logo_frame=120,tonic_midi=62,dropout_beats=2,riser_beats=2)
     _, plan = arrange(board,args,15,list(range(0,180,15)),np.random.default_rng(51))
     plans[palette+'-'+density] = plan
-print(json.dumps({'uiKinds':ui_kinds,'kinds':kinds,'lengths':[v.shape[-1] for v in voices],'hashes':[hashlib.sha256(v.tobytes()).hexdigest() for v in voices], 'plans':plans}))
+# D minor fixture: i(add9), iv(add9), bVI(add9), V(b9), then i at the logo.
+dark_args = SimpleNamespace(palette='dark',density='normal',reveal_frame=120,logo_frame=240,tonic_midi=62,dropout_beats=2,riser_beats=2)
+_, dark_plan = arrange({'meta':{'fps':30,'durationFrames':300}},dark_args,15,list(range(0,300,15)),np.random.default_rng(51))
+expected_chime = np.concatenate([synth.pluck(note,.03,bell=True)*.2 for note in (74,77,81)])
+chime_matches = np.allclose(hit('type',62,PALETTES['dark'],np.random.default_rng(51)),expected_chime)
+print(json.dumps({'darkChords':[c['notes'] for c in dark_plan['chords']], 'darkChimeMatches':bool(chime_matches), 'uiKinds':ui_kinds,'kinds':kinds,'lengths':[v.shape[-1] for v in voices],'hashes':[hashlib.sha256(v.tobytes()).hexdigest() for v in voices], 'plans':plans}))
 `]);
   const result = JSON.parse(output);
+  assert.deepEqual(result.darkChords,[[50,53,57,64],[55,58,62,69],[58,62,65,72],[57,61,64,70]]);
+  assert.equal(result.darkChimeMatches,true);
   assert.deepEqual(result.uiKinds,['motion','motion','arrival','click','type']);
   assert.deepEqual(result.kinds,['motion','arrival','click','type','reveal','logo']);
   assert.equal(new Set(result.hashes).size,6);

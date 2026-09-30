@@ -48,8 +48,8 @@ def cue_kind(shot, cue, reveal, logo):
 def cadence(frame, logo, step, tonic, third):
     # Count backward from the actual logo, so the last full bar is always a major dominant.
     bar = max(0, (logo - frame - 1) // (4 * step))
-    root = (7, 9, 5, 0)[bar % 4]
-    quality = 4 if root == 7 else (3 if root == 9 else third)
+    root = ((7, 8, 5, 0) if third == 3 else (7, 9, 5, 0))[bar % 4]
+    quality = 4 if root in (7, 8) else (3 if root == 9 else third)
     return tonic + root, quality
 
 
@@ -72,7 +72,8 @@ def arrange(board, args, step, beats, rng):
         if start >= logo:
             continue
         root, third = cadence(start, logo, step, tonic, palette['third'])
-        notes = [root + palette['pad_register'] + offset for offset in (0, third, 7, 14)]
+        ninth = 13 if palette['third'] == 3 and root == tonic + 7 else 14
+        notes = [root + palette['pad_register'] + offset for offset in (0, third, 7, ninth)]
         chord_plan.append({'startFrame': start, 'endFrame': end, 'rootMidi': root, 'notes': notes, 'function': 'V' if start >= logo - 4 * step else 'progression'})
         seconds = (end - start) / fps + .3
         gain = palette['pad_gain'] * (.7 if start < reveal else 1)
@@ -109,7 +110,8 @@ def arrange(board, args, step, beats, rng):
         for sub in range(divisions):
             if frame < reveal and (i % 2 or sub > 0):
                 continue
-            offset = (0, third, 7, 14)[(i * max(1, divisions) + sub) % 4]
+            ninth = 13 if palette['third'] == 3 and root == tonic + 7 else 14
+            offset = (0, third, 7, ninth)[(i * max(1, divisions) + sub) % 4]
             register = 12 if args.palette == 'bright' else 0
             rhythm['leadNotes'] += 1
             place(lead, synth.pluck(root + register + offset, bell=palette['bell']), sample + round(sub * beat_seconds * synth.RATE / divisions), palette['lead_gain'] * energy, .4 if sub % 2 else -.4)
@@ -170,7 +172,7 @@ def hit(kind, tonic, palette, rng):
         return body
     if kind == 'type':
         sound = np.zeros(round(.09 * synth.RATE))
-        for delay, note in ((0, tonic + 12), (.03, tonic + 16), (.06, tonic + 19)):
+        for delay, note in ((0, tonic + 12), (.03, tonic + 12 + palette['third']), (.06, tonic + 19)):
             short = synth.pluck(note, .03, bell=True) * .2
             start = round(delay * synth.RATE)
             sound[start:start + len(short)] += short
