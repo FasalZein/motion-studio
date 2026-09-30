@@ -40,6 +40,11 @@ test('a storyboard score delivers frame-aligned hits, measured loudness, and rep
     run(python,[...args,'--out',join(film,'audio/scores/b')]);
     const report = JSON.parse(await readFile(join(film,'audio/scores/a/audio-report.json'),'utf8'));
     assert.equal(report.passed,true);
+    assert.equal(report.arrangement.dropout.musicalPeak,0);
+    assert.ok(report.arrangement.riser.relativeDb>=-6,`riser ${report.arrangement.riser.relativeDb} dB below bed`);
+    assert.equal(report.arrangement.cadence.dominantRootMidi,69);
+    assert.equal(report.arrangement.cadence.tonicMidi,62);
+    assert.deepEqual(report.hits.map((hit:{kind:string})=>hit.kind),['reveal','click','logo']);
     assert.deepEqual(report.hits.map((hit:{eventFrame:number})=>hit.eventFrame),[60,90,120]);
     for (const hit of report.hits) {
       // Independently decode each delivered stem, not the reported onset or a mix peak.
@@ -117,5 +122,40 @@ test('a storyboard score delivers frame-aligned hits, measured loudness, and rep
     }
   } finally {
     run('trash',[root]);
+  }
+});
+
+
+test('cue vocabulary selects distinct voices; palettes and density change notes, register and rhythm', {timeout:120000}, () => {
+  const output = run(python,['-B','-c',`
+import sys, json, hashlib
+from types import SimpleNamespace
+import numpy as np
+sys.path.insert(0, ${JSON.stringify(resolve('../skills/motion-score/scripts'))})
+from arranger import cue_kind, arrange, hit, PALETTES
+shot = {'id':'a', 'startFrame':0, 'endFrame':180, 'description':'', 'entry':'whip-pan', 'camera':'push'}
+kinds = [cue_kind(shot, {'asset':asset, 'eventFrame':frame},60,120) for asset,frame in [('planned-camera',0),('planned-arrival',30),('ui-click',45),('ui-type',75),('reveal',60),('logo',120)]]
+voices = [hit(kind,62,PALETTES['warm'],np.random.default_rng(51)) for kind in kinds]
+board = {'meta':{'fps':30,'durationFrames':180}}
+plans = {}
+for palette, density in [('warm','normal'),('bright','normal'),('dark','normal'),('bright','sparse')]:
+    args = SimpleNamespace(palette=palette,density=density,reveal_frame=60,logo_frame=120,tonic_midi=62,dropout_beats=2,riser_beats=2)
+    _, plan = arrange(board,args,15,list(range(0,180,15)),np.random.default_rng(51))
+    plans[palette+'-'+density] = plan
+print(json.dumps({'kinds':kinds,'lengths':[v.shape[-1] for v in voices],'hashes':[hashlib.sha256(v.tobytes()).hexdigest() for v in voices], 'plans':plans}))
+`]);
+  const result = JSON.parse(output);
+  assert.deepEqual(result.kinds,['motion','arrival','click','type','reveal','logo']);
+  assert.equal(new Set(result.hashes).size,6);
+  assert.ok(result.lengths[0]>result.lengths[2]);
+  assert.equal(result.lengths[2],4320); // Requirement: 90 ms UI click at 48 kHz.
+  const plans = result.plans;
+  assert.ok(plans['bright-normal'].rhythm.leadNotes>plans['warm-normal'].rhythm.leadNotes);
+  assert.ok(plans['bright-normal'].rhythm.hats>plans['bright-sparse'].rhythm.hats);
+  assert.equal(plans['dark-normal'].rhythm.leadNotes,0);
+  assert.equal(plans['bright-normal'].chords[0].notes[0]-plans['warm-normal'].chords[0].notes[0],12);
+  for (const plan of Object.values(plans) as Array<{chords:Array<{rootMidi:number}>;dropout:{musicalPeak:number}}>) {
+    assert.equal(plan.chords.at(-1)?.rootMidi,69); // V of D, independent of loop count.
+    assert.equal(plan.dropout.musicalPeak,0);
   }
 });

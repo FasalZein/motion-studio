@@ -14,7 +14,9 @@ import tempfile
 import librosa
 import numpy as np
 from scipy import signal
-from pedalboard import Pedalboard, HighpassFilter, LowpassFilter, Compressor, Reverb, Limiter
+from pedalboard import Pedalboard, HighpassFilter, LowpassFilter, Compressor, Limiter
+sys.dont_write_bytecode = True
+from arranger import PALETTES, arrange, cue_kind, hit as synth_hit, place
 
 RATE = 48000
 LICENSE = 'https://pixabay.com/service/license-summary/'
@@ -57,10 +59,10 @@ def meter(path):
 def finish(audio, path):
     # Pedalboard shapes transients. ffmpeg loudnorm supplies the oversampled true-peak ceiling.
     processed = Pedalboard([Limiter(threshold_db=-3, release_ms=50)])(np.asarray(audio, dtype=np.float32), RATE)
-    raw = path.with_suffix('.premix.wav')
-    wav(raw, processed)
-    target = -14
-    try:
+    with tempfile.TemporaryDirectory(prefix='.master-', dir=path.parent) as tmp:
+        raw = Path(tmp) / 'premix.wav'
+        wav(raw, processed)
+        target = -14
         for _ in range(3):
             command(['ffmpeg', '-v', 'error', '-y', '-i', str(raw), '-af',
                      f'loudnorm=I={target}:TP=-1.3:LRA=11', '-ar', str(RATE), '-c:a', 'pcm_s24le',
@@ -70,27 +72,6 @@ def finish(audio, path):
                 return level
             target += -14 - level['integratedLufs']
         raise ValueError(f'cannot reach -14 +/- 0.5 LUFS / -1 dBTP: {level}')
-    finally:
-        command(['trash', str(raw)])
-
-
-def tone(midi, seconds, decay=3, attack=.003):
-    t = np.arange(round(seconds * RATE)) / RATE
-    hz = 440 * 2 ** ((midi - 69) / 12)
-    envelope = np.exp(-decay * t) * np.minimum(1, t / attack)
-    envelope *= np.minimum(1, (seconds - t) / .03)
-    return (np.sin(2 * np.pi * hz * t) + .15 * np.sin(4 * np.pi * hz * t)) * envelope
-
-
-def place(bus, sound, sample, gain=1, pan=0):
-    if sound.ndim == 1:
-        angle = (pan + 1) * np.pi / 4
-        sound = np.vstack([sound * np.cos(angle), sound * np.sin(angle)])
-    start = max(0, sample)
-    offset = max(0, -sample)
-    length = min(sound.shape[1] - offset, bus.shape[1] - start)
-    if length > 0:
-        bus[:, start:start + length] += gain * sound[:, offset:offset + length]
 
 
 def derive(board, reveal, logo):
@@ -118,9 +99,10 @@ def derive(board, reveal, logo):
             raise ValueError('audio.bpm does not match beatFrames')
         beats = supplied
     else:
-        # Weighted distances to important cues. Tempo ties prefer 120 BPM.
-        choices = range(math.ceil(60 * fps / 140), math.floor(60 * fps / 80) + 1)
-        step = min(choices, key=lambda s: (sum(min(f % s, s - f % s) * (3 if f in (reveal, logo) else 1) for f in events), abs(60 * fps / s - 120)))
+        choices = [s for s in range(math.ceil(60 * fps / 140), math.floor(60 * fps / 80) + 1) if all(f % s == 0 for f in events)]
+        if not choices:
+            raise ValueError('no whole-frame 80-140 BPM grid fits all cues; revise the board')
+        step = min(choices, key=lambda s: abs(60 * fps / s - 120))
         bpm, beats = 60 * fps / step, list(range(0, frames, step))
     if any(f not in beats for f in events):
         raise ValueError('sound cues are off the beat grid; snap the board or choose another tempo before scoring')
@@ -131,33 +113,15 @@ def render(board, args, directory):
     fps, frames, cues, step, bpm, beats = derive(board, args.reveal_frame, args.logo_frame)
     length = frames * RATE // fps
     rng = np.random.default_rng(args.seed)
-    buses = {name: np.zeros((2, length)) for name in ('drums', 'bass', 'harmony', 'texture')}
-    tonic = args.tonic_midi
-    third = 3 if args.palette == 'dark' else 4
-    intervals = (0, third, 7, 12)
-    for i, frame in enumerate(beats):
-        if frame >= args.logo_frame or args.reveal_frame - args.dropout_beats * step <= frame < args.reveal_frame:
-            continue
-        sample = frame * RATE // fps
-        energy = (.45 if frame < args.reveal_frame else 1) * (1.2 if args.palette == 'bright' else 1)
-        t = np.arange(round(.22 * RATE)) / RATE
-        kick = np.sin(2 * np.pi * np.cumsum(48 + 85 * np.exp(-35 * t)) / RATE) * np.exp(-18 * t)
-        place(buses['drums'], kick, sample, .16 * energy)
-        hat = signal.sosfilt(signal.butter(2, 5000, 'high', fs=RATE, output='sos'), rng.normal(size=round(.07 * RATE)))
-        place(buses['drums'], hat * np.exp(-65 * np.arange(len(hat)) / RATE), sample + step * RATE // fps // 2, .025 * energy, .3)
-        place(buses['bass'], tone(tonic - 24 + (0, 0, 5, 7)[(i // 4) % 4], step / fps * .9, 4), sample, .11 * energy)
-        place(buses['harmony'], tone(tonic + intervals[i % 4], step / fps * 1.5, 3), sample, .09 * energy, (-.35, .35)[i % 2])
-    # Modulated, filtered texture stays quiet. A hard musical gap precedes the reveal.
-    noise = signal.sosfilt(signal.butter(2, 1200, fs=RATE, output='sos'), rng.normal(size=length))
-    buses['texture'][:] = noise * .008
-    gap = slice(max(0, args.reveal_frame - args.dropout_beats * step) * RATE // fps, args.reveal_frame * RATE // fps)
+    buses, arrangement = arrange(board, args, step, beats, rng)
     for name, bus in buses.items():
-        effects = [HighpassFilter(cutoff_frequency_hz=25), LowpassFilter(cutoff_frequency_hz=args.eq_hz)]
-        if name == 'harmony':
-            effects += [Reverb(room_size=.35, wet_level=.12, dry_level=.88)]
-        bus[:] = Pedalboard(effects)(np.asarray(bus, dtype=np.float32), RATE)
-        bus[:, gap] = 0
-        bus[:, args.logo_frame * RATE // fps:] *= np.linspace(1, 0, length - args.logo_frame * RATE // fps)
+        # Dry shaping is already instrument-specific; keep one overall low/high boundary.
+        bus[:] = Pedalboard([HighpassFilter(cutoff_frequency_hz=25), LowpassFilter(cutoff_frequency_hz=args.eq_hz)])(np.asarray(bus, dtype=np.float32), RATE)
+        # Filter state must not ring into the planned musical silence.
+        if name != 'anticipation':
+            a = arrangement['dropout']['startFrame'] * RATE // fps
+            b = arrangement['dropout']['endFrame'] * RATE // fps
+            bus[:, a:b] = 0
         wav(directory / f'{name}.wav', bus)
     music = sum(buses.values())
     wav(directory / 'music.wav', music)
@@ -167,23 +131,13 @@ def render(board, args, directory):
     for i, (shot, cue) in enumerate(cues):
         frame = cue['eventFrame']
         hit = np.zeros_like(music)
+        shot_data = next(s for s in board['shots'] if s['id'] == shot)
+        kind = cue_kind(shot_data, cue, args.reveal_frame, args.logo_frame)
+        sound = synth_hit(kind, args.tonic_midi, PALETTES[args.palette], rng)
         stock = []
-        if frame == args.logo_frame:
-            # A sonic mark uses original synthesis only, with a tonic resolution and two-second tail.
-            sound = sum(tone(tonic + semitone, 2, 2) for semitone in (0, third, 7, 12)) * .12
-        elif frame == args.reveal_frame:
-            t = np.arange(round(.8 * RATE)) / RATE
-            sound = np.sin(2 * np.pi * np.cumsum(np.linspace(80, 35, len(t))) / RATE) * np.exp(-7 * t) * .5
-            sound += np.pad(tone(tonic, .12, 30) * .2, (0, len(t) - round(.12 * RATE)))
-            # Keep anticipation in the music bed, so the hit stem begins on its event frame.
-            rise_length = min(args.riser_beats * step * RATE // fps, frame * RATE // fps)
-            rise = signal.sosfilt(signal.butter(2, 2000, fs=RATE, output='sos'), rng.normal(size=rise_length))
-            place(music, rise * np.linspace(0, .1, rise_length) ** 2, frame * RATE // fps - rise_length)
-            stock = ['impact-bass-1'] if args.sfx_density else []
-        else:
-            # Short product cues are in key, not arbitrary stock UI tones.
-            sound = tone(tonic + 12 + intervals[i % 4], .09, 35) * .2
-            stock = ['click-soft'] if args.sfx_density and i % args.sfx_density == 0 else []
+        if args.sfx_density and kind != 'logo' and i % args.sfx_density == 0:
+            # Only impacts and UI clicks use bundled material. Movement and logo have their own original voices.
+            stock = ['impact-bass-1'] if kind == 'reveal' else ['click-soft'] if kind in ('click', 'type') else []
         place(hit, sound, frame * RATE // fps)
         for name in stock:
             source = stock_root / (name + '.mp3')
@@ -211,16 +165,13 @@ def render(board, args, directory):
         onset_candidates = [float(sample * fps / RATE) for sample in detected]
         nearest = min(onset_candidates, key=lambda value: abs(value - frame)) if onset_candidates else None
         peak_frame = np.argmax(np.max(np.abs(delivered), axis=0)) * fps / RATE
-        hits.append({'file': filename, 'shot': shot, 'eventFrame': frame, 'onsetFrame': onset,
+        hits.append({'file': filename, 'kind': kind, 'shot': shot, 'eventFrame': frame, 'onsetFrame': onset,
                      'librosaOnsetFrame': nearest, 'errorFrames': None if onset is None else onset - frame,
                      'peakOffsetFrames': round(peak_frame - frame), 'sources': stock})
         files.append({'file': filename, 'sourceKind': 'code', 'license': 'synthesized original' if not stock else 'synthesized original + Pixabay Content License', 'sources': stock})
         total += hit
-    # The riser was added to music after the first stem export.
-    total += music - sum(buses.values())
-    wav(directory / 'music.wav', music)
     level = finish(total, directory / 'score.wav')
-    for name in ('drums', 'bass', 'harmony', 'texture', 'music', 'score'):
+    for name in (*buses.keys(), 'music', 'score'):
         files.append({'file': name + '.wav', 'sourceKind': 'code', 'license': 'synthesized original', 'sources': []})
     # The preview includes the same stock composites as the individual hit stems.
     files[-1]['sources'] = [source for hit in hits for source in hit['sources']]
@@ -231,7 +182,7 @@ def render(board, args, directory):
     timing_ok = all(hit['onsetFrame'] is not None and abs(hit['errorFrames']) <= 1 and hit['librosaOnsetFrame'] is not None and abs(hit['librosaOnsetFrame'] - hit['eventFrame']) <= 1 for hit in hits)
     return {'version': 1, 'seed': args.seed, 'fps': fps, 'durationFrames': frames, 'bpm': bpm, 'beatFrames': beats,
             'downbeatFrames': board['audio']['downbeatFrames'] or beats[::4], 'dropFrames': board['audio']['dropFrames'] or [args.reveal_frame],
-            'hits': hits, 'files': files, 'loudness': level, 'timingPassed': timing_ok,
+            'hits': hits, 'files': files, 'arrangement': arrangement, 'loudness': level, 'timingPassed': timing_ok,
             'audibleJudgment': 'unverified: human listening required',
             'diagnostics': {'preLimiterPeak': float(np.max(np.abs(total))), 'lrCorrelation': float(np.corrcoef(total)[0, 1]),
                             'bandEnergy': {str(hz): float(np.mean(signal.sosfilt(signal.butter(2, [hz, min(hz * 4, 20000)], 'bandpass', fs=RATE, output='sos'), total) ** 2)) for hz in (40, 250, 1000, 4000)}},
@@ -247,6 +198,7 @@ def main():
     parser.add_argument('--logo-frame', type=int, required=True)
     parser.add_argument('--tonic-midi', type=int, default=62)
     parser.add_argument('--palette', choices=('warm', 'bright', 'dark'), default='warm')
+    parser.add_argument('--density', choices=('sparse', 'normal', 'busy'), default='normal')
     parser.add_argument('--eq-hz', type=float, default=10000)
     parser.add_argument('--dropout-beats', type=int, choices=range(1, 5), default=2)
     parser.add_argument('--riser-beats', type=int, choices=range(1, 5), default=2)
@@ -265,19 +217,18 @@ def main():
     args.out.mkdir(parents=True)
     report = render(board, args, args.out)
     # Verify the real output with another full render, not just RNG repeatability.
-    tmp = Path(tempfile.mkdtemp(prefix='motion-score-repeat-'))
-    try:
-        second = render(board, args, tmp)
+    with tempfile.TemporaryDirectory(prefix='.repeat-', dir=args.out) as tmp:
+        second = render(board, args, Path(tmp))
         report['determinismPassed'] = all(a['sha256'] == b['sha256'] for a, b in zip(report['files'], second['files']))
-    finally:
-        command(['trash', str(tmp)])
     report['inputHashes'] = {'storyboard.json': digest(board_path), 'beatmap.md': digest(beatmap)}
     report['environment'] = {'python': sys.version.split()[0],
                              **{name: version(name) for name in ('numpy', 'scipy', 'pedalboard', 'librosa')},
                              'ffmpeg': command(['ffmpeg', '-version']).stdout.decode().splitlines()[0]}
     report['scriptSha256'] = digest(__file__)
     report['passed'] = report['timingPassed'] and report['determinismPassed']
-    shutil.copyfile(__file__, args.out / 'score.py')
+    for source in ('score.py', 'instruments.py', 'arranger.py', 'requirements.txt'):
+        shutil.copyfile(Path(__file__).parent / source, args.out / source)
+    report['libraryHashes'] = {name: digest(args.out / name) for name in ('instruments.py', 'arranger.py', 'requirements.txt')}
     write_json(args.out / 'license.json', report['files'])
     write_json(args.out / 'audio-report.json', report)
     print(json.dumps({'passed': report['passed'], 'out': str(args.out), 'loudness': report['loudness']}))
