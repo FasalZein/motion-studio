@@ -539,6 +539,29 @@ test('G4 requires a passing current imported score and human listen, or an expli
   await writeFile(audioPath,'changed music');
   await refused(dir,approve,failure('score audio changed or missing (audio/scores/r1/music.wav)'));
   await writeFile(audioPath,audio);
+  const beatmapPath = join(dir,'beatmap.md');
+  const beatmap = await readFile(beatmapPath);
+  await writeFile(beatmapPath,'changed beat contract');
+  await refused(dir,approve,failure('score beat contract missing or changed since render'));
+  await writeFile(beatmapPath,beatmap);
+  const ledgerPath = join(dir,'ledger.json');
+  const ledgerBytes = await readFile(ledgerPath,'utf8');
+  const ledger = JSON.parse(ledgerBytes);
+  ledger.assets = ledger.assets.filter((a:{id:string})=>a.id!=='score-r1-music');
+  const missingLedger = JSON.stringify(ledger);
+  await writeFile(ledgerPath,missingLedger);
+  await refused(dir,approve,failure('score ledger entry missing or changed (audio/scores/r1/music.wav)'));
+  expect(await readFile(ledgerPath,'utf8')).toBe(missingLedger);
+  await writeFile(ledgerPath,ledgerBytes);
+  for (const loudness of [{integratedLufs:-16,truePeakDbtp:-1.3},{integratedLufs:-14,truePeakDbtp:-.5}]) {
+    const invalid = JSON.stringify({...JSON.parse(reportBytes),loudness});
+    await writeFile(reportPath,invalid);
+    // Bind these bytes so this test exercises the level check, not the report-hash check.
+    await writeFile(receiptPath,JSON.stringify({...JSON.parse(receiptBytes),reportSha256:sha(invalid)}));
+    await refused(dir,approve,failure('score loudness outside -14 +/- 0.5 LUFS or -1 dBTP'));
+  }
+  await writeFile(reportPath,reportBytes);
+  await writeFile(receiptPath,receiptBytes);
   // A change to gate records did not invalidate the imported score; all current evidence now permits approval.
   expect(ok(['gate',dir,...approve])).toContain('recorded G4 approve');
   await writeFile(receiptPath,'{}');
