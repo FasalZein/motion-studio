@@ -141,6 +141,7 @@ sys.path.insert(0, ${JSON.stringify(resolve('../skills/motion-score/scripts'))})
 from arranger import cue_kind, arrange, hit, PALETTES
 shot = {'id':'a', 'startFrame':0, 'endFrame':180, 'description':'', 'entry':'handoff', 'transition':'whip-pan', 'camera':'push'}
 assert cue_kind({**shot, 'description':'key UI events'}, {'asset':'ui-click','eventFrame':45},60,120) == 'click'
+ui_kinds = [cue_kind({**shot, 'description':'Product UI dashboard typing'}, {'asset':asset, 'eventFrame':30},60,120) for asset in ('whoosh-fast','whip','arrival','ui-click','ui-type')]
 kinds = [cue_kind(shot, {'asset':asset, 'eventFrame':frame},60,120) for asset,frame in [('planned-camera',0),('planned-arrival',30),('ui-click',45),('ui-type',75),('reveal',60),('logo',120)]]
 voices = [hit(kind,62,PALETTES['warm'],np.random.default_rng(51)) for kind in kinds]
 board = {'meta':{'fps':30,'durationFrames':180}}
@@ -149,9 +150,10 @@ for palette, density in [('warm','normal'),('bright','normal'),('dark','normal')
     args = SimpleNamespace(palette=palette,density=density,reveal_frame=60,logo_frame=120,tonic_midi=62,dropout_beats=2,riser_beats=2)
     _, plan = arrange(board,args,15,list(range(0,180,15)),np.random.default_rng(51))
     plans[palette+'-'+density] = plan
-print(json.dumps({'kinds':kinds,'lengths':[v.shape[-1] for v in voices],'hashes':[hashlib.sha256(v.tobytes()).hexdigest() for v in voices], 'plans':plans}))
+print(json.dumps({'uiKinds':ui_kinds,'kinds':kinds,'lengths':[v.shape[-1] for v in voices],'hashes':[hashlib.sha256(v.tobytes()).hexdigest() for v in voices], 'plans':plans}))
 `]);
   const result = JSON.parse(output);
+  assert.deepEqual(result.uiKinds,['motion','motion','arrival','click','type']);
   assert.deepEqual(result.kinds,['motion','arrival','click','type','reveal','logo']);
   assert.equal(new Set(result.hashes).size,6);
   assert.ok(result.lengths[0]>result.lengths[2]);

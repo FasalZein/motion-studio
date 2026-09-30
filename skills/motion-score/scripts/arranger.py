@@ -29,14 +29,18 @@ def cue_kind(shot, cue, reveal, logo):
     # Existing asset ids, description and seam/camera vocabulary carry semantics; no second cue format.
     words = set(re.findall(r'[a-z]+', cue['asset'].lower()))
     context = set(re.findall(r'[a-z]+', shot.get('description', '').lower()))
-    if words & {'ui', 'click', 'type', 'typing', 'key', 'cursor'} or context & {'ui', 'interface', 'typing', 'cursor'}:
-        return 'type' if words & {'type', 'typing', 'key'} or context & {'typing'} else 'click'
+    if words & {'ui', 'click', 'type', 'typing', 'key', 'cursor'}:
+        return 'type' if words & {'type', 'typing', 'key'} else 'click'
     if words & {'arrival', 'arrive', 'lock', 'land'}:
         return 'arrival'
+    if words & {'motion', 'whip', 'whoosh', 'camera', 'zoom', 'orbit', 'sweep'}:
+        return 'motion'
+    if context & {'ui', 'interface', 'typing', 'cursor'}:
+        return 'type' if context & {'typing'} else 'click'
     seam = cue['eventFrame'] == shot['startFrame']
     terms = [move['term'] for move in shot.get('moves', []) if move['start'] <= cue['eventFrame'] - shot['startFrame'] < move['start'] + move['frames']]
     movement = set(re.findall(r'[a-z]+', (' '.join(terms) + ' ' + shot.get('transition', '') + ' ' + shot.get('camera', '')).lower()))
-    if words & {'motion', 'whip', 'whoosh', 'camera', 'zoom', 'orbit', 'sweep'} or (seam or terms) and movement & {'whip', 'swipe', 'push', 'pull', 'zoom', 'orbit'}:
+    if (seam or terms) and movement & {'whip', 'swipe', 'push', 'pull', 'zoom', 'orbit'}:
         return 'motion'
     return 'arrival'
 
