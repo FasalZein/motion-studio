@@ -512,27 +512,32 @@ test('G4 requires a passing current imported score and human listen, or an expli
   const listeningBytes = await readFile(listeningPath,'utf8');
   const hint = `; render and import motion-score, then record audio/scores/<revision>/listening.md, or approve a deliberately licensed track with --waive score --note <reason>`;
   const missing = `cannot approve G4: score missing (no import receipt matches the current audio.track)${hint}`;
-  const incomplete = `cannot approve G4: score stale or incomplete (need a passing unchanged report, current imported audio, import receipt and non-empty listening.md)${hint}`;
+  const failure = (condition:string) => `cannot approve G4: ${condition}${hint}`;
   await writeFile(receiptPath,'{}');
   await refused(dir,approve,missing);
   await writeFile(receiptPath,JSON.stringify({...JSON.parse(receiptBytes),track:'other-score'}));
   await refused(dir,approve,missing);
   await writeFile(receiptPath,receiptBytes);
-  for (const report of ['{bad',JSON.stringify({...JSON.parse(reportBytes),passed:false}),'{"passed":true}']) {
+  for (const [report,condition] of [
+    ['{bad','score report missing or invalid (audio/scores/r1/audio-report.json)'],
+    [JSON.stringify({...JSON.parse(reportBytes),passed:false}),'score report has not passed timing and determinism'],
+    ['{"passed":true}','score report missing or invalid (audio/scores/r1/audio-report.json)'],
+    [JSON.stringify({...JSON.parse(reportBytes),seed:52}),'score report changed since import'],
+  ]) {
     await writeFile(reportPath,report);
-    await refused(dir,approve,incomplete);
+    await refused(dir,approve,failure(condition));
   }
   await writeFile(reportPath,reportBytes);
   await writeFile(listeningPath,' \n');
-  await refused(dir,approve,incomplete);
+  await refused(dir,approve,failure('score listening answers missing or empty (audio/scores/r1/listening.md)'));
   await writeFile(listeningPath,listeningBytes);
   await edit(dir,s => {s.shots[0].soundCues.push({asset:'late',eventFrame:0,peakOffsetFrames:0});});
-  await refused(dir,approve,incomplete);
+  await refused(dir,approve,failure('score storyboard inputs changed since import'));
   await edit(dir,s => {s.shots[0].soundCues = [];});
   const audioPath = join(dir,'audio/scores/r1/music.wav');
   const audio = await readFile(audioPath);
   await writeFile(audioPath,'changed music');
-  await refused(dir,approve,incomplete);
+  await refused(dir,approve,failure('score audio changed or missing (audio/scores/r1/music.wav)'));
   await writeFile(audioPath,audio);
   // A change to gate records did not invalidate the imported score; all current evidence now permits approval.
   expect(ok(['gate',dir,...approve])).toContain('recorded G4 approve');
@@ -542,4 +547,31 @@ test('G4 requires a passing current imported score and human listen, or an expli
   expect(out).toContain('waived: score');
   expect((await storyboard(dir)).gates[3].waivers.at(-1)).toEqual({check:'score',reason:'Director chose a licensed track instead of an original score'});
   expect(run(['gate',dir,'G3','approve','--waive','score','--note','licensed']).stderr).toBe('error: --waive score applies only to G4 approve\n');
+}));
+
+test('score fingerprint ignores unused polish fields and binds actual synthesis inputs', async () => withFilm(async dir => {
+  const {scoreStateHash} = await import('../src/scoregate.ts');
+  const {parseProject} = await import('../src/project.ts');
+  const parsed = await parseProject(dir);
+  if (!parsed.ok) throw Error(parsed.errors.join('; '));
+  const board = parsed.project.storyboard;
+  const original = scoreStateHash(board);
+  const ignored = structuredClone(board);
+  ignored.shots[0].entry = 'handoff';
+  ignored.shots[0].exit = 'handoff';
+  ignored.shots[0].effects = [{start:0,frames:3,term:'custom:glow'}];
+  ignored.audio.grid = 'corrected';
+  ignored.audio.confidence = 'low';
+  expect(scoreStateHash(ignored)).toBe(original);
+  const edits = [
+    (s:typeof board.shots[number]) => {s.description = 'changed';},
+    (s:typeof board.shots[number]) => {s.camera = 'custom:changed';},
+    (s:typeof board.shots[number]) => {s.transition = 'custom:changed';},
+    (s:typeof board.shots[number]) => {s.moves = [{start:0,frames:3,term:'custom:whip'}];},
+  ];
+  for (const change of edits) {
+    const changed = structuredClone(board);
+    change(changed.shots[0]);
+    expect(scoreStateHash(changed)).not.toBe(original);
+  }
 }));
