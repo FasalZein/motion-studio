@@ -9,6 +9,7 @@ import {checkProject, validateProject} from './validate.js';
 import {repro} from './repro.js';
 import {framePngs, glBackend, hyperframesGpu, remotionBundle, renderHyperframesFrames, renderRemotionFrames} from './engines.js';
 import {safezone, safezoneArgs} from './safezone.js';
+import {critiqueWarnings} from './critique-warning.js';
 import {statusLines} from './status.js';
 import {decisions, gateViews, recordGate} from './gates.js';
 import {handoffFilm} from './handoff.js';
@@ -186,7 +187,10 @@ async function main() {
     // Stale gates show in the gate lines, so the error count covers only the structural checks.
     const {errors} = await checkProject(parsed.project,{gates:false});
     const delivery = await deliveryStatus(parsed.project);
-    for (const line of statusLines(await gateViews(parsed.project),delivery.next)) console.log(line);
+    const views = await gateViews(parsed.project);
+    for (const line of statusLines(views,delivery.next)) console.log(line);
+    const nextGate = views.find(v => v.state !== 'approved')?.gate.id;
+    if (nextGate) for (const line of critiqueWarnings(parsed.project,nextGate)) console.log(line);
     for (const line of delivery.lines) console.log(line);
     for (const line of await livenessLines(parsed.project)) console.log(line);
     if (errors.length) console.log(`validation: ${errors.length} error${errors.length === 1 ? '' : 's'}; run motion-studio validate ${target}`);
@@ -214,7 +218,7 @@ async function main() {
     if (!gate || !choice) throw new CliError(usage);
     const parsed = await parseProject(target);
     if (!parsed.ok) {report(parsed.errors,[]); process.exitCode = 1; return;}
-    for (const line of await recordGate(parsed.project,gate,choice,notes,{command,verify},waivers)) console.log(line);
+    for (const line of await recordGate(parsed.project,gate,choice,notes,{command,verify},line => console.log(line),waivers)) console.log(line);
     const updated = await parseProject(target);
     if (updated.ok) for (const line of statusLines(await gateViews(updated.project))) console.log(line);
     return;

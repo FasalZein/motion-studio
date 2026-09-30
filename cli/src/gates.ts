@@ -7,6 +7,7 @@ import AjvModule from 'ajv';
 import {CliError, gateIds, writeStoryboard, type Gate, type GateId, type GateState, type Project, type Waivable, type Waiver} from './project.js';
 import {livenessRefusals} from './liveness.js';
 import {critiqueRefusals, type CritiqueRule} from './critiquegate.js';
+import {critiqueWarnings} from './critique-warning.js';
 import {draftRefusals} from './draft.js';
 import type {Tools} from './seam.js';
 import {lookTestRefusals} from './looktest.js';
@@ -218,7 +219,7 @@ async function freeze(project:Project, id:GateId, hashes:Record<string,string>, 
  * of schema/gate-inputs.json); a `critique` waiver lifts only its independence requirement (D80). The gate record keeps
  * every waiver with its reason.
  */
-export async function recordGate(project:Project, id:GateId, decision:Decision, notes:string[], tools:Tools, waivers:Waiver[] = []):Promise<string[]> {
+export async function recordGate(project:Project, id:GateId, decision:Decision, notes:string[], tools:Tools, warn:(line:string)=>void, waivers:Waiver[] = []):Promise<string[]> {
   const views = await gateViews(project);
   const order = (g:GateId) => gateIds.indexOf(g);
   // Every gate needs exactly one record; a missing earlier record would let a later gate skip it.
@@ -254,6 +255,7 @@ export async function recordGate(project:Project, id:GateId, decision:Decision, 
   }
   const gate = view.gate;
   if (decision === 'changes' && gate.rounds >= noteRounds) throw new CliError(`${id} used ${gate.rounds} of ${noteRounds} note rounds; approve to accept, rescope or stop`);
+  for (const warning of critiqueWarnings(project,id)) warn(warning);
   const files = await filmFiles(project.root);
   const sources = await gateSources(project,id,files,id);
   const hashes = await hashAll(project.root,sources.all);
@@ -274,7 +276,5 @@ export async function recordGate(project:Project, id:GateId, decision:Decision, 
   });
 
   await writeStoryboard(project.root,{...project.storyboard, gates});
-  const warnings = (id === 'G4' || id === 'G5') && !project.storyboard.critique.length
-    ? [`warning: ${id} critique[] is empty; record calibrated review scores and check loop ${id === 'G4' ? 'A' : 'B'} before proceeding`] : [];
-  return [...warnings, `recorded ${id} ${decision}: ${Object.keys(hashes).length} inputs, revision ${revisionId(hashes)}`, ...waivers.map(w => `waived: ${w.check}`), ...(frozen ? [`frozen stills: ${frozen}`] : [])];
+  return [`recorded ${id} ${decision}: ${Object.keys(hashes).length} inputs, revision ${revisionId(hashes)}`, ...waivers.map(w => `waived: ${w.check}`), ...(frozen ? [`frozen stills: ${frozen}`] : [])];
 }
