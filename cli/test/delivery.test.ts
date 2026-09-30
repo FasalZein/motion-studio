@@ -48,13 +48,13 @@ async function g4(dir:string, run:(...args:string[])=>ReturnType<typeof spawnSyn
   await writeFile(join(dir,'critique/loop-1.md'),`# Loop 1\nMode: in-studio; independence: independent\nPacket: critique/packet-16x9/packet.json; master sha256: ${sha}\n`);
   if (!approve) return;
   ok(run('deliver',dir,'--quality','draft'));
-  expect(ok(run('gate',dir,'G4','approve','--waive','liveness','--note','Short fixture tests delivery, not liveness'))).toContain('warning: G4 critique[] is empty');
+  expect(ok(run('gate',dir,'G4','approve','--waive','liveness','--note','Short fixture tests delivery, not liveness','--waive','score','--note','Licensed-track route; this short fixture tests delivery'))).toContain('warning: G4 critique[] is empty');
 }
 
 test('draft bundles playable MP4, poster, sheets, ledger and source README', async () => withFilm(async (dir,run) => {
   await render(dir,run);
   await g4(dir,run,false);
-  const approve = () => run('gate',dir,'G4','approve','--waive','liveness','--note','short fixture');
+  const approve = () => run('gate',dir,'G4','approve','--waive','liveness','--note','short fixture','--waive','score','--note','Licensed-track route; this short fixture tests delivery');
   expect(approve().stderr).toContain('draft 16:9 is missing or unreadable');
   expect((await json(join(dir,'storyboard.json'))).gates[3].state).toBe('pending');
   ok(run('deliver',dir,'--quality','draft'));

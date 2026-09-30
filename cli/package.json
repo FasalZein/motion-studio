@@ -21,8 +21,8 @@
     "check:allowlist": "node scripts/allowlist.mjs",
     "test": "npm run test:prepare && npm run test:node && npm run test:bun",
     "test:prepare": "npm run build && npm pack --silent",
-    "test:node": "node --experimental-strip-types --test test/project.test.ts test/cli.test.ts test/seam.test.ts test/gates.test.ts test/beats.test.ts test/safezone.test.ts test/assets.test.ts test/board.test.ts test/scan.test.ts test/voice.test.ts test/taste.test.ts test/critique.test.ts test/technique.test.ts test/liveness.test.ts test/animatic.test.ts test/looktest.test.ts test/brief-check.test.ts test/board-check.test.ts test/uikit.test.ts test/delivery.test.ts",
-    "test:bun": "bun test test/project.test.ts test/cli.test.ts test/seam.test.ts test/gates.test.ts test/beats.test.ts test/safezone.test.ts test/assets.test.ts test/board.test.ts test/scan.test.ts test/voice.test.ts test/taste.test.ts test/critique.test.ts test/technique.test.ts test/liveness.test.ts test/animatic.test.ts test/looktest.test.ts test/brief-check.test.ts test/board-check.test.ts test/uikit.test.ts test/delivery.test.ts"
+    "test:node": "node --experimental-strip-types --test test/project.test.ts test/cli.test.ts test/seam.test.ts test/gates.test.ts test/beats.test.ts test/safezone.test.ts test/assets.test.ts test/board.test.ts test/scan.test.ts test/voice.test.ts test/taste.test.ts test/critique.test.ts test/technique.test.ts test/liveness.test.ts test/animatic.test.ts test/looktest.test.ts test/brief-check.test.ts test/board-check.test.ts test/uikit.test.ts test/delivery.test.ts test/score.test.ts",
+    "test:bun": "bun test test/project.test.ts test/cli.test.ts test/seam.test.ts test/gates.test.ts test/beats.test.ts test/safezone.test.ts test/assets.test.ts test/board.test.ts test/scan.test.ts test/voice.test.ts test/taste.test.ts test/critique.test.ts test/technique.test.ts test/liveness.test.ts test/animatic.test.ts test/looktest.test.ts test/brief-check.test.ts test/board-check.test.ts test/uikit.test.ts test/delivery.test.ts test/score.test.ts"
   },
   "dependencies": {
     "@react-three/fiber": "9.8.1",

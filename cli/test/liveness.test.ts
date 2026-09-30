@@ -1,3 +1,4 @@
+import {scoreFixture} from './score-fixture.ts';
 import {draftFixture} from './draft-fixture.ts';
 import {test as nodeTest, after} from 'node:test';
 const {expect} = await import('bun' in process.versions ? 'bun:test' : 'expect');
@@ -269,6 +270,7 @@ test(`${runtime}: status shows the liveness verdict of each format with a master
 }));
 
 test(`${runtime}: G4 approval needs a current passing report or a written waiver`, async () => withFilm(SLIDESHOW, async dir => {
+  await scoreFixture(dir);
   for (const id of ['G1','G2','G3']) expect(run('gate',dir,id,'approve').status).toBe(0);
   const storyboard = async () => JSON.parse(await readFile(join(dir,'storyboard.json'),'utf8'));
   const hint = `; run motion-studio liveness ${dir}, or approve with --waive liveness --note <reason>\n`;

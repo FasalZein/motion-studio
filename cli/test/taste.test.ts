@@ -269,7 +269,7 @@ test('taste accept records the accepted look, signature moves and pacing after G
     // The stand-in master cannot be measured, so G4 is approved with a liveness waiver (D60).
     await fakeCritique(film);
     await draftFixture(film);
-    ok(home,['gate',film,'G4','approve','--waive','liveness','--note','no master in this fixture']);
+    ok(home,['gate',film,'G4','approve','--waive','liveness','--note','no master in this fixture','--waive','score','--note','Licensed-track route; this fixture tests taste, not original synthesis']);
     ok(home,['gate',film,'G5','approve','--note','ship it']);
     fails(home,['taste','accept',film,'--move','whoosh-in'],'taste accept: move "whoosh-in" is not a motion-vocabulary term id or custom:<description>');
     fails(home,['taste','accept',film,'--move','custom: '],'taste accept: move "custom: " is not a motion-vocabulary term id or custom:<description>');

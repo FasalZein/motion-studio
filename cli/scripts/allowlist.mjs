@@ -1,4 +1,4 @@
-// Checks that every file the engine contracts allow-list exists under each installed skill root (D58).
+// Checks six installed skill roots, score runtime files, and engine API-depth allowlists (D58).
 // Usage: node scripts/allowlist.mjs [<skills-root>...]; the default roots are ~/.agents/skills and ~/.claude/skills.
 import {readFileSync, statSync} from 'node:fs';
 import {homedir} from 'node:os';
@@ -9,6 +9,14 @@ const engines = resolve(dirname(fileURLToPath(import.meta.url)),'../../skills/mo
 const roots = process.argv.length > 2 ? process.argv.slice(2) : [join(homedir(),'.agents/skills'), join(homedir(),'.claude/skills')];
 const isFile = path => { try {return statSync(path).isFile();} catch {return false;} };
 let missing = 0, checked = 0;
+// Verify all six installable skills, including the score renderer and its dependency pins.
+for (const root of roots) for (const rel of [
+  ...['motion-studio','motion-critique','motion-vocabulary','motion-direction','motion-look','motion-score'].map(name => `${name}/SKILL.md`),
+  'motion-score/scripts/score.py','motion-score/scripts/instruments.py','motion-score/scripts/arranger.py','motion-score/scripts/requirements.txt','motion-score/reference/craft.md',
+]) {
+  checked++;
+  if (!isFile(join(root,rel))) {console.error(`error: ${join(root,rel)} not found`); missing++;}
+}
 for (const contract of ['hyperframes.md','remotion.md']) {
   const text = readFileSync(join(engines,contract),'utf8');
   const list = text.slice(text.indexOf('## API depth allow-list'));
