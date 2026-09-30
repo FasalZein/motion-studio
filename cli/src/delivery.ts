@@ -111,6 +111,11 @@ export async function deliver(project:Project, args:string[], tools:Tools):Promi
   // Preflight every format before deleting an old receipt or producing any new bundle.
   for (const format of formats) {
     const out = outputsOf(project.root,format);
+    if (quality === 'final') {
+      const shown = project.storyboard.gates.find(g => g.id === 'G5')!.inputHashes[`renders/${formatDir(format)}/final.mkv`];
+      if (!shown || await sha256(join(out.dir,'final.mkv')) !== shown)
+        throw new CliError(`final mux differs from G5 approval: ${format}; present G5 again`);
+    }
     await requireCurrentRenders(project,out);
     await requireMaster(project,out,tools);
     await requireCurrentMux(out,tools);

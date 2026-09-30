@@ -89,6 +89,19 @@ test('final requires every rights decision and cost consent, then records exact 
   expect(fail('--cost-note','Approved local encode','--ack-license','not-an-asset','No')).toContain('not an unresolved ledger asset');
   expect(await readdir(join(dir,'delivery')).catch(() => [])).toEqual([]);
   const approved = ['--cost-note','Approved local encode, no paid generation','--ack-license','music-bed','Director accepts the unknown music rights','--ack-license','sfx-hit','Director accepts the restricted SFX use'];
+  const muxPath = join(dir,'renders/16x9/final.mkv');
+  const g5Mux = await readFile(muxPath);
+  const g5Gate = (await json(join(dir,'storyboard.json'))).gates.find((g:{id:string}) => g.id === 'G5');
+  expect(g5Gate.inputHashes['renders/16x9/final.mkv']).toBe(createHash('sha256').update(g5Mux).digest('hex'));
+  ffmpeg('-i',muxPath,'-map','0','-c','copy','-metadata','comment=not-shown-at-G5',join(dir,'changed-final.mkv'));
+  await cp(join(dir,'changed-final.mkv'),muxPath);
+  // Frozen G5 approvals remain current, but this live container is not the one the director saw.
+  expect(ok(run('status',dir))).toContain('G5 approved');
+  const changed = run('deliver',dir,'--quality','final',...approved);
+  expect(changed.status).toBe(1);
+  expect(changed.stderr).toContain('final mux differs from G5 approval: 16:9; present G5 again');
+  expect(await readdir(join(dir,'delivery')).catch(() => [])).toEqual([]);
+  await writeFile(muxPath,g5Mux);
   ok(run('deliver',dir,'--quality','final',...approved));
   const path = join(dir,'delivery/final/manifest.json');
   const receipt = await json(path);
