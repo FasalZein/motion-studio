@@ -276,6 +276,8 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     await write(dir,'renders/16x9/draft.mp4','full pass mp4');
     for (const id of ['G1','G2','G3']) ok(['gate',dir,id,'approve']);
     await critique(dir,'master v1');
+    await write(dir,'audio/scores/r1/audio-report.json','{"passed":true}');
+    await write(dir,'audio/scores/r1/listening.md','mood fits; ending resolves');
     // The fake master cannot be measured, so G4 is approved with a liveness waiver (D60).
     ok(['gate',dir,'G4','approve','--waive','liveness','--note','fake master']);
     const gates = (await storyboard(dir)).gates;
@@ -288,6 +290,9 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     const frozenG4 = (await readdir(join(dir,'stills/approved'))).filter(d => d.startsWith('G4-'));
     expect(frozenG4).toHaveLength(1);
     expect(await readFile(join(dir,'stills/approved',frozenG4[0],'16x9/master.mkv'),'utf8')).toBe('master v1');
+    expect(gates[3].inputHashes['audio/scores/r1/audio-report.json']).toBe(sha('{"passed":true}'));
+    expect(await readFile(join(dir,'stills/approved',frozenG4[0],'r1/listening.md'),'utf8')).toBe('mood fits; ending resolves');
+    await write(dir,'audio/scores/r1/listening.md','later listening notes');
     // G4 also binds the frozen critique report it showed, so a later loop B report does not stale G4.
     expect(gates[3].inputHashes['critique/loop-1.md']).toBe(sha(await readFile(join(dir,'critique/loop-1.md'),'utf8')));
     await critique(dir,'master v1 remuxed',{loop:2});

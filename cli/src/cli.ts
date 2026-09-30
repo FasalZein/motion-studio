@@ -17,6 +17,7 @@ import {mix, prepareMix} from './mix.js';
 import {beats} from './beats.js';
 import {clearSeamOutputs} from './seam.js';
 import {assets} from './assets.js';
+import {importScore} from './score.js';
 import {doctor} from './doctor.js';
 import {configuredProviders} from './providers.js';
 import {boardStills, captureStills, stillsArgs} from './stills.js';
@@ -104,7 +105,7 @@ async function renderShot(shot:Shot, project:Project, format:Format, output:stri
     await verify(output,frameCount,fps,width,height);
   } finally {await rm(temp,{recursive:true,force:true});}
 }
-const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... [--waive <liveness|critique> --note <reason>]... | deliver <film-dir> --quality <draft|final> [--cost-note <text>] [--ack-license <id> <reason>]... | accept <film-dir> --note <text> | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>] | animatic <film-dir> | sheet <film-dir> [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] [--shots <id,...>] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | beatmap <film-dir> | assets <film-dir> <list|add|resolve> ... | scan <film-dir> [format] | scan <video-file> [--report <file.json>] | liveness <film-dir> [format] | liveness <video-file> [--report <file.json>] | looktest <film-dir> <look-id> | packet <film-dir> [format] | packet <video-file> --out <dir> | calibrate <scores.json> <bands.json> | repro <film-dir> <shot-id> [format] | taste <show|g1|notes|accept> ... | style-bible <style-bible.md> [--reference <source>]...';
+const usage = 'usage: motion-studio doctor | init <slug> | validate <film-dir> | status <film-dir> | gate <film-dir> <G1-G5> <approve|changes|rescope> [--note <text>]... [--waive <liveness|critique> --note <reason>]... | deliver <film-dir> --quality <draft|final> [--cost-note <text>] [--ack-license <id> <reason>]... | accept <film-dir> --note <text> | render <film-dir> [format] | stitch <film-dir> [format] | still <film-dir> <shot-id> [local-frame] [format] | stills <film-dir> [<shot-id>...] [--frames <n,...>] [--format <format>] | animatic <film-dir> | sheet <film-dir> [format] | handoff <film-dir> [<shot-a> <shot-b>] [format] | mix <film-dir> [format] | safezone <film-dir> [format] [--shots <id,...>] | beats <film-dir> [--corrected <grid.json> | --imported <grid.json>] | beatmap <film-dir> | score-import <film-dir> <audio-report.json> --id <revision-id> | assets <film-dir> <list|add|resolve> ... | scan <film-dir> [format] | scan <video-file> [--report <file.json>] | liveness <film-dir> [format] | liveness <video-file> [--report <file.json>] | looktest <film-dir> <look-id> | packet <film-dir> [format] | packet <video-file> --out <dir> | calibrate <scores.json> <bands.json> | repro <film-dir> <shot-id> [format] | taste <show|g1|notes|accept> ... | style-bible <style-bible.md> [--reference <source>]...';
 /** The formats a command works on: one named chosen format, or every chosen format when none is named. */
 function selectFormats(project:Project, named:string|undefined):Format[] {
   const formats = chosenFormats(project.storyboard.meta);
@@ -168,7 +169,7 @@ async function main() {
     for (const line of await (action === 'taste' ? taste : styleBible)(process.argv.slice(3))) console.log(line);
     return;
   }
-  if (!['init','validate','status','gate','render','stitch','still','stills','animatic','sheet','handoff','mix','safezone','beats','beatmap','assets','scan','packet','calibrate','repro','liveness','looktest','deliver','accept'].includes(action) || !target) throw new CliError(usage);
+  if (!['init','validate','status','gate','render','stitch','still','stills','animatic','sheet','handoff','mix','safezone','beats','beatmap','score-import','assets','scan','packet','calibrate','repro','liveness','looktest','deliver','accept'].includes(action) || !target) throw new CliError(usage);
   if (action === 'init') {
     console.log(`created ${await initProject(process.cwd(),target)}`);
     return;
@@ -267,6 +268,12 @@ async function main() {
   // liveness also measures a lone video file for standalone critique.
   if (action === 'liveness' && await stat(target).then(s => s.isFile(),() => false)) {
     if (await livenessVideo(target,process.argv.slice(4),{command,verify})) process.exitCode = 1;
+    return;
+  }
+  if (action === 'score-import') {
+    const parsed = await parseProject(target);
+    if (!parsed.ok) {report(parsed.errors,[]); process.exitCode = 1; return;}
+    for (const line of await importScore(parsed.project,process.argv.slice(4),{command,verify})) console.log(line);
     return;
   }
   if (action === 'assets') {

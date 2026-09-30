@@ -15,7 +15,8 @@
   ],
   "G4": [
     {"name": "full pass", "freeze": true, "sources": [{"file": "renders/*/master.mkv"}, {"file": "renders/*/draft.mp4"}, {"file": "renders/*/draft.json"}]},
-    {"name": "critique reports", "freeze": true, "sources": [{"file": "critique/loop-*.md"}]}
+    {"name": "critique reports", "freeze": true, "sources": [{"file": "critique/loop-*.md"}]},
+    {"name": "score and listening", "freeze": true, "sources": [{"file": "audio/scores/*/audio-report.json"}, {"file": "audio/scores/*/listening.md"}, {"file": "audio/scores/*/import.json"}]}
   ],
   "G5": [
     {"name": "shot sources", "sources": [{"file": "shots/**", "exclude": ["shots/_look/**", "shots/*/snapshots/**", "shots/*/renders/**", "shots/*/beats/**", "shots/*/out/**", "shots/*/outputs/**", "shots/*/build/**", "shots/*/dist/**", "shots/*/coverage/**"]}, {"storyboard": "/shots"}, {"storyboard": "/audio"}]},
