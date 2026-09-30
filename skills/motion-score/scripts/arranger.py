@@ -33,10 +33,11 @@ def cue_kind(shot, cue, reveal, logo):
         return 'type'
     if words & {'ui', 'click', 'cursor'}:
         return 'click'
-    if words & {'arrival', 'arrive', 'lock', 'land', 'impact', 'bass', 'hit', 'boom', 'pop'}:
-        return 'arrival'
+    # Imported hit filenames carry an explicit kind; generic "hit" must not override motion.
     if words & {'motion', 'whip', 'whoosh', 'camera', 'zoom', 'orbit', 'sweep'}:
         return 'motion'
+    if words & {'arrival', 'arrive', 'lock', 'land', 'impact', 'bass', 'hit', 'boom', 'pop'}:
+        return 'arrival'
     seam = cue['eventFrame'] == shot['startFrame']
     terms = [move['term'] for move in shot.get('moves', []) if move['start'] <= cue['eventFrame'] - shot['startFrame'] < move['start'] + move['frames']]
     movement = set(re.findall(r'[a-z]+', (' '.join(terms) + ' ' + shot.get('transition', '') + ' ' + shot.get('camera', '')).lower()))

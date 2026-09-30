@@ -164,7 +164,7 @@ shot = {'id':'a', 'startFrame':0, 'endFrame':180, 'description':'', 'entry':'han
 assert cue_kind({**shot, 'description':'key UI events'}, {'asset':'ui-click','eventFrame':45},60,120) == 'click'
 ui_kinds = [cue_kind({**shot, 'description':'Product UI dashboard typing'}, {'asset':asset, 'eventFrame':30},60,120) for asset in ('whoosh-fast','whip','arrival','ui-click','ui-type')]
 specific_shot = {**shot, 'description':'Product UI dashboard', 'camera':'locked', 'moves':[{'start':30,'frames':3,'term':'zoom-in'}]}
-specific_kinds = [cue_kind(specific_shot, {'asset':asset,'eventFrame':frame},60,120) for asset,frame in [('impact-bass-1',45),('sfx-01',0),('sfx-02',30),('hit',45),('boom',45),('pop',45),('bass',45)]]
+specific_kinds = [cue_kind(specific_shot, {'asset':asset,'eventFrame':frame},60,120) for asset,frame in [('impact-bass-1',45),('sfx-01',0),('sfx-02',30),('hit',45),('boom',45),('pop',45),('bass',45),('score-r1-hit-00-motion',45)]]
 key_kinds = [cue_kind(shot, {'asset':asset,'eventFrame':45},60,120) for asset in ('key-moment','key-press','keypress','ui-type','key_press')]
 kinds = [cue_kind(shot, {'asset':asset, 'eventFrame':frame},60,120) for asset,frame in [('planned-camera',0),('planned-arrival',30),('ui-click',45),('ui-type',75),('reveal',60),('logo',120)]]
 voices = [hit(kind,62,PALETTES['warm'],np.random.default_rng(51)) for kind in kinds]
@@ -192,7 +192,7 @@ print(json.dumps({'darkChords':[c['notes'] for c in dark_plan['chords']], 'darkC
   assert.deepEqual(result.darkChords,[[50,53,57,64],[55,58,62,69],[58,62,65,72],[57,61,64,70]]);
   assert.equal(result.darkChimeMatches,true);
   assert.deepEqual(result.keyKinds,['arrival','type','type','type','type']);
-  assert.deepEqual(result.specificKinds,['arrival','motion','motion','arrival','arrival','arrival','arrival']);
+  assert.deepEqual(result.specificKinds,['arrival','motion','motion','arrival','arrival','arrival','arrival','motion']);
   assert.deepEqual(result.uiKinds,['motion','motion','arrival','click','type']);
   assert.deepEqual(result.kinds,['motion','arrival','click','type','reveal','logo']);
   assert.equal(new Set(result.hashes).size,6);
