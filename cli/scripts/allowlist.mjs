@@ -1,4 +1,4 @@
-// Checks that every file the engine contracts allow-list exists under each installed skill root (D58).
+// Checks six installed skill roots, score runtime files, and engine API-depth allowlists (D58).
 // Usage: node scripts/allowlist.mjs [<skills-root>...]; the default roots are ~/.agents/skills and ~/.claude/skills.
 import {readFileSync, statSync} from 'node:fs';
 import {homedir} from 'node:os';
@@ -12,7 +12,7 @@ let missing = 0, checked = 0;
 // Verify all six installable skills, including the score renderer and its dependency pins.
 for (const root of roots) for (const rel of [
   ...['motion-studio','motion-critique','motion-vocabulary','motion-direction','motion-look','motion-score'].map(name => `${name}/SKILL.md`),
-  'motion-score/scripts/score.py','motion-score/scripts/requirements.txt','motion-score/reference/craft.md',
+  'motion-score/scripts/score.py','motion-score/scripts/instruments.py','motion-score/scripts/arranger.py','motion-score/scripts/requirements.txt','motion-score/reference/craft.md',
 ]) {
   checked++;
   if (!isFile(join(root,rel))) {console.error(`error: ${join(root,rel)} not found`); missing++;}

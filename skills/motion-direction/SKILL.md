@@ -34,6 +34,10 @@ Load only the files your phase names. Each file is short and self-contained.
 
 Add [2D and 3D](reference/2d-and-3d.md) when a shot declares 3D or mixes 3D with 2D. Add [product UI in motion](reference/product-ui.md) when the film shows a product interface, and [UI kit](reference/ui-kit.md) before building UI in code.
 
+## Scored sound
+
+Require a chosen music-and-SFX plan against the beat contract, not a reused or unchosen bed. Run `motion-score` after Blocking and before Animatic. Give camera moves, arrivals, UI, reveal and logo distinct sounds; reserve hits for key events. At G4, require objective checks and the human listen. A deliberately licensed track needs the director's `--waive score --note "<reason>"`; the critic leaves unheard sound unverified. This follows the user decision on ticket #51.
+
 ## The one test
 
 Every beat has a **motion event** (what moves, from where to where, with which easing or spring), and every seam has a **thread** (what carries across). A hold is a living hold: something keeps moving while the viewer reads. Done when a board, a shot or a review can name both for every beat and every seam.

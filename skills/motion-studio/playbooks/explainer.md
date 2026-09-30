@@ -10,7 +10,7 @@ audio: voice
 
 # Explainer or data story | worked
 
-<inputs>Ask: Which question does the viewer leave able to answer? Who is the audience, what are the sources and script? Default: one question, one answer, narrated 30 seconds, voice-led with a quiet licensed bed if available.</inputs>
+<inputs>Ask: Which question does the viewer leave able to answer? Who is the audience, what are the sources and script? Default: one question, one answer, narrated 30 seconds, voice-led with a quiet original score. Choose an original `motion-score` plan by default after Blocking and before Animatic. A reused or unchosen bed is a defect. A deliberately chosen licensed track needs the director’s `--waive score --note "director reason"` at G4, with its rights recorded. Keep narration audible; require the G4 human listen.</inputs>
 <direction>Use precise diagrams and readable type. Treat narration as the source of reveal timing; use beat positions for cuts. Choose `motion-look` candidates against the topic, not a default tech palette.</direction>
 <structure>Template for ~30 s at 30 fps: 0–3 s question, 3–9 s context, 9–20 s mechanism or data, 20–27 s implication, 27–30 s answer. Keep each data label on screen at least the spoken phrase duration and allow at least ~1 s after its reveal for short labels; extend for dense labels. These are living holds: the diagram, camera or light keeps moving while the label reads. A meaningful new visual event can occur between cuts.</structure>
 <build>Record word timings and beat grid separately. Protect labels in every format; prefer vector redraws of sourced charts over blurry screenshots.</build>
