@@ -16,6 +16,7 @@ Agent skills for directed motion-graphics films. You act as the director. The ag
 |---|---|
 | `motion-studio` | Direct a new film, resume a film project, or record a gate decision. |
 | `motion-look` | Pick or adapt one of 8 named looks, extract a style bible from your references, or update your taste profile. |
+| `motion-direction` | Direct motion events, camera moves, seams, living holds and product UI. |
 | `motion-score` | Make an original synthesized score and sound-effect layer from the film’s beat contract; check timing, loudness and repeatability. |
 | `motion-critique` | Score any rendered video for motion and taste, or review a render against its approved board. |
 | `motion-vocabulary` | Name a motion or film move (for example "whip pan", "flood" or "hit on the drop") and get the recipe for each engine. |

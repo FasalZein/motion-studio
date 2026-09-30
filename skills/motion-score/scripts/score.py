@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import math
+from importlib.metadata import version
 from pathlib import Path
 import shutil
 import subprocess
@@ -271,6 +272,9 @@ def main():
     finally:
         command(['trash', str(tmp)])
     report['inputHashes'] = {'storyboard.json': digest(board_path), 'beatmap.md': digest(beatmap)}
+    report['environment'] = {'python': sys.version.split()[0],
+                             **{name: version(name) for name in ('numpy', 'scipy', 'pedalboard', 'librosa')},
+                             'ffmpeg': command(['ffmpeg', '-version']).stdout.decode().splitlines()[0]}
     report['scriptSha256'] = digest(__file__)
     report['passed'] = report['timingPassed'] and report['determinismPassed']
     shutil.copyfile(__file__, args.out / 'score.py')

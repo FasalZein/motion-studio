@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {readFile, writeFile} from 'node:fs/promises';
+import {lstat, readFile, writeFile} from 'node:fs/promises';
 import {dirname, join, relative, resolve} from 'node:path';
 import {assets} from './assets.js';
 import {CliError, parseProject, schemaErrors, writeStoryboard, type Project, type Storyboard} from './project.js';
@@ -59,6 +59,8 @@ export async function importScore(project:Project, args:string[], tools:Tools):P
   const id = (name:string) => `${prefix}-${name.slice(0,-4)}`;
   for (const f of files) {
     if (project.ledger.assets.some(a => a.id === id(f.file))) throw new CliError(`score asset id already exists: ${id(f.file)}; use a new revision id`);
+    const info = await lstat(join(directory,f.file));
+    if (!info.isFile() || info.isSymbolicLink()) throw new CliError(`score file must be a regular file: ${f.file}`);
     if (!await realInside(project.root,join(directory,f.file)) || hash(await readFile(join(directory,f.file))) !== f.sha256) throw new CliError(`score file changed: ${f.file}; rescore before import`);
   }
   const hits = list(report.hits).map(value => {

@@ -16,8 +16,8 @@ before(async () => {
     run(python,['-m','pip','install','-r',resolve('../skills/motion-score/scripts/requirements.txt')]);
   }
 }, {timeout:300000});
-function run(command:string, args:string[]) {
-  const result = spawnSync(command,args,{encoding:'utf8',timeout:240000});
+function run(command:string, args:string[], env = process.env) {
+  const result = spawnSync(command,args,{encoding:'utf8',timeout:240000,env});
   assert.equal(result.status,0,result.stderr + result.stdout);
   return result.stdout + result.stderr;
 }
@@ -25,47 +25,97 @@ const hash = (bytes:Buffer) => createHash('sha256').update(bytes).digest('hex');
 
 test('a storyboard score delivers frame-aligned hits, measured loudness, and repeatable WAV bytes', {timeout:240000}, async () => {
   const root = await mkdtemp(join(tmpdir(),'motion-score-'));
-  const film = join(root,'film');
-  // Extend the authoritative empty board without touching a user's HOME.
-  const {emptyStoryboard} = await import('../src/project.ts');
-  await mkdir(film);
-  // A 6-second film at 30 fps. Reveal at 2 s, UI at 3 s, logo at 4 s, all on a 120 BPM grid.
-  const board = {...emptyStoryboard(),meta:{...emptyStoryboard().meta,fps:30,durationFrames:180},audio:{...emptyStoryboard().audio,bpm:120,beatFrames:Array.from({length:12},(_,i)=>i*15),downbeatFrames:[0,60,120],dropFrames:[60]},shots:[{id:'s01',startFrame:0,endFrame:180,engine:'hyperframes',entrypoint:'shots/s01/index.html',description:'fixture',camera:'push',entry:'cut',exit:'cut',assets:[],stillFrames:[],protected:[],soundCues:[{asset:'impact',eventFrame:60,peakOffsetFrames:0},{asset:'click',eventFrame:90,peakOffsetFrames:0},{asset:'logo',eventFrame:120,peakOffsetFrames:0}]}]};
-  await writeFile(join(film,'ledger.json'),JSON.stringify({version:'0',assets:[]}));
-  await writeFile(join(film,'storyboard.json'),JSON.stringify(board));
-  await writeFile(join(film,'beatmap.md'),'# Beat contract\nReveal: frame 60. UI: frame 90. Logo: frame 120.\n');
-  const args = [script,film,'--seed','51','--reveal-frame','60','--logo-frame','120','--sfx-density','0'];
-  run(python,[...args,'--out',join(film,'audio/scores/a')]);
-  run(python,[...args,'--out',join(film,'audio/scores/b')]);
-  const report = JSON.parse(await readFile(join(film,'audio/scores/a/audio-report.json'),'utf8'));
-  assert.equal(report.passed,true);
-  assert.deepEqual(report.hits.map((hit:{eventFrame:number})=>hit.eventFrame),[60,90,120]);
-  for (const hit of report.hits) {
-    // Independently decode each delivered stem, not the reported onset or a mix peak.
-    const decoded = spawnSync('ffmpeg',['-v','error','-i',join(film,'audio/scores/a',hit.file),'-f','f32le','-ac','1','-ar','48000','-'],{maxBuffer:10_000_000});
-    assert.equal(decoded.status,0);
-    const samples = new Float32Array(new Uint8Array(decoded.stdout).buffer);
-    const first = samples.findIndex(sample=>Math.abs(sample)>0.001);
-    assert.ok(Math.abs(first/1600-hit.eventFrame)<=1,`onset ${first/1600} vs ${hit.eventFrame}`);
-  }
-  const meter = run('ffmpeg',['-hide_banner','-nostats','-i',join(film,'audio/scores/a/score.wav'),'-af','ebur128=peak=true','-f','null','-']);
-  const lufs = Number(/Integrated loudness:\s*I:\s*(-?[\d.]+)/.exec(meter)?.[1]);
-  const peak = Number(/True peak:\s*Peak:\s*(-?[\d.]+)/.exec(meter)?.[1]);
-  assert.ok(Math.abs(lufs+14)<=0.5,`${lufs} LUFS`);
-  assert.ok(peak<=-1,`${peak} dBTP`);
-  for (const file of report.files) assert.equal(hash(await readFile(join(film,'audio/scores/a',file.file))),hash(await readFile(join(film,'audio/scores/b',file.file))));
-  // The CLI imports every WAV into the real ledger, uses music as bed, and keeps SFX separate for mix.
-  for (const runtime of ['node','bun']) {
-    run(runtime,[resolve('dist/cli.js'),'score-import',film,join(film,'audio/scores/a/audio-report.json'),'--id',runtime]);
-    const imported = JSON.parse(await readFile(join(film,'storyboard.json'),'utf8'));
-    const ledger = JSON.parse(await readFile(join(film,'ledger.json'),'utf8'));
-    assert.equal(imported.audio.track,`${runtime}-music`);
-    assert.equal(imported.shots[0].soundCues.length,3);
-    assert.equal(imported.shots[0].soundCues[2].asset,`${runtime}-hit-02`);
-    assert.equal(ledger.assets.filter((asset:{id:string})=>asset.id.startsWith(runtime+'-')).length,report.files.length);
-    // Restore the exact input bytes for the second runtime. Import changes the board, not the score's source record.
+  try {
+    const film = join(root,'film');
+    // Extend the authoritative empty board without touching a user's HOME.
+    const {emptyStoryboard} = await import('../src/project.ts');
+    await mkdir(film);
+    // A 6-second film at 30 fps. Reveal at 2 s, UI at 3 s, logo at 4 s, all on a 120 BPM grid.
+    const board = {...emptyStoryboard(),meta:{...emptyStoryboard().meta,fps:30,durationFrames:180},audio:{...emptyStoryboard().audio,bpm:120,beatFrames:Array.from({length:12},(_,i)=>i*15),downbeatFrames:[0,60,120],dropFrames:[60]},shots:[{id:'s01',startFrame:0,endFrame:180,engine:'hyperframes',entrypoint:'shots/s01/index.html',description:'fixture',camera:'custom:push',entry:'cut',exit:'cut',assets:[],stillFrames:[],protected:[],soundCues:[{asset:'impact',eventFrame:60,peakOffsetFrames:0},{asset:'click',eventFrame:90,peakOffsetFrames:0},{asset:'logo',eventFrame:120,peakOffsetFrames:0}]}]};
+    await writeFile(join(film,'ledger.json'),JSON.stringify({version:'0',assets:[]}));
     await writeFile(join(film,'storyboard.json'),JSON.stringify(board));
+    await writeFile(join(film,'beatmap.md'),'# Beat contract\nReveal: frame 60. UI: frame 90. Logo: frame 120.\n');
+    const args = [script,film,'--seed','51','--reveal-frame','60','--logo-frame','120','--sfx-density','0'];
+    run(python,[...args,'--out',join(film,'audio/scores/a')]);
+    run(python,[...args,'--out',join(film,'audio/scores/b')]);
+    const report = JSON.parse(await readFile(join(film,'audio/scores/a/audio-report.json'),'utf8'));
+    assert.equal(report.passed,true);
+    assert.deepEqual(report.hits.map((hit:{eventFrame:number})=>hit.eventFrame),[60,90,120]);
+    for (const hit of report.hits) {
+      // Independently decode each delivered stem, not the reported onset or a mix peak.
+      const decoded = spawnSync('ffmpeg',['-v','error','-i',join(film,'audio/scores/a',hit.file),'-f','f32le','-ac','1','-ar','48000','-'],{maxBuffer:10_000_000});
+      assert.equal(decoded.status,0);
+      const samples = new Float32Array(new Uint8Array(decoded.stdout).buffer);
+      const first = samples.findIndex(sample=>Math.abs(sample)>0.001);
+      assert.ok(Math.abs(first/1600-hit.eventFrame)<=1,`onset ${first/1600} vs ${hit.eventFrame}`);
+    }
+    const meter = run('ffmpeg',['-hide_banner','-nostats','-i',join(film,'audio/scores/a/score.wav'),'-af','ebur128=peak=true','-f','null','-']);
+    const lufs = Number(/Integrated loudness:\s*I:\s*(-?[\d.]+)/.exec(meter)?.[1]);
+    const peak = Number(/True peak:\s*Peak:\s*(-?[\d.]+)/.exec(meter)?.[1]);
+    assert.ok(Math.abs(lufs+14)<=0.5,`${lufs} LUFS`);
+    assert.ok(peak<=-1,`${peak} dBTP`);
+    for (const file of report.files) assert.equal(hash(await readFile(join(film,'audio/scores/a',file.file))),hash(await readFile(join(film,'audio/scores/b',file.file))));
+    // Exercise bundled-stock layering in a scratch HOME. These are generated test doubles, not distributed Pixabay files.
+    const home = join(root,'home');
+    const bundle = join(home,'.agents/skills/media-use/audio/assets/sfx');
+    await mkdir(bundle,{recursive:true});
+    for (const name of ['impact-bass-1','click-soft']) run('ffmpeg',['-v','error','-f','lavfi','-i','sine=frequency=440:duration=0.2','-y',join(bundle,name+'.mp3')]);
+    run(python,[...args.slice(0,-2),'--out',join(film,'audio/scores/stock')],{...process.env,HOME:home});
+    const stock = JSON.parse(await readFile(join(film,'audio/scores/stock/audio-report.json'),'utf8'));
+    assert.equal(stock.passed,true);
+    assert.equal(stock.hits[0].sources.length,1);
+    assert.equal(stock.hits[1].sources.length,1);
+    assert.deepEqual(stock.hits[2].sources,[]);
+    assert.equal(stock.files.find((file:{file:string})=>file.file==='hit-02.wav').license,'synthesized original');
+    assert.equal(stock.files.find((file:{file:string})=>file.file==='score.wav').license,'synthesized original + Pixabay Content License');
+    const sourceFiles = await import('node:fs/promises').then(fs=>fs.readdir(join(film,'audio/scores/stock')));
+    assert.ok(!sourceFiles.some(file=>file.endsWith('.mp3')));
+
+    // Rejected imports leave both state files unchanged.
+    const reportPath = join(film,'audio/scores/a/audio-report.json');
+    const ledgerBefore = await readFile(join(film,'ledger.json'));
+    const boardBefore = await readFile(join(film,'storyboard.json'));
+    const hitPath = join(film,'audio/scores/a/hit-00.wav');
+    const hitBefore = await readFile(hitPath);
+    await writeFile(hitPath,Buffer.from('changed audio'));
+    const refused = spawnSync('node',[resolve('dist/cli.js'),'score-import',film,reportPath,'--id','bad'],{encoding:'utf8',timeout:60000});
+    assert.equal(refused.status,1);
+    assert.match(refused.stderr,/score file changed: hit-00.wav/);
+    assert.deepEqual(await readFile(join(film,'ledger.json')),ledgerBefore);
+    assert.deepEqual(await readFile(join(film,'storyboard.json')),boardBefore);
+    await writeFile(hitPath,hitBefore);
+    const contractBefore = await readFile(join(film,'beatmap.md'));
+    await writeFile(join(film,'beatmap.md'),'changed contract');
+    const stale = spawnSync('bun',[resolve('dist/cli.js'),'score-import',film,reportPath,'--id','stale'],{encoding:'utf8',timeout:60000});
+    assert.equal(stale.status,1);
+    assert.match(stale.stderr,/score report is stale: beatmap.md changed/);
+    assert.deepEqual(await readFile(join(film,'ledger.json')),ledgerBefore);
+    await writeFile(join(film,'beatmap.md'),contractBefore);
+    // The CLI imports every WAV into the real ledger, uses music as bed, and keeps SFX separate for mix.
+    for (const runtime of ['node','bun']) {
+      run(runtime,[resolve('dist/cli.js'),'score-import',film,join(film,'audio/scores/a/audio-report.json'),'--id',runtime]);
+      const imported = JSON.parse(await readFile(join(film,'storyboard.json'),'utf8'));
+      const ledger = JSON.parse(await readFile(join(film,'ledger.json'),'utf8'));
+      assert.equal(imported.audio.track,`${runtime}-music`);
+      assert.equal(imported.shots[0].soundCues.length,3);
+      assert.equal(imported.shots[0].soundCues[2].asset,`${runtime}-hit-02`);
+      assert.equal(ledger.assets.filter((asset:{id:string})=>asset.id.startsWith(runtime+'-')).length,report.files.length);
+      // A synthetic picture exercises the real CLI mix without running a browser engine.
+      const output = join(film,'renders/16x9');
+      await mkdir(output,{recursive:true});
+      await mkdir(join(film,'shots/s01'),{recursive:true});
+      await writeFile(join(film,'shots/s01/index.html'),'<!doctype html>');
+      run('ffmpeg',['-v','error','-y','-f','lavfi','-i','color=c=black:s=1920x1080:r=30:d=6','-vf','setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709','-c:v','ffv1','-pix_fmt','yuv444p',join(output,'master.mkv')]);
+      await writeFile(join(output,'render.json'),'{}');
+      run(runtime,[resolve('dist/cli.js'),'mix',film]);
+      const sync = JSON.parse(await readFile(join(output,'sync.json'),'utf8'));
+      assert.ok(Math.abs(sync.integratedLufs+14)<=.5);
+      assert.ok(sync.truePeakDbtp<=-1);
+      assert.equal(sync.sfx.length,3);
+      // Restore the exact input bytes for the second runtime. Import changes the board, not the score's source record.
+      await writeFile(join(film,'storyboard.json'),JSON.stringify(board));
+    }
+  } finally {
+    run('trash',[root]);
   }
-  // Cleanup uses trash, including on the same Node/Bun test boundary.
-  run('trash',[root]);
 });
