@@ -24,3 +24,9 @@ Skill runs vary. Repeat each case 3 times before claiming it passes; say how man
 ## Board eval (G2 and G3)
 
 Run a case that has passed the brief eval through G3 with a fresh subagent, in the same scratch folder and scratch `HOME`. Act as the user: approve each gate, or give one note at G2 and one at G3 to exercise note handling. Then run `motion-studio validate films/<case id>` and `node <this skill>/evals/check.mjs g3 films/<case id>`. The case passes when both exit 0 and each note re-ran only the beats or shots it named. Record the run in [runs.md](runs.md) with the same columns and independence rule.
+
+## G4-G5 context-routing eval
+
+Cases live in [delivery-routing.json](delivery-routing.json). Run each harness in a fresh session outside the repository. Give it only the `motion-studio/SKILL.md` path and each case's `state` and `request`, not `packet` or `requirements`. Permit read tools only. Ask it to return the phase packet path, next actions, stop condition and user decisions needed. Compare the returned packet and actions with every case's expected requirements. Record tool reads as context-routing evidence. This checks routing and consent instructions, not rendered-film quality or a full film run.
+
+Run in pi and Claude Code when available. Save raw outputs, model/harness, case counts and failed requirements outside the repository; record the artifact path in `runs.md`. Label author-run checks non-independent. Repeat three times before claiming stable routing; a single run is preliminary. Missing credentials, a missing harness or unreadable output is a blocker, not a passing eval.

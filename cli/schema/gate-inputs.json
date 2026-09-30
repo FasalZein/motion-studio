@@ -14,7 +14,7 @@
     {"name": "animatic", "freeze": true, "sources": [{"file": "animatic.mp4"}]}
   ],
   "G4": [
-    {"name": "full pass", "freeze": true, "sources": [{"file": "renders/*/master.mkv"}]},
+    {"name": "full pass", "freeze": true, "sources": [{"file": "renders/*/master.mkv"}, {"file": "renders/*/draft.mp4"}, {"file": "renders/*/draft.json"}]},
     {"name": "critique reports", "freeze": true, "sources": [{"file": "critique/loop-*.md"}]}
   ],
   "G5": [

@@ -7,6 +7,9 @@ import AjvModule from 'ajv';
 import {CliError, gateIds, writeStoryboard, type Gate, type GateId, type GateState, type Project, type Waivable, type Waiver} from './project.js';
 import {livenessRefusals} from './liveness.js';
 import {critiqueRefusals, type CritiqueRule} from './critiquegate.js';
+import {critiqueWarnings} from './critique-warning.js';
+import {draftRefusals} from './draft.js';
+import type {Tools} from './seam.js';
 import {lookTestRefusals} from './looktest.js';
 
 /** Note rounds allowed per gate before the user must accept, rescope or stop. */
@@ -216,7 +219,7 @@ async function freeze(project:Project, id:GateId, hashes:Record<string,string>, 
  * of schema/gate-inputs.json); a `critique` waiver lifts only its independence requirement (D80). The gate record keeps
  * every waiver with its reason.
  */
-export async function recordGate(project:Project, id:GateId, decision:Decision, notes:string[], waivers:Waiver[] = []):Promise<string[]> {
+export async function recordGate(project:Project, id:GateId, decision:Decision, notes:string[], tools:Tools, warn:(line:string)=>void, waivers:Waiver[] = []):Promise<string[]> {
   const views = await gateViews(project);
   const order = (g:GateId) => gateIds.indexOf(g);
   // Every gate needs exactly one record; a missing earlier record would let a later gate skip it.
@@ -246,8 +249,13 @@ export async function recordGate(project:Project, id:GateId, decision:Decision, 
     const refusals = await critiqueRefusals(project,critique,waived('critique'));
     if (refusals.length) throw new CliError(`cannot approve ${id}: ${refusals.join('; ')}; run motion-studio packet ${project.root} and dispatch a fresh motion-critique reviewer (its report header names the packet and master sha256), or, with no subagent available, approve a non-independent report with --waive critique --note <reason>`);
   }
+  if (id === 'G4' && decision === 'approve') {
+    const refusals = await draftRefusals(project,tools);
+    if (refusals.length) throw new CliError(`cannot approve G4: ${refusals.join('; ')}; run motion-studio deliver ${project.root} --quality draft`);
+  }
   const gate = view.gate;
   if (decision === 'changes' && gate.rounds >= noteRounds) throw new CliError(`${id} used ${gate.rounds} of ${noteRounds} note rounds; approve to accept, rescope or stop`);
+  for (const warning of critiqueWarnings(project,id)) warn(warning);
   const files = await filmFiles(project.root);
   const sources = await gateSources(project,id,files,id);
   const hashes = await hashAll(project.root,sources.all);

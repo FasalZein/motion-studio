@@ -1,3 +1,4 @@
+import {draftFixture} from './draft-fixture.ts';
 import {test as nodeTest} from 'node:test';
 const {expect} = await import('bun' in process.versions ? 'bun:test' : 'expect');
 import {dirname, join, resolve} from 'node:path';
@@ -61,6 +62,7 @@ const status = (dir:string) => ok(['status',dir]);
  * its render.masterSha256 and a report whose header names the packet and that hash (reviewer.md format).
  */
 async function critique(dir:string, master:string, {loop = 1, independence = 'independent', packetMaster = master} = {}) {
+  await draftFixture(dir);
   await write(dir,'critique/packet-16x9/packet.json',JSON.stringify({mode:'in-studio', render:{master:'renders/16x9/master.mkv', masterSha256:sha(packetMaster)}}));
   await write(dir,`critique/loop-${loop}.md`,`# Critique loop ${loop}\nMode: in-studio; independence: ${independence}\nRender: renders/16x9/master.mkv; format: 16:9; fps: 30; revision hashes: unavailable\nPacket: critique/packet-16x9/packet.json; master sha256: ${sha(master)}\n`);
 }
@@ -222,7 +224,8 @@ test('G2 binds the beat grid and beat map, not shot descriptions or fill-mode as
     expect(g2.inputHashes[g2Grid]).toBe(sha('{"beatFrames":[3,6],"bpm":null,"downbeatFrames":[],"dropFrames":[]}'));
     expect(g2.inputHashes[g2Map]).toBe(sha('[{"endFrame":6,"id":"remotion","startFrame":0},{"endFrame":12,"id":"hyperframes","startFrame":6}]'));
     expect(g2.inputHashes['storyboard.json#/meta{fps,durationFrames}']).toBe(sha('{"durationFrames":12,"fps":30}'));
-    const approved = lines('G1 approved','G2 approved','G3 approved','G4 pending','G5 pending',"next: fill assets, full build, polish (D81), liveness and a fresh reviewer's critique loop A, then present G4");
+    const approved = lines('G1 approved','G2 approved','G3 approved','G4 pending','G5 pending',"next: fill assets, full build, polish (D81), liveness and a fresh reviewer's critique loop A, then present G4",
+      "warning: G4 critique[] is empty; record calibrated review scores and check loop A before proceeding");
 
     // Fill mode, description and seam-thread edits, grid labels, formats and layouts leave G2 and G3 approved (D43, D64).
     await edit(dir,s => {
@@ -270,6 +273,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
   await withFilm(async dir => {
     await write(dir,'animatic.mp4','animatic v1');
     await write(dir,'renders/16x9/master.mkv','master v1');
+    await write(dir,'renders/16x9/draft.mp4','full pass mp4');
     for (const id of ['G1','G2','G3']) ok(['gate',dir,id,'approve']);
     await critique(dir,'master v1');
     // The fake master cannot be measured, so G4 is approved with a liveness waiver (D60).
@@ -279,6 +283,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     expect(gates[2].inputHashes['stills/G2/b01.png']).toBe(sha('beat 1 v1'));
     expect(gates[2].inputHashes['animatic.mp4']).toBe(sha('animatic v1'));
     expect(gates[3].inputHashes['renders/16x9/master.mkv']).toBe(sha('master v1'));
+    expect(gates[3].inputHashes['renders/16x9/draft.mp4']).toBe(createHash('sha256').update(await readFile(join(dir,'renders/16x9/draft.mp4'))).digest('hex'));
     expect(Object.keys(gates[3].inputHashes).filter(k => k.startsWith('shots/') || k === 'ledger.json')).toEqual([]);
     const frozenG4 = (await readdir(join(dir,'stills/approved'))).filter(d => d.startsWith('G4-'));
     expect(frozenG4).toHaveLength(1);
@@ -298,7 +303,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     await write(dir,'animatic.mp4','animatic v2');
     await write(dir,'stills/G2/b01.png','beat 1 v2');
     expect(status(dir)).toBe(lines('G1 approved','G2 approved','G3 approved','G4 approved','G5 pending',
-      'next: mix, draft renders per format, critique loop B and license check, then present G5','liveness 16:9 missing (no readable renders/16x9/liveness.json)'));
+      'next: mix, draft renders per format, critique loop B and license check, then present G5','warning: G5 critique[] is empty; record calibrated review scores and check loop B before proceeding','liveness 16:9 missing (no readable renders/16x9/liveness.json)'));
 
     await write(dir,'renders/16x9/safezone.json','{"ok":true}');
     await write(dir,'renders/16x9/scan.json','{"counts":{"blocking":0}}');
@@ -312,7 +317,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     await write(dir,'renders/16x9/.staging/scratch.mkv','scratch');
     await write(dir,'shots/hyperframes/.cache','cache v1');
     await edit(dir,s => {s.meta.layouts['16:9'].overlay = 'youtube';});
-    ok(['gate',dir,'G5','approve']);
+    expect(ok(['gate',dir,'G5','approve'])).toContain('warning: G5 critique[] is empty');
     const g5 = (await storyboard(dir)).gates[4];
     expect(g5.inputHashes['shots/hyperframes/index.html']).toBe(sha(await readFile(join(dir,'shots/hyperframes/index.html'),'utf8')));
     expect(g5.inputHashes['ledger.json']).toBe(sha(await readFile(join(dir,'ledger.json'),'utf8')));
@@ -343,7 +348,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     // music bed stales G5 only.
     const approvedStoryboard = await readFile(join(dir,'storyboard.json'),'utf8');
     const g5Only = (key:string) => lines('G1 approved','G2 approved','G3 approved','G4 approved',`G5 stale (changed: ${key})`,
-      'next: G5 is stale: rerun mix, draft renders per format, critique loop B and license check, then present G5 again','liveness 16:9 missing (no readable renders/16x9/liveness.json)');
+      'next: G5 is stale: rerun mix, draft renders per format, critique loop B and license check, then present G5 again','warning: G5 critique[] is empty; record calibrated review scores and check loop B before proceeding','liveness 16:9 missing (no readable renders/16x9/liveness.json)');
     await edit(dir,s => {s.shots[1].soundCues = [];});
     expect(status(dir)).toBe(g5Only('storyboard.json#/shots'));
     await writeFile(join(dir,'storyboard.json'),approvedStoryboard);
@@ -353,7 +358,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     expect(status(dir)).toBe(allApproved);
     await appendFile(join(dir,'shots/hyperframes/index.html'),'<!-- late -->\n');
     expect(status(dir)).toBe(lines('G1 approved','G2 approved','G3 approved','G4 approved','G5 stale (changed: shots/hyperframes/index.html)',
-      'next: G5 is stale: rerun mix, draft renders per format, critique loop B and license check, then present G5 again','liveness 16:9 missing (no readable renders/16x9/liveness.json)'));
+      'next: G5 is stale: rerun mix, draft renders per format, critique loop B and license check, then present G5 again','warning: G5 critique[] is empty; record calibrated review scores and check loop B before proceeding','liveness 16:9 missing (no readable renders/16x9/liveness.json)'));
   });
 });
 
@@ -384,6 +389,7 @@ test('G4 approve refuses without a current independent critique report and accep
     await critique(dir,'master v2',{loop:2});
     const out = ok(['gate',dir,...approve]);
     expect(out).toContain('recorded G4 approve');
+    expect(out).toContain('warning: G4 critique[] is empty');
     expect((await storyboard(dir)).gates[3].inputHashes['critique/loop-2.md']).toBe(sha(await readFile(join(dir,'critique/loop-2.md'),'utf8')));
   });
 });
@@ -465,3 +471,19 @@ test('gate rejects an unknown gate or decision and an approval out of order', as
     await refused(dir,['G3','approve'],'cannot record G3: G1 is not approved (pending); approve G1 first');
   });
 });
+
+test('status warns before G4 and loop A scores cannot hide the missing G5 loop B', async () => withFilm(async dir => {
+  for (const id of ['G1','G2','G3']) ok(['gate',dir,id,'approve']);
+  expect(status(dir)).toContain('warning: G4 critique[] is empty');
+  await write(dir,'renders/16x9/master.mkv','reviewed master');
+  await critique(dir,'reviewed master');
+  const score = {loop:1,revisionHash:sha('revision-A'),filmScores:{'2':8},shotScores:{},worstIssues:[],stillMatches:[]};
+  await edit(dir,s => {s.critique = [score];});
+  ok(['gate',dir,'G4','approve','--waive','liveness','--note','fixture master']);
+  const warning = 'warning: G5 has no loop B critique[] scores after G4';
+  expect(status(dir)).toContain(warning);
+  const decision = ok(['gate',dir,'G5','changes','--note','Run loop B']);
+  expect(decision.indexOf(warning)).toBeLessThan(decision.indexOf('recorded G5 changes'));
+  await edit(dir,s => {s.critique.push({...score,loop:2,revisionHash:sha('revision-B')});});
+  expect(status(dir)).not.toContain('warning: G5');
+}));

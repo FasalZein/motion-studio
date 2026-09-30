@@ -1,0 +1,188 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Delivery receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "quality",
+    "state",
+    "inputHash",
+    "files",
+    "createdAt"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "quality": {
+      "enum": [
+        "draft",
+        "final"
+      ]
+    },
+    "state": {
+      "enum": [
+        "rendered",
+        "accepted"
+      ]
+    },
+    "inputHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "files": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^delivery/(draft|final)/([a-zA-Z0-9_-]+/)?[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "createdAt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "note",
+        "at"
+      ],
+      "properties": {
+        "note": {
+          "type": "string",
+          "minLength": 1
+        },
+        "at": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "note",
+        "at"
+      ],
+      "properties": {
+        "note": {
+          "type": "string",
+          "minLength": 1
+        },
+        "at": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "licenses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "asset",
+          "sha256",
+          "status",
+          "reason"
+        ],
+        "properties": {
+          "asset": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "status": {
+            "enum": [
+              "unknown",
+              "restricted"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "quality": {
+            "const": "final"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "cost",
+          "licenses"
+        ]
+      },
+      "else": {
+        "properties": {
+          "state": {
+            "const": "rendered"
+          }
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "cost"
+              ]
+            },
+            {
+              "required": [
+                "licenses"
+              ]
+            },
+            {
+              "required": [
+                "acceptance"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "accepted"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "acceptance"
+        ],
+        "properties": {
+          "quality": {
+            "const": "final"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "acceptance"
+          ]
+        }
+      }
+    }
+  ]
+}
