@@ -36,7 +36,7 @@ Make one original music-and-SFX plan from the film's beat contract. `motion-stud
 | Ask the user while the draft plays with sound | Change one parameter |
 |---|---|
 | Which main hits feel early or late? Give the timecode. | Cue offset: correct the affected storyboard `soundCues[].eventFrame` against the actual visual event and update the beat contract. Keep it on the grid; rebuild picture if its cue changed. |
-| Does the mood fit: fits, too dark, or too generic? | Palette: `--palette` changes voicing, register, bass and lead instruments. For “too busy”, change only `--density` to `sparse`; it reduces rhythmic subdivisions, kicks and lead notes. |
+| Does the mood fit: fits, too dark, too busy, or too generic? | Palette: `--palette` changes voicing, register, bass and lead instruments. For “too busy”, change only `--density` to `sparse`; it reduces rhythmic subdivisions, kicks and lead notes. |
 | Is anything harsh, muddy or too loud? Give the timecode. | EQ band: `--eq-hz` for harshness, or the affected stem's EQ in the saved script for low-band mud or excess. |
 | Does the ending resolve on the logo? | Sting: `--tonic-midi`, or the original tonic voicing in the saved script. |
 | Is there too much or too little SFX? | SFX density: `--sfx-density` for stock layers; remove or add selected storyboard cues for the number of hits. |
