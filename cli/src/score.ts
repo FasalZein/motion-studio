@@ -80,7 +80,8 @@ export async function importScore(project:Project, args:string[], tools:Tools):P
   const peak = Number(/True peak:\s*Peak:\s*(-?[\d.]+) dBFS/.exec(measured)?.[1]);
   if (!Number.isFinite(lufs) || !Number.isFinite(peak) || Math.abs(lufs+14) > .5 || peak > -1) throw new CliError('score preview does not meet -14 +/- 0.5 LUFS and -1 dBTP');
   const next:Storyboard = {...project.storyboard,
-    audio:{track:id('music.wav'),grid:'imported',bpm:number(report.bpm),beatFrames:list(report.beatFrames).map(integer),downbeatFrames:list(report.downbeatFrames).map(integer),dropFrames:list(report.dropFrames).map(integer),confidence:'high'},
+    // G2 owns the planned grid. Scoring replaces the bed, not approved timing or annotation choices.
+    audio:{...project.storyboard.audio,track:id('music.wav')},
     shots:project.storyboard.shots.map(shot => ({...shot,soundCues:hits.filter(h => h.shot === shot.id).map(h => ({asset:id(h.file),eventFrame:h.eventFrame,peakOffsetFrames:h.peakOffsetFrames}))}))};
   const errors = await schemaErrors('storyboard.json',next);
   if (errors.length) throw new CliError(`score import would produce an invalid storyboard: ${errors.join('; ')}`);

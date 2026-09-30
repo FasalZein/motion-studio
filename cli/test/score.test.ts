@@ -176,3 +176,28 @@ print(json.dumps({'darkChords':[c['notes'] for c in dark_plan['chords']], 'darkC
     assert.equal(plan.dropout.musicalPeak,0);
   }
 });
+
+test('score import preserves the approved G2 grid, including rounded BPM and empty annotations', {timeout:180000}, async () => {
+  const root = await mkdtemp(join(tmpdir(),'motion-score-g2-'));
+  try {
+    const {emptyStoryboard} = await import('../src/project.ts');
+    const board = emptyStoryboard();
+    board.meta.durationFrames = 204;
+    board.audio = {...board.audio,grid:'corrected',bpm:105.9,beatFrames:Array.from({length:12},(_,i)=>i*17),downbeatFrames:[],dropFrames:[],confidence:'low'};
+    board.shots = [{id:'s01',startFrame:0,endFrame:204,engine:'hyperframes',entrypoint:'shots/s01/index.html',description:'fixture',camera:'locked',entry:'cut',exit:'cut',assets:[],stillFrames:[],protected:[],soundCues:[68,102,136].map(eventFrame=>({asset:'planned',eventFrame,peakOffsetFrames:0}))}];
+    await writeFile(join(root,'storyboard.json'),JSON.stringify(board));
+    await writeFile(join(root,'ledger.json'),JSON.stringify({version:'0',assets:[]}));
+    await writeFile(join(root,'BRIEF.md'),'# G2 grid fixture');
+    await writeFile(join(root,'beatmap.md'),'# Fixture: 17 frames per beat; no downbeats or drops declared.');
+    run('node',[resolve('dist/cli.js'),'gate',root,'G1','approve']);
+    run('node',[resolve('dist/cli.js'),'gate',root,'G2','approve']);
+    const before = JSON.parse(await readFile(join(root,'storyboard.json'),'utf8'));
+    const out = join(root,'audio/scores/g2');
+    run(python,[script,root,'--out',out,'--seed','51','--reveal-frame','68','--logo-frame','136','--sfx-density','0']);
+    run('node',[resolve('dist/cli.js'),'score-import',root,join(out,'audio-report.json'),'--id','g2']);
+    const after = JSON.parse(await readFile(join(root,'storyboard.json'),'utf8'));
+    assert.deepEqual(after.audio,{...before.audio,track:'g2-music'});
+    assert.deepEqual(after.gates[1],before.gates[1]);
+    assert.match(run('node',[resolve('dist/cli.js'),'status',root]),/^G2 approved$/m);
+  } finally {run('trash',[root]);}
+});
