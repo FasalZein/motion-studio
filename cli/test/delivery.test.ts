@@ -3,7 +3,7 @@ const {expect} = await import('bun' in process.versions ? 'bun:test' : 'expect')
 import {createHash} from 'node:crypto';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
+import {chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {parseProject, writeStoryboard} from '../src/project.ts';
@@ -169,4 +169,26 @@ test('loop drafts include measured image and audio seams for every chosen format
     expect(report.audio.samplesPerChannel).toBe(19200);
   }
   expect(probe(join(dir,'delivery/draft/9x16/film.mp4'))[0]).toMatchObject({width:180,height:320,nb_read_frames:'12'});
+  const paths = ['renders/16x9/draft.mp4','renders/9x16/draft.mp4','renders/16x9/poster.png','renders/9x16/poster.png',
+    'renders/16x9/draft.json','renders/9x16/draft.json','delivery/draft/manifest.json'];
+  const prior = await Promise.all(paths.map(path => readFile(join(dir,path))));
+  const firstMux = join(dir,'renders/16x9/final.mkv');
+  ffmpeg('-i',firstMux,'-map','0','-c','copy','-metadata','comment=new-draft',join(dir,'updated-mux.mkv'));
+  await cp(join(dir,'updated-mux.mkv'),firstMux);
+  const bin = join(dir,'failing-encoder'); await mkdir(bin);
+  const realFfmpeg = spawnSync('which',['ffmpeg'],{encoding:'utf8'}).stdout.trim();
+  const wrapper = join(bin,'ffmpeg');
+  await writeFile(wrapper,`#!/bin/sh\ncase "$*" in *9x16/film.mp4*) echo 'fixture second-format encoding failure' >&2; exit 37;; esac\nexec "${realFfmpeg}" "$@"\n`);
+  await chmod(wrapper,0o755);
+  const oldPath = process.env.PATH;
+  try {
+    process.env.PATH = `${bin}:${oldPath}`;
+    const failure = run('deliver',dir,'--quality','draft');
+    expect(failure.status).toBe(1);
+    expect(failure.stderr).toContain('fixture second-format encoding failure');
+  } finally {process.env.PATH = oldPath;}
+  for (const [i,path] of paths.entries()) expect(await readFile(join(dir,path))).toEqual(prior[i]);
+  ok(run('deliver',dir,'--quality','draft'));
+  expect(await readFile(join(dir,'renders/16x9/draft.mp4'))).not.toEqual(prior[0]);
+
 }));

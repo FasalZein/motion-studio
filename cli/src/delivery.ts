@@ -124,7 +124,7 @@ export async function deliver(project:Project, args:string[], tools:Tools):Promi
   const before = await inputHash(project);
   const base = join(project.root,'delivery');
   await mkdir(base,{recursive:true});
-  await rm(manifestPath(project.root,quality),{force:true});
+  if (quality === 'final') await rm(manifestPath(project.root,quality),{force:true});
   const staging = await mkdtemp(join(base,'.motion-delivery-'));
   const lines:string[] = [];
   try {
@@ -147,11 +147,6 @@ export async function deliver(project:Project, args:string[], tools:Tools):Promi
         lines.push(`loop ${format}: measured picture and audio seam; inspect loop.json and listen to repeated playback`);
       }
       for (const file of await readdir(dir)) await add(`${folder}/${file}`);
-      if (quality === 'draft') {
-        await copyFile(mp4,join(out.dir,'draft.mp4'));
-        await copyFile(join(dir,'poster.png'),join(out.dir,'poster.png'));
-        await writeDraftProof(out);
-      }
       lines.push(`deliver ${quality} ${format}: H.264/AAC ${project.storyboard.meta.durationFrames} frames, CRF ${profile.crf} -> delivery/${quality}/${folder}/film.mp4`);
     }
     await copyFile(join(project.root,'ledger.json'),join(staging,'ledger.json'));
@@ -164,6 +159,13 @@ export async function deliver(project:Project, args:string[], tools:Tools):Promi
     await writeFile(join(staging,'manifest.json'),JSON.stringify(record,null,2)+'\n');
     await rm(join(base,quality),{recursive:true,force:true});
     await rename(staging,join(base,quality));
+    // Publish shown drafts only after every format and the final input check succeeded.
+    if (quality === 'draft') for (const format of formats) {
+      const out = outputsOf(project.root,format), dir = join(base,quality,formatDir(format));
+      await copyFile(join(dir,'film.mp4'),join(out.dir,'draft.mp4'));
+      await copyFile(join(dir,'poster.png'),join(out.dir,'poster.png'));
+      await writeDraftProof(out);
+    }
   } finally {await rm(staging,{recursive:true,force:true});}
   return [...lines, ...(quality === 'final' ? ['final bundle rendered; show the files and run accept only after the director accepts them'] : [])];
 }
