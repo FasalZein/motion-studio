@@ -1,3 +1,4 @@
+import {scoreFixture} from './score-fixture.ts';
 import {draftFixture} from './draft-fixture.ts';
 import {test as nodeTest} from 'node:test';
 const {expect} = await import('bun' in process.versions ? 'bun:test' : 'expect');
@@ -62,6 +63,7 @@ const status = (dir:string) => ok(['status',dir]);
  * its render.masterSha256 and a report whose header names the packet and that hash (reviewer.md format).
  */
 async function critique(dir:string, master:string, {loop = 1, independence = 'independent', packetMaster = master} = {}) {
+  await scoreFixture(dir);
   await draftFixture(dir);
   await write(dir,'critique/packet-16x9/packet.json',JSON.stringify({mode:'in-studio', render:{master:'renders/16x9/master.mkv', masterSha256:sha(packetMaster)}}));
   await write(dir,`critique/loop-${loop}.md`,`# Critique loop ${loop}\nMode: in-studio; independence: ${independence}\nRender: renders/16x9/master.mkv; format: 16:9; fps: 30; revision hashes: unavailable\nPacket: critique/packet-16x9/packet.json; master sha256: ${sha(master)}\n`);
@@ -276,7 +278,6 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     await write(dir,'renders/16x9/draft.mp4','full pass mp4');
     for (const id of ['G1','G2','G3']) ok(['gate',dir,id,'approve']);
     await critique(dir,'master v1');
-    await write(dir,'audio/scores/r1/audio-report.json','{"passed":true}');
     await write(dir,'audio/scores/r1/listening.md','mood fits; ending resolves');
     // The fake master cannot be measured, so G4 is approved with a liveness waiver (D60).
     ok(['gate',dir,'G4','approve','--waive','liveness','--note','fake master']);
@@ -290,9 +291,12 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     const frozenG4 = (await readdir(join(dir,'stills/approved'))).filter(d => d.startsWith('G4-'));
     expect(frozenG4).toHaveLength(1);
     expect(await readFile(join(dir,'stills/approved',frozenG4[0],'16x9/master.mkv'),'utf8')).toBe('master v1');
-    expect(gates[3].inputHashes['audio/scores/r1/audio-report.json']).toBe(sha('{"passed":true}'));
+    expect(gates[3].inputHashes['audio/scores/r1/audio-report.json']).toBe(sha(await readFile(join(dir,'audio/scores/r1/audio-report.json'),'utf8')));
+    expect(gates[3].inputHashes['audio/scores/r1/import.json']).toBe(sha(await readFile(join(dir,'audio/scores/r1/import.json'),'utf8')));
     expect(await readFile(join(dir,'stills/approved',frozenG4[0],'r1/listening.md'),'utf8')).toBe('mood fits; ending resolves');
+    const beforeListeningEdit = status(dir);
     await write(dir,'audio/scores/r1/listening.md','later listening notes');
+    expect(status(dir)).toBe(beforeListeningEdit);
     // G4 also binds the frozen critique report it showed, so a later loop B report does not stale G4.
     expect(gates[3].inputHashes['critique/loop-1.md']).toBe(sha(await readFile(join(dir,'critique/loop-1.md'),'utf8')));
     await critique(dir,'master v1 remuxed',{loop:2});
@@ -350,7 +354,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     expect(ok(['validate',dir])).toBe(`valid ${dir}\n`);
 
     // The final render and mix read the whole shot and audio records, so G5 binds them: removing a sound cue or the
-    // music bed stales G5 only.
+    // music bed now stales G4 too: the human listen must cover the current chosen score.
     const approvedStoryboard = await readFile(join(dir,'storyboard.json'),'utf8');
     const g5Only = (key:string) => lines('G1 approved','G2 approved','G3 approved','G4 approved',`G5 stale (changed: ${key})`,
       'next: G5 is stale: rerun mix, draft renders per format, critique loop B and license check, then present G5 again','warning: G5 critique[] is empty; record calibrated review scores and check loop B before proceeding','liveness 16:9 missing (no readable renders/16x9/liveness.json)');
@@ -358,7 +362,8 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     expect(status(dir)).toBe(g5Only('storyboard.json#/shots'));
     await writeFile(join(dir,'storyboard.json'),approvedStoryboard);
     await edit(dir,s => {s.audio.track = null;});
-    expect(status(dir)).toBe(g5Only('storyboard.json#/audio'));
+    expect(status(dir)).toBe(lines('G1 approved','G2 approved','G3 approved','G4 stale (changed: storyboard.json#/audio{track})','G5 stale (G4 not approved)',
+      "next: G4 is stale: rerun fill assets, full build, polish (D81), liveness and a fresh reviewer's critique loop A, then present G4 again",'warning: G4 critique[] is empty; record calibrated review scores and check loop A before proceeding','liveness 16:9 missing (no readable renders/16x9/liveness.json)'));
     await writeFile(join(dir,'storyboard.json'),approvedStoryboard);
     expect(status(dir)).toBe(allApproved);
     await appendFile(join(dir,'shots/hyperframes/index.html'),'<!-- late -->\n');
@@ -491,4 +496,50 @@ test('status warns before G4 and loop A scores cannot hide the missing G5 loop B
   expect(decision.indexOf(warning)).toBeLessThan(decision.indexOf('recorded G5 changes'));
   await edit(dir,s => {s.critique.push({...score,loop:2,revisionHash:sha('revision-B')});});
   expect(status(dir)).not.toContain('warning: G5');
+}));
+
+
+test('G4 requires a passing current imported score and human listen, or an explicit score waiver', async () => withFilm(async dir => {
+  await write(dir,'renders/16x9/master.mkv','score gate master');
+  for (const id of ['G1','G2','G3']) ok(['gate',dir,id,'approve']);
+  await critique(dir,'score gate master');
+  const approve = ['G4','approve','--waive','liveness','--note','fixture master'];
+  const reportPath = join(dir,'audio/scores/r1/audio-report.json');
+  const receiptPath = join(dir,'audio/scores/r1/import.json');
+  const listeningPath = join(dir,'audio/scores/r1/listening.md');
+  const reportBytes = await readFile(reportPath,'utf8');
+  const receiptBytes = await readFile(receiptPath,'utf8');
+  const listeningBytes = await readFile(listeningPath,'utf8');
+  const hint = `; render and import motion-score, then record audio/scores/<revision>/listening.md, or approve a deliberately licensed track with --waive score --note <reason>`;
+  const missing = `cannot approve G4: score missing (no import receipt matches the current audio.track)${hint}`;
+  const incomplete = `cannot approve G4: score stale or incomplete (need a passing unchanged report, current imported audio, import receipt and non-empty listening.md)${hint}`;
+  await writeFile(receiptPath,'{}');
+  await refused(dir,approve,missing);
+  await writeFile(receiptPath,JSON.stringify({...JSON.parse(receiptBytes),track:'other-score'}));
+  await refused(dir,approve,missing);
+  await writeFile(receiptPath,receiptBytes);
+  for (const report of ['{bad',JSON.stringify({...JSON.parse(reportBytes),passed:false}),'{"passed":true}']) {
+    await writeFile(reportPath,report);
+    await refused(dir,approve,incomplete);
+  }
+  await writeFile(reportPath,reportBytes);
+  await writeFile(listeningPath,' \n');
+  await refused(dir,approve,incomplete);
+  await writeFile(listeningPath,listeningBytes);
+  await edit(dir,s => {s.shots[0].soundCues.push({asset:'late',eventFrame:0,peakOffsetFrames:0});});
+  await refused(dir,approve,incomplete);
+  await edit(dir,s => {s.shots[0].soundCues = [];});
+  const audioPath = join(dir,'audio/scores/r1/music.wav');
+  const audio = await readFile(audioPath);
+  await writeFile(audioPath,'changed music');
+  await refused(dir,approve,incomplete);
+  await writeFile(audioPath,audio);
+  // A change to gate records did not invalidate the imported score; all current evidence now permits approval.
+  expect(ok(['gate',dir,...approve])).toContain('recorded G4 approve');
+  await writeFile(receiptPath,'{}');
+  expect(run(['gate',dir,'G4','approve','--waive','score']).stderr).toBe('error: --waive score needs a --note with the reason\n');
+  const out = ok(['gate',dir,...approve,'--waive','score','--note','Director chose a licensed track instead of an original score']);
+  expect(out).toContain('waived: score');
+  expect((await storyboard(dir)).gates[3].waivers.at(-1)).toEqual({check:'score',reason:'Director chose a licensed track instead of an original score'});
+  expect(run(['gate',dir,'G3','approve','--waive','score','--note','licensed']).stderr).toBe('error: --waive score applies only to G4 approve\n');
 }));

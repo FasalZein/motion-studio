@@ -214,9 +214,9 @@
           "items": {
             "type": "object",
             "required": ["check", "reason"],
-            "properties": {"check": {"enum": ["liveness", "critique"]}, "reason": {"type": "string", "minLength": 1}}
+            "properties": {"check": {"enum": ["liveness", "critique", "score"]}, "reason": {"type": "string", "minLength": 1}}
           },
-          "description": "The checks the director waived at this approval, each with its written reason: `liveness` (D60) lifts the liveness report requirement; `critique` (D80) lifts only the independence requirement of the critique report. Only G4 records them; a later decision on the gate drops them."
+          "description": "The checks the director waived at this approval, each with its written reason: `liveness` (D60) lifts the liveness report requirement; `critique` (D80) lifts only the independence requirement of the critique report. `score` lifts the original-score evidence requirement for a deliberately licensed track (ticket #51). Only G4 records them; a later decision on the gate drops them."
         }
       }
     },

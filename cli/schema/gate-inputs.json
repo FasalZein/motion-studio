@@ -16,6 +16,7 @@
   "G4": [
     {"name": "full pass", "freeze": true, "sources": [{"file": "renders/*/master.mkv"}, {"file": "renders/*/draft.mp4"}, {"file": "renders/*/draft.json"}]},
     {"name": "critique reports", "freeze": true, "sources": [{"file": "critique/loop-*.md"}]},
+    {"name": "chosen score", "sources": [{"storyboard": "/audio", "fields": ["track"]}]},
     {"name": "score and listening", "freeze": true, "sources": [{"file": "audio/scores/*/audio-report.json"}, {"file": "audio/scores/*/listening.md"}, {"file": "audio/scores/*/import.json"}]}
   ],
   "G5": [
@@ -25,6 +26,7 @@
     {"name": "delivery checks", "freeze": true, "sources": [{"file": "renders/*/mix.wav"}, {"file": "renders/*/final.mkv"}, {"file": "renders/*/draft.*"}, {"file": "renders/*/sync.json"}, {"file": "renders/*/handoff-*.json"}, {"file": "renders/*/safezone.json"}, {"file": "renders/*/scan.json"}, {"file": "renders/*/poster.*"}, {"file": "renders/*/contact-sheet-*.png"}]},
     {"name": "liveness reports", "sources": [{"file": "renders/*/liveness.json"}]}
   ],
+  "score": {"gate": "G4", "revisions": "audio/scores"},
   "critique": {
     "$comment": "Approval check (D80): `gate <gate> approve` refuses unless, for every chosen format, the packet exists and its render.masterSha256 is the SHA-256 of the current renders/<format>/master.mkv, and a report matching `reports` has the header line `Packet: <packet path>; master sha256: <that hash>` and says `independence: independent` in its header, the lines above the first `## ` heading (a fresh reviewer, not the builder); `--waive critique` lifts only that independence requirement (D80). {format} is the format folder (16x9, 9x16, 1x1). The reports are also a freeze input of that gate, so a later critique loop does not stale the approval.",
     "gate": "G4",

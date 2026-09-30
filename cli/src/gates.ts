@@ -11,6 +11,7 @@ import {critiqueWarnings} from './critique-warning.js';
 import {draftRefusals} from './draft.js';
 import type {Tools} from './seam.js';
 import {lookTestRefusals} from './looktest.js';
+import {scoreRefusals, type ScoreRule} from './scoregate.js';
 
 /** Note rounds allowed per gate before the user must accept, rescope or stop. */
 export const noteRounds = 3;
@@ -18,12 +19,12 @@ export const noteRounds = 3;
 // schema/gate-inputs.json lists what each gate hashes. It is data so later tickets add inputs without code changes.
 type Source = {file:string; exclude?:string[]}|{storyboard:string; fields?:string[]}|{storyboardPath:string};
 type GateInput = {name:string; freeze?:boolean; sources:Source[]};
-type GateInputs = Record<GateId,GateInput[]> & {critique:CritiqueRule};
+type GateInputs = Record<GateId,GateInput[]> & {critique:CritiqueRule; score:ScoreRule};
 
 const pointer = {type:'string', pattern:'^(/[^/]*)+$'};
 const inputsSchema = {
-  type:'object', required:[...gateIds,'critique'], additionalProperties:false,
-  properties:{$comment:{type:'string'}, critique:{type:'object', required:['gate','packet','reports'], additionalProperties:false, properties:{
+  type:'object', required:[...gateIds,'critique','score'], additionalProperties:false,
+  properties:{$comment:{type:'string'}, score:{type:'object',required:['gate','revisions'],additionalProperties:false,properties:{gate:{const:'G4'},revisions:{const:'audio/scores'}}}, critique:{type:'object', required:['gate','packet','reports'], additionalProperties:false, properties:{
     $comment:{type:'string'}, gate:{enum:gateIds}, packet:{type:'string', pattern:'\\{format\\}'}, reports:{type:'string', minLength:1}}}, ...Object.fromEntries(gateIds.map(id => [id,{type:'array', items:{
     type:'object', required:['name','sources'], additionalProperties:false,
     properties:{name:{type:'string', minLength:1}, freeze:{type:'boolean'}, sources:{type:'array', items:{oneOf:[
@@ -244,10 +245,14 @@ export async function recordGate(project:Project, id:GateId, decision:Decision, 
   }
   // The approval shows the user a report of this master (D80). A critique waiver lifts only the independence
   // requirement (D80): a current packet and a report bound to the current master hash are still needed.
-  const {critique} = await gateInputs();
+  const {critique,score} = await gateInputs();
   if (id === critique.gate && decision === 'approve') {
     const refusals = await critiqueRefusals(project,critique,waived('critique'));
     if (refusals.length) throw new CliError(`cannot approve ${id}: ${refusals.join('; ')}; run motion-studio packet ${project.root} and dispatch a fresh motion-critique reviewer (its report header names the packet and master sha256), or, with no subagent available, approve a non-independent report with --waive critique --note <reason>`);
+  }
+  if (id === score.gate && decision === 'approve' && !waived('score')) {
+    const refusals = await scoreRefusals(project,score);
+    if (refusals.length) throw new CliError(`cannot approve ${id}: ${refusals.join('; ')}; render and import motion-score, then record audio/scores/<revision>/listening.md, or approve a deliberately licensed track with --waive score --note <reason>`);
   }
   if (id === 'G4' && decision === 'approve') {
     const refusals = await draftRefusals(project,tools);

@@ -34,8 +34,9 @@ def cue_kind(shot, cue, reveal, logo):
     if words & {'arrival', 'arrive', 'lock', 'land'}:
         return 'arrival'
     seam = cue['eventFrame'] == shot['startFrame']
-    movement = set(re.findall(r'[a-z]+', (shot.get('entry', '') + ' ' + shot.get('camera', '')).lower()))
-    if words & {'whip', 'whoosh', 'camera', 'zoom', 'orbit', 'sweep'} or seam and movement & {'whip', 'swipe', 'push', 'pull', 'zoom', 'orbit'}:
+    terms = [move['term'] for move in shot.get('moves', []) if move['start'] <= cue['eventFrame'] - shot['startFrame'] < move['start'] + move['frames']]
+    movement = set(re.findall(r'[a-z]+', (' '.join(terms) + ' ' + shot.get('transition', '') + ' ' + shot.get('camera', '')).lower()))
+    if words & {'motion', 'whip', 'whoosh', 'camera', 'zoom', 'orbit', 'sweep'} or (seam or terms) and movement & {'whip', 'swipe', 'push', 'pull', 'zoom', 'orbit'}:
         return 'motion'
     return 'arrival'
 

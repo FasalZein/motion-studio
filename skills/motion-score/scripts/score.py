@@ -153,7 +153,7 @@ def render(board, args, directory):
             place(hit, sample, frame * RATE // fps, .12)
             stock[stock.index(name)] = {'source': str(source), 'sha256': digest(source), 'license': 'Pixabay Content License', 'url': LICENSE}
         hit = Pedalboard([HighpassFilter(cutoff_frequency_hz=25), Compressor(threshold_db=-12, ratio=2)])(np.asarray(hit, dtype=np.float32), RATE)
-        filename = f'hit-{i:02d}.wav'
+        filename = f'hit-{i:02d}-{kind}.wav'
         wav(directory / filename, hit)
         delivered = decode(directory / filename)
         mono = np.mean(delivered, axis=0)

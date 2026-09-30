@@ -31,8 +31,8 @@ export type FrameSpan = {start:number; frames:number};
 export type Rect = {x:number; y:number; width:number; height:number};
 /** Layout inputs of one format. Both engines receive the same values (Remotion as props, HyperFrames as variables). */
 export type Layout = {canvas:{width:number; height:number}; safe:Rect; overlay:string|null};
-/** A check the director may waive at G4 approval with a written reason: liveness (D60) or critique independence (D80). */
-export const waivable = ['liveness','critique'] as const;
+/** A check the director may waive at G4 approval with a written reason: liveness (D60) critique independence (D80), or original score (ticket #51). */
+export const waivable = ['liveness','critique','score'] as const;
 export type Waivable = typeof waivable[number];
 export type Waiver = {check:Waivable; reason:string};
 /** `waiver` is the older single-waiver shape; new records write `waivers`. Read both through `gateWaivers`. */

@@ -7,13 +7,19 @@ import {join, resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 
 const script = resolve('../skills/motion-score/scripts/score.py');
-const venv = join(tmpdir(),'motion-score-test-venv');
+const requirements = resolve('../skills/motion-score/scripts/requirements.txt');
+const requirementsHash = createHash('sha256').update(await readFile(requirements)).digest('hex');
+const venv = join(tmpdir(),`motion-score-test-venv-${requirementsHash.slice(0,16)}`);
+const marker = join(venv,'requirements.sha256');
 const python = process.env.SCORE_PYTHON ?? join(venv,'bin/python');
 before(async () => {
   if (process.env.SCORE_PYTHON) return;
   if (!await stat(python).then(()=>true,()=>false)) {
     run('python3',['-m','venv',venv]);
-    run(python,['-m','pip','install','-r',resolve('../skills/motion-score/scripts/requirements.txt')]);
+  }
+  if (await readFile(marker,'utf8').catch(()=>'') !== requirementsHash) {
+    run(python,['-m','pip','install','-r',requirements]);
+    await writeFile(marker,requirementsHash);
   }
 }, {timeout:300000});
 function run(command:string, args:string[], env = process.env) {
@@ -71,7 +77,7 @@ test('a storyboard score delivers frame-aligned hits, measured loudness, and rep
     assert.equal(stock.hits[0].sources.length,1);
     assert.equal(stock.hits[1].sources.length,1);
     assert.deepEqual(stock.hits[2].sources,[]);
-    assert.equal(stock.files.find((file:{file:string})=>file.file==='hit-02.wav').license,'synthesized original');
+    assert.equal(stock.files.find((file:{file:string})=>file.file==='hit-02-logo.wav').license,'synthesized original');
     assert.equal(stock.files.find((file:{file:string})=>file.file==='score.wav').license,'synthesized original + Pixabay Content License');
     const sourceFiles = await import('node:fs/promises').then(fs=>fs.readdir(join(film,'audio/scores/stock')));
     assert.ok(!sourceFiles.some(file=>file.endsWith('.mp3')));
@@ -80,12 +86,12 @@ test('a storyboard score delivers frame-aligned hits, measured loudness, and rep
     const reportPath = join(film,'audio/scores/a/audio-report.json');
     const ledgerBefore = await readFile(join(film,'ledger.json'));
     const boardBefore = await readFile(join(film,'storyboard.json'));
-    const hitPath = join(film,'audio/scores/a/hit-00.wav');
+    const hitPath = join(film,'audio/scores/a',report.hits[0].file);
     const hitBefore = await readFile(hitPath);
     await writeFile(hitPath,Buffer.from('changed audio'));
     const refused = spawnSync('node',[resolve('dist/cli.js'),'score-import',film,reportPath,'--id','bad'],{encoding:'utf8',timeout:60000});
     assert.equal(refused.status,1);
-    assert.match(refused.stderr,/score file changed: hit-00.wav/);
+    assert.ok(refused.stderr.includes(`score file changed: ${report.hits[0].file}`));
     assert.deepEqual(await readFile(join(film,'ledger.json')),ledgerBefore);
     assert.deepEqual(await readFile(join(film,'storyboard.json')),boardBefore);
     await writeFile(hitPath,hitBefore);
@@ -103,7 +109,7 @@ test('a storyboard score delivers frame-aligned hits, measured loudness, and rep
       const ledger = JSON.parse(await readFile(join(film,'ledger.json'),'utf8'));
       assert.equal(imported.audio.track,`${runtime}-music`);
       assert.equal(imported.shots[0].soundCues.length,3);
-      assert.equal(imported.shots[0].soundCues[2].asset,`${runtime}-hit-02`);
+      assert.equal(imported.shots[0].soundCues[2].asset,`${runtime}-hit-02-logo`);
       assert.equal(ledger.assets.filter((asset:{id:string})=>asset.id.startsWith(runtime+'-')).length,report.files.length);
       // A synthetic picture exercises the real CLI mix without running a browser engine.
       const output = join(film,'renders/16x9');
@@ -133,7 +139,7 @@ from types import SimpleNamespace
 import numpy as np
 sys.path.insert(0, ${JSON.stringify(resolve('../skills/motion-score/scripts'))})
 from arranger import cue_kind, arrange, hit, PALETTES
-shot = {'id':'a', 'startFrame':0, 'endFrame':180, 'description':'', 'entry':'whip-pan', 'camera':'push'}
+shot = {'id':'a', 'startFrame':0, 'endFrame':180, 'description':'', 'entry':'handoff', 'transition':'whip-pan', 'camera':'push'}
 kinds = [cue_kind(shot, {'asset':asset, 'eventFrame':frame},60,120) for asset,frame in [('planned-camera',0),('planned-arrival',30),('ui-click',45),('ui-type',75),('reveal',60),('logo',120)]]
 voices = [hit(kind,62,PALETTES['warm'],np.random.default_rng(51)) for kind in kinds]
 board = {'meta':{'fps':30,'durationFrames':180}}

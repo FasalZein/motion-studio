@@ -4,6 +4,7 @@ import {dirname, join, relative, resolve} from 'node:path';
 import {assets} from './assets.js';
 import {CliError, parseProject, schemaErrors, writeStoryboard, type Project, type Storyboard} from './project.js';
 import {realInside} from './validate.js';
+import {scoreStateHash} from './scoregate.js';
 import type {Tools} from './seam.js';
 
 const usage = 'usage: motion-studio score-import <film-dir> <audio-report.json> --id <revision-id>';
@@ -93,7 +94,7 @@ export async function importScore(project:Project, args:string[], tools:Tools):P
     current = parsed.project;
   }
   await writeStoryboard(project.root,next);
-  await writeFile(join(directory,'import.json'),JSON.stringify({reportSha256:hash(await readFile(reportPath)),storyboardSha256:hash(await readFile(join(project.root,'storyboard.json'))),track:next.audio.track},null,2)+'\n');
+  await writeFile(join(directory,'import.json'),JSON.stringify({reportSha256:hash(await readFile(reportPath)),storyboardSha256:hash(await readFile(join(project.root,'storyboard.json'))),scoreStateSha256:scoreStateHash(next),track:next.audio.track},null,2)+'\n');
   lines.push(`score imported: ${next.audio.track}; ${hits.length} hit stems; run mix to apply narration ducking and delivery limiting`);
   return lines;
 }
