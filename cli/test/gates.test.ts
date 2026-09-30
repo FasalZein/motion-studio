@@ -270,6 +270,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
   await withFilm(async dir => {
     await write(dir,'animatic.mp4','animatic v1');
     await write(dir,'renders/16x9/master.mkv','master v1');
+    await write(dir,'renders/16x9/draft.mp4','full pass mp4');
     for (const id of ['G1','G2','G3']) ok(['gate',dir,id,'approve']);
     await critique(dir,'master v1');
     // The fake master cannot be measured, so G4 is approved with a liveness waiver (D60).
@@ -279,6 +280,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     expect(gates[2].inputHashes['stills/G2/b01.png']).toBe(sha('beat 1 v1'));
     expect(gates[2].inputHashes['animatic.mp4']).toBe(sha('animatic v1'));
     expect(gates[3].inputHashes['renders/16x9/master.mkv']).toBe(sha('master v1'));
+    expect(gates[3].inputHashes['renders/16x9/draft.mp4']).toBe(sha('full pass mp4'));
     expect(Object.keys(gates[3].inputHashes).filter(k => k.startsWith('shots/') || k === 'ledger.json')).toEqual([]);
     const frozenG4 = (await readdir(join(dir,'stills/approved'))).filter(d => d.startsWith('G4-'));
     expect(frozenG4).toHaveLength(1);
@@ -312,7 +314,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     await write(dir,'renders/16x9/.staging/scratch.mkv','scratch');
     await write(dir,'shots/hyperframes/.cache','cache v1');
     await edit(dir,s => {s.meta.layouts['16:9'].overlay = 'youtube';});
-    ok(['gate',dir,'G5','approve']);
+    expect(ok(['gate',dir,'G5','approve'])).toContain('warning: G5 critique[] is empty');
     const g5 = (await storyboard(dir)).gates[4];
     expect(g5.inputHashes['shots/hyperframes/index.html']).toBe(sha(await readFile(join(dir,'shots/hyperframes/index.html'),'utf8')));
     expect(g5.inputHashes['ledger.json']).toBe(sha(await readFile(join(dir,'ledger.json'),'utf8')));
@@ -384,6 +386,7 @@ test('G4 approve refuses without a current independent critique report and accep
     await critique(dir,'master v2',{loop:2});
     const out = ok(['gate',dir,...approve]);
     expect(out).toContain('recorded G4 approve');
+    expect(out).toContain('warning: G4 critique[] is empty');
     expect((await storyboard(dir)).gates[3].inputHashes['critique/loop-2.md']).toBe(sha(await readFile(join(dir,'critique/loop-2.md'),'utf8')));
   });
 });

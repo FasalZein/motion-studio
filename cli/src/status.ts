@@ -10,9 +10,9 @@ const gateWork:Record<GateId,string> = {
   G5:'mix, draft renders per format, critique loop B and license check',
 };
 
-export function nextStep(views:GateView[]):string {
+export function nextStep(views:GateView[], finalStep?:string):string {
   const view = views.find((v):v is GateView & {state:Exclude<GateState,'approved'>} => v.state !== 'approved');
-  if (!view) return 'final render, then user acceptance of the files';
+  if (!view) return finalStep ?? 'final render, then user acceptance of the files';
   const gate:Gate = view.gate;
   switch (view.state) {
     case 'pending': return `${gateWork[gate.id]}, then present ${gate.id}`;
@@ -25,6 +25,6 @@ export function nextStep(views:GateView[]):string {
 }
 
 /** One line per gate with its effective state, note rounds and stale reason, then the next step. */
-export function statusLines(views:GateView[]):string[] {
-  return [...views.map(({gate:g,state,reason}) => `${g.id} ${state}${g.rounds ? ` (rounds ${g.rounds}/${noteRounds})` : ''}${reason ? ` (${reason})` : ''}`), `next: ${nextStep(views)}`];
+export function statusLines(views:GateView[], finalStep?:string):string[] {
+  return [...views.map(({gate:g,state,reason}) => `${g.id} ${state}${g.rounds ? ` (rounds ${g.rounds}/${noteRounds})` : ''}${reason ? ` (${reason})` : ''}`), `next: ${nextStep(views,finalStep)}`];
 }

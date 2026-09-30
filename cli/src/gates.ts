@@ -268,5 +268,7 @@ export async function recordGate(project:Project, id:GateId, decision:Decision, 
   });
 
   await writeStoryboard(project.root,{...project.storyboard, gates});
-  return [`recorded ${id} ${decision}: ${Object.keys(hashes).length} inputs, revision ${revisionId(hashes)}`, ...waivers.map(w => `waived: ${w.check}`), ...(frozen ? [`frozen stills: ${frozen}`] : [])];
+  const warnings = (id === 'G4' || id === 'G5') && !project.storyboard.critique.length
+    ? [`warning: ${id} critique[] is empty; record calibrated review scores and check loop ${id === 'G4' ? 'A' : 'B'} before proceeding`] : [];
+  return [...warnings, `recorded ${id} ${decision}: ${Object.keys(hashes).length} inputs, revision ${revisionId(hashes)}`, ...waivers.map(w => `waived: ${w.check}`), ...(frozen ? [`frozen stills: ${frozen}`] : [])];
 }
