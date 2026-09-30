@@ -1,3 +1,4 @@
+import {draftFixture} from './draft-fixture.ts';
 import {test as nodeTest} from 'node:test';
 const {expect} = await import('bun' in process.versions ? 'bun:test' : 'expect');
 import {dirname, join, resolve} from 'node:path';
@@ -267,6 +268,7 @@ test('taste accept records the accepted look, signature moves and pacing after G
     for (const gate of ['G2','G3']) ok(home,['gate',film,gate,'approve']);
     // The stand-in master cannot be measured, so G4 is approved with a liveness waiver (D60).
     await fakeCritique(film);
+    await draftFixture(film);
     ok(home,['gate',film,'G4','approve','--waive','liveness','--note','no master in this fixture']);
     ok(home,['gate',film,'G5','approve','--note','ship it']);
     fails(home,['taste','accept',film,'--move','whoosh-in'],'taste accept: move "whoosh-in" is not a motion-vocabulary term id or custom:<description>');

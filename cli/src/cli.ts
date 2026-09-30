@@ -214,7 +214,7 @@ async function main() {
     if (!gate || !choice) throw new CliError(usage);
     const parsed = await parseProject(target);
     if (!parsed.ok) {report(parsed.errors,[]); process.exitCode = 1; return;}
-    for (const line of await recordGate(parsed.project,gate,choice,notes,waivers)) console.log(line);
+    for (const line of await recordGate(parsed.project,gate,choice,notes,{command,verify},waivers)) console.log(line);
     const updated = await parseProject(target);
     if (updated.ok) for (const line of statusLines(await gateViews(updated.project))) console.log(line);
     return;

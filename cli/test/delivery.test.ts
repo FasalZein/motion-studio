@@ -40,18 +40,32 @@ async function render(dir:string, run:(...args:string[])=>ReturnType<typeof spaw
   for (const g of ['G1','G2','G3']) ok(run('gate',dir,g,'approve'));
   for (const cmd of ['render','stitch','mix']) ok(run(cmd,dir));
 }
-async function g4(dir:string, run:(...args:string[])=>ReturnType<typeof spawnSync<string>>) {
+async function g4(dir:string, run:(...args:string[])=>ReturnType<typeof spawnSync<string>>, approve = true) {
   const sha = createHash('sha256').update(await readFile(join(dir,'renders/16x9/master.mkv'))).digest('hex');
   await mkdir(join(dir,'critique/packet-16x9'),{recursive:true});
   await writeFile(join(dir,'critique/packet-16x9/packet.json'),JSON.stringify({render:{masterSha256:sha}}));
   // Faithful fake of the external independent critic. The real gate parses its actual header.
   await writeFile(join(dir,'critique/loop-1.md'),`# Loop 1\nMode: in-studio; independence: independent\nPacket: critique/packet-16x9/packet.json; master sha256: ${sha}\n`);
+  if (!approve) return;
+  ok(run('deliver',dir,'--quality','draft'));
   expect(ok(run('gate',dir,'G4','approve','--waive','liveness','--note','Short fixture tests delivery, not liveness'))).toContain('warning: G4 critique[] is empty');
 }
 
 test('draft bundles playable MP4, poster, sheets, ledger and source README', async () => withFilm(async (dir,run) => {
   await render(dir,run);
+  await g4(dir,run,false);
+  const approve = () => run('gate',dir,'G4','approve','--waive','liveness','--note','short fixture');
+  expect(approve().stderr).toContain('draft 16:9 is missing or unreadable');
+  expect((await json(join(dir,'storyboard.json'))).gates[3].state).toBe('pending');
   ok(run('deliver',dir,'--quality','draft'));
+  const masterPath = join(dir,'renders/16x9/master.mkv'), originalMaster = await readFile(masterPath);
+  ffmpeg('-i',masterPath,'-map','0','-c','copy','-metadata','comment=new-master',join(dir,'new-master.mkv'));
+  await cp(join(dir,'new-master.mkv'),masterPath);
+  await g4(dir,run,false);
+  expect(approve().stderr).toContain('draft 16:9 does not match its reviewed master');
+  await writeFile(masterPath,originalMaster);
+  await g4(dir,run,false);
+  ok(approve());
   const streams = probe(join(dir,'delivery/draft/16x9/film.mp4'));
   expect(streams.find((s:{codec_type:string}) => s.codec_type === 'video')).toMatchObject({codec_name:'h264',width:320,height:180,nb_read_frames:'12'});
   expect(streams.find((s:{codec_type:string}) => s.codec_type === 'audio')).toMatchObject({codec_name:'aac',sample_rate:'48000',channels:2});
@@ -87,7 +101,7 @@ test('final requires every rights decision and cost consent, then records exact 
   expect(fail('--cost-note','Approved local encode')).toContain('music-bed license is unknown');
   expect(fail('--cost-note','Approved local encode','--ack-license','music-bed','Use approved by director')).toContain('sfx-hit license is restricted');
   expect(fail('--cost-note','Approved local encode','--ack-license','not-an-asset','No')).toContain('not an unresolved ledger asset');
-  expect(await readdir(join(dir,'delivery')).catch(() => [])).toEqual([]);
+  expect(await readdir(join(dir,'delivery')).catch(() => [])).not.toContain('final');
   const approved = ['--cost-note','Approved local encode, no paid generation','--ack-license','music-bed','Director accepts the unknown music rights','--ack-license','sfx-hit','Director accepts the restricted SFX use'];
   const muxPath = join(dir,'renders/16x9/final.mkv');
   const g5Mux = await readFile(muxPath);
@@ -100,7 +114,7 @@ test('final requires every rights decision and cost consent, then records exact 
   const changed = run('deliver',dir,'--quality','final',...approved);
   expect(changed.status).toBe(1);
   expect(changed.stderr).toContain('final mux differs from G5 approval: 16:9; present G5 again');
-  expect(await readdir(join(dir,'delivery')).catch(() => [])).toEqual([]);
+  expect(await readdir(join(dir,'delivery')).catch(() => [])).not.toContain('final');
   await writeFile(muxPath,g5Mux);
   ok(run('deliver',dir,'--quality','final',...approved));
   const path = join(dir,'delivery/final/manifest.json');

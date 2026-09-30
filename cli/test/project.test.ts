@@ -1,3 +1,4 @@
+import {draftFixture} from './draft-fixture.ts';
 import {test as nodeTest} from 'node:test';
 const {expect} = await import('bun' in process.versions ? 'bun:test' : 'expect');
 import {dirname, join, resolve} from 'node:path';
@@ -314,6 +315,7 @@ test('status reports gate states and the next step', async () => {
     await edit(dir,'storyboard.json',s => {for (const g of s.gates) {g.state = 'pending'; g.rounds = 0;}});
     // The stand-in master cannot be measured, so G4 is approved with a liveness waiver (D60).
     await fakeCritique(dir);
+    await draftFixture(dir);
     for (const id of ['G1','G2','G3','G4','G5']) expect(run('bun',['gate',dir,id,'approve',...(id === 'G4' ? ['--waive','liveness','--note','no master'] : [])]).status).toBe(0);
     const approved = run('node',['status',dir]);
     expect(approved.stdout).toBe('G1 approved\nG2 approved\nG3 approved\nG4 approved\nG5 approved\nnext: final render, then user acceptance of the files\nliveness 16:9 missing (no readable renders/16x9/liveness.json)\n');

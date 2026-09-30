@@ -10,6 +10,7 @@ import {outputsOf} from './outputs.js';
 import {renderSources, requireCurrentRenders} from './sources.js';
 import {requireMaster, type Tools} from './seam.js';
 import {sheet} from './sheet.js';
+import {writeDraftProof} from './draft.js';
 import {loopCheck} from './loopcheck.js';
 
 export type Quality = 'draft'|'final';
@@ -149,6 +150,7 @@ export async function deliver(project:Project, args:string[], tools:Tools):Promi
       if (quality === 'draft') {
         await copyFile(mp4,join(out.dir,'draft.mp4'));
         await copyFile(join(dir,'poster.png'),join(out.dir,'poster.png'));
+        await writeDraftProof(out);
       }
       lines.push(`deliver ${quality} ${format}: H.264/AAC ${project.storyboard.meta.durationFrames} frames, CRF ${profile.crf} -> delivery/${quality}/${folder}/film.mp4`);
     }

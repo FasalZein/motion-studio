@@ -1,3 +1,4 @@
+import {draftFixture} from './draft-fixture.ts';
 import {test as nodeTest} from 'node:test';
 const {expect} = await import('bun' in process.versions ? 'bun:test' : 'expect');
 import {dirname, join, resolve} from 'node:path';
@@ -61,6 +62,7 @@ const status = (dir:string) => ok(['status',dir]);
  * its render.masterSha256 and a report whose header names the packet and that hash (reviewer.md format).
  */
 async function critique(dir:string, master:string, {loop = 1, independence = 'independent', packetMaster = master} = {}) {
+  await draftFixture(dir);
   await write(dir,'critique/packet-16x9/packet.json',JSON.stringify({mode:'in-studio', render:{master:'renders/16x9/master.mkv', masterSha256:sha(packetMaster)}}));
   await write(dir,`critique/loop-${loop}.md`,`# Critique loop ${loop}\nMode: in-studio; independence: ${independence}\nRender: renders/16x9/master.mkv; format: 16:9; fps: 30; revision hashes: unavailable\nPacket: critique/packet-16x9/packet.json; master sha256: ${sha(master)}\n`);
 }
@@ -280,7 +282,7 @@ test('polish after G4 keeps G4; a shot edit after G5 stales only G5', async () =
     expect(gates[2].inputHashes['stills/G2/b01.png']).toBe(sha('beat 1 v1'));
     expect(gates[2].inputHashes['animatic.mp4']).toBe(sha('animatic v1'));
     expect(gates[3].inputHashes['renders/16x9/master.mkv']).toBe(sha('master v1'));
-    expect(gates[3].inputHashes['renders/16x9/draft.mp4']).toBe(sha('full pass mp4'));
+    expect(gates[3].inputHashes['renders/16x9/draft.mp4']).toBe(createHash('sha256').update(await readFile(join(dir,'renders/16x9/draft.mp4'))).digest('hex'));
     expect(Object.keys(gates[3].inputHashes).filter(k => k.startsWith('shots/') || k === 'ledger.json')).toEqual([]);
     const frozenG4 = (await readdir(join(dir,'stills/approved'))).filter(d => d.startsWith('G4-'));
     expect(frozenG4).toHaveLength(1);

@@ -1,3 +1,4 @@
+import {draftFixture} from './draft-fixture.ts';
 import {test as nodeTest, after} from 'node:test';
 const {expect} = await import('bun' in process.versions ? 'bun:test' : 'expect');
 import {dirname, join, resolve} from 'node:path';
@@ -295,6 +296,7 @@ test(`${runtime}: G4 approval needs a current passing report or a written waiver
   await writeFile(join(dir,'critique/packet-16x9/packet.json'),JSON.stringify({render:{masterSha256:masterSha}}));
   await writeFile(join(dir,'critique/loop-1.md'),`Mode: in-studio; independence: independent\nPacket: critique/packet-16x9/packet.json; master sha256: ${masterSha}\n`);
   // The director waives the stale report with a reason; the gate record keeps it.
+  await draftFixture(dir);
   const waived = run('gate',dir,'G4','approve','--waive','liveness','--note','deliberate 2.5 s title hold');
   expect(waived.stderr).toBe('');
   expect(waived.status).toBe(0);

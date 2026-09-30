@@ -1,3 +1,4 @@
+import {draftFixture} from './draft-fixture.ts';
 import {test as nodeTest} from 'node:test';
 const {expect} = await import('bun' in process.versions ? 'bun:test' : 'expect');
 import {dirname, join, resolve} from 'node:path';
@@ -184,6 +185,7 @@ test(`${runtime}: packet adds the liveness report, the seam threads and strips a
   for (const id of ['G1','G2','G3']) expect(run('gate',dir,id,'approve').status).toBe(0);
   // G4 approval also needs a fresh reviewer's report naming this packet and its master (D80).
   await writeFile(join(dir,'critique/loop-1.md'),`# Critique loop 1\nMode: in-studio; independence: independent\nPacket: critique/packet-16x9/packet.json; master sha256: ${p.render.masterSha256}\n`);
+  await draftFixture(dir);
   expect(run('gate',dir,'G4','approve','--waive','liveness','--note','deliberate hold for the title').status).toBe(0);
   expect(run('packet',dir).status).toBe(0);
   expect((await packet(dir)).liveness).toMatchObject({pass:false, waiver:{reason:'deliberate hold for the title'}, dimension2Max:null});
