@@ -219,6 +219,17 @@ test('score import preserves the approved G2 grid, including rounded BPM and emp
     run('node',[resolve('dist/cli.js'),'gate',root,'G1','approve']);
     run('node',[resolve('dist/cli.js'),'gate',root,'G2','approve']);
     const before = JSON.parse(await readFile(join(root,'storyboard.json'),'utf8'));
+    const approvedBytes = await readFile(join(root,'storyboard.json'));
+    const unplanned = {...before,audio:{...before.audio,bpm:null,beatFrames:[]}};
+    const unplannedBytes = JSON.stringify(unplanned);
+    await writeFile(join(root,'storyboard.json'),unplannedBytes);
+    const rejectedOutput = join(root,'audio/scores/unplanned');
+    const rejected = spawnSync(python,[script,root,'--out',rejectedOutput,'--seed','51','--reveal-frame','68','--logo-frame','136','--sfx-density','0'],{encoding:'utf8',timeout:120000});
+    assert.equal(rejected.status,1,rejected.stdout+rejected.stderr);
+    assert.match(rejected.stderr,/planned whole-frame grid.*agents\/board\.md step 1/);
+    assert.equal(await stat(rejectedOutput).then(()=>true,()=>false),false);
+    assert.equal(await readFile(join(root,'storyboard.json'),'utf8'),unplannedBytes);
+    await writeFile(join(root,'storyboard.json'),approvedBytes);
     const out = join(root,'audio/scores/g2');
     run(python,[script,root,'--out',out,'--seed','51','--reveal-frame','68','--logo-frame','136','--sfx-density','0']);
     run('node',[resolve('dist/cli.js'),'score-import',root,join(out,'audio-report.json'),'--id','g2']);

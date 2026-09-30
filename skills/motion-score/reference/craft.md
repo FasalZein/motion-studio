@@ -12,7 +12,7 @@ The renderer replaces planned cue assets with new synthesized composites. It syn
 
 ## Tempo and structure
 
-Frames per beat = fps * 60 / BPM. At 30 fps, 120 BPM is 15 frames per beat; 100 BPM is 18. Prefer the supplied constant beat grid. A detected grid with jitter must be corrected before synthesis. For a new grid, the renderer searches integer frame steps in 80-140 BPM, keeps only steps that divide every cue frame, and chooses the tempo nearest 120 BPM. It refuses off-grid events instead of silently changing the board.
+Frames per beat = fps * 60 / BPM. At 30 fps, 120 BPM is 15 frames per beat; 100 BPM is 18. Use the supplied constant whole-frame grid planned before G2 in `motion-studio/agents/board.md` step 1. An empty grid refuses scoring and points back to that step. A detected grid with jitter must be corrected before synthesis. The renderer refuses off-grid events instead of silently changing the board.
 
 A synthesized intro stays sparse. Bass, drums and a pitched pattern become stronger at the reveal. Drop the music for 1-4 beats before that reveal. A filtered noise riser ends at the event sample; the 95-to-36 Hz, 1.4-second sub drop starts there. The riser is a separate anticipation stem in the bed, not a pre-onset in the hit stem. Its final 100 ms targets 0.12 stereo RMS before mastering; the report compares it with the post-reveal bed. Musical buses fade over 10 ms into a measured silent dropout.
 

@@ -3,7 +3,6 @@
 import argparse
 import hashlib
 import json
-import math
 from importlib.metadata import version
 from pathlib import Path
 import shutil
@@ -90,20 +89,15 @@ def derive(board, reveal, logo):
     if events.count(logo) != 1:
         raise ValueError('logo needs exactly one cue')
     supplied = board['audio']['beatFrames']
-    if supplied:
-        step = supplied[1] - supplied[0] if len(supplied) > 1 else 0
-        if step <= 0 or any(b - a != step for a, b in zip(supplied, supplied[1:])):
-            raise ValueError('score needs a constant, whole-frame beat grid; correct the board first')
-        bpm = 60 * fps / step
-        if board['audio']['bpm'] is None or abs(board['audio']['bpm'] - bpm) > .1:
-            raise ValueError('audio.bpm does not match beatFrames')
-        beats = supplied
-    else:
-        choices = [s for s in range(math.ceil(60 * fps / 140), math.floor(60 * fps / 80) + 1) if all(f % s == 0 for f in events)]
-        if not choices:
-            raise ValueError('no whole-frame 80-140 BPM grid fits all cues; revise the board')
-        step = min(choices, key=lambda s: abs(60 * fps / s - 120))
-        bpm, beats = 60 * fps / step, list(range(0, frames, step))
+    if not supplied:
+        raise ValueError('audio.beatFrames is empty; set a planned whole-frame grid before G2: see motion-studio/agents/board.md step 1 and run motion-studio beats <film-dir> --imported <file>')
+    step = supplied[1] - supplied[0] if len(supplied) > 1 else 0
+    if step <= 0 or any(b - a != step for a, b in zip(supplied, supplied[1:])):
+        raise ValueError('score needs a constant, whole-frame beat grid; correct the board first')
+    bpm = 60 * fps / step
+    if board['audio']['bpm'] is None or abs(board['audio']['bpm'] - bpm) > .1:
+        raise ValueError('audio.bpm does not match beatFrames')
+    beats = supplied
     if any(f not in beats for f in events):
         raise ValueError('sound cues are off the beat grid; snap the board or choose another tempo before scoring')
     return fps, frames, cues, step, bpm, beats

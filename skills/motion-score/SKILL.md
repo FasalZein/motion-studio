@@ -22,7 +22,7 @@ Make one original music-and-SFX plan from the film's beat contract. `motion-stud
      --out films/<slug>/audio/scores/r1 --seed 51 \
      --reveal-frame 180 --logo-frame 360 --tonic-midi 62 --palette warm
    ```
-   The frame values are examples, not film defaults. The script reads the storyboard directly; it does not invent a cue file. It reuses a constant whole-frame grid, or chooses 80-140 BPM with whole frames per beat. An off-grid cue refuses the render: correct the board and beat contract first. `--help` lists supported controls. Render each revision into a new directory. Complete when `audio-report.json` has `passed: true`, every hit is within one frame, `score.wav` measures -14 +/- 0.5 LUFS with true peak at or below -1 dBTP, and a second seeded render has identical WAV bytes.
+   The frame values are examples, not film defaults. The script reads the storyboard directly; it does not invent a cue file. It requires the constant whole-frame grid planned before G2 in `motion-studio/agents/board.md` step 1. An empty grid refuses scoring before creating output. An off-grid cue refuses the render: correct the board and beat contract first. `--help` lists supported controls. Render each revision into a new directory. Complete when `audio-report.json` has `passed: true`, every hit is within one frame, `score.wav` measures -14 +/- 0.5 LUFS with true peak at or below -1 dBTP, and a second seeded render has identical WAV bytes.
 4. **Record rights and mix.** With the CLI installed, run:
    ```sh
    motion-studio score-import films/<slug> films/<slug>/audio/scores/r1/audio-report.json --id score-r1
