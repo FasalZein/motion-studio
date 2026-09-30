@@ -14,6 +14,10 @@ const cli = resolve(here,'../dist/cli.js');
 const fixture = resolve(here,'../fixtures/two-engine');
 const test = (name:string, fn:()=>Promise<void>) => nodeTest(`${runtime}: ${name}`,{timeout:240000},fn);
 const json = async (path:string) => JSON.parse(await readFile(path,'utf8'));
+function ffmpeg(...args:string[]) {
+  const result = spawnSync('ffmpeg',['-hide_banner','-loglevel','error','-nostdin','-y',...args],{encoding:'utf8',timeout:30000});
+  expect({code:result.status,error:result.stderr}).toEqual({code:0,error:''});
+}
 
 async function withFilm(fn:(dir:string, run:(...args:string[])=>ReturnType<typeof spawnSync<string>>)=>Promise<void>) {
   const scratch = await mkdtemp(join(tmpdir(),'motion-delivery-'));
@@ -115,12 +119,27 @@ test('loop drafts include measured image and audio seams for every chosen format
   const source = join(dir,'shots/remotion/src/index.tsx');
   await writeFile(source,(await readFile(source,'utf8')).replace('width: 320, height: 180',"width: '100%', height: '100%'").replace('width={320} height={180}', 'width={320} height={180} calculateMetadata={({props}) => ({width:props.layout.canvas.width,height:props.layout.canvas.height})}'));
   await render(dir,run);
+  // Construct independently known boundary values, with extra audio tail outside the 12-frame film.
+  // The true seam is 0 -> 0.5; the tail is -0.25 and must not contribute to the report.
+  const pcm = Buffer.alloc(24000*2*4);
+  for (let i=0;i<24000;i++) for (let channel=0;channel<2;channel++)
+    pcm.writeFloatLE(i < 19200 ? i/19199*0.5 : -0.25,(i*2+channel)*4);
+  const pcmFile = join(dir,'known-seam.f32');
+  await writeFile(pcmFile,pcm);
+  for (const [folder,size] of [['16x9','320x180'],['9x16','180x320']]) {
+    const out = join(dir,'renders',folder);
+    ffmpeg('-f','lavfi','-i',`color=black:s=${size}:r=30`,'-vf',"drawbox=color=white:t=fill:enable='gte(n,6)',setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709",'-frames:v','12','-c:v','ffv1','-level','3','-pix_fmt','yuv444p',
+      '-colorspace','bt709','-color_trc','bt709','-color_primaries','bt709',join(out,'master.mkv'));
+    ffmpeg('-f','f32le','-ar','48000','-ac','2','-i',pcmFile,'-c:a','pcm_s24le',join(out,'mix.wav'));
+    ffmpeg('-i',join(out,'master.mkv'),'-i',join(out,'mix.wav'),'-map','0:v:0','-map','1:a:0','-c','copy',join(out,'final.mkv'));
+  }
   ok(run('deliver',dir,'--quality','draft'));
   for (const folder of ['16x9','9x16']) {
     const report = await json(join(dir,`delivery/draft/${folder}/loop.json`));
     expect(report).toMatchObject({verdict:'review required',picture:{firstFrame:0,lastFrame:11},audio:{sampleRate:48000,channels:2}});
-    expect(report.picture.meanAbsoluteDifference).toBeGreaterThanOrEqual(0);
-    expect(report.audio.boundarySampleJump).toBeGreaterThanOrEqual(0);
+    expect(report.picture.meanAbsoluteDifference).toBe(1);
+    expect(report.audio.boundarySampleJump).toBe(0.5);
+    expect(report.audio.samplesPerChannel).toBe(19200);
   }
   expect(probe(join(dir,'delivery/draft/9x16/film.mp4'))[0]).toMatchObject({width:180,height:320,nb_read_frames:'12'});
 }));

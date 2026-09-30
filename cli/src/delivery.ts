@@ -137,7 +137,7 @@ export async function deliver(project:Project, args:string[], tools:Tools):Promi
       lines.push(await sheet(project,out,tools));
       for (const file of await readdir(out.dir)) if (/^(contact-sheet-\d{3}\.png|transition-.+\.png|sheet\.json)$/.test(file)) await copyFile(join(out.dir,file),join(dir,file));
       if (project.storyboard.meta.genre === 'ui-morph-loop') {
-        await loopCheck(project,format,mp4,join(dir,'loop.json'),tools);
+        await loopCheck(project,format,join(dir,'loop.json'),tools);
         lines.push(`loop ${format}: measured picture and audio seam; inspect loop.json and listen to repeated playback`);
       }
       for (const file of await readdir(dir)) await add(`${folder}/${file}`);
