@@ -163,6 +163,8 @@ from score import render, decode
 shot = {'id':'a', 'startFrame':0, 'endFrame':180, 'description':'', 'entry':'handoff', 'transition':'whip-pan', 'camera':'push'}
 assert cue_kind({**shot, 'description':'key UI events'}, {'asset':'ui-click','eventFrame':45},60,120) == 'click'
 ui_kinds = [cue_kind({**shot, 'description':'Product UI dashboard typing'}, {'asset':asset, 'eventFrame':30},60,120) for asset in ('whoosh-fast','whip','arrival','ui-click','ui-type')]
+specific_shot = {**shot, 'description':'Product UI dashboard', 'camera':'locked', 'moves':[{'start':30,'frames':3,'term':'zoom-in'}]}
+specific_kinds = [cue_kind(specific_shot, {'asset':asset,'eventFrame':frame},60,120) for asset,frame in [('impact-bass-1',45),('sfx-01',0),('sfx-02',30),('hit',45),('boom',45),('pop',45),('bass',45)]]
 kinds = [cue_kind(shot, {'asset':asset, 'eventFrame':frame},60,120) for asset,frame in [('planned-camera',0),('planned-arrival',30),('ui-click',45),('ui-type',75),('reveal',60),('logo',120)]]
 voices = [hit(kind,62,PALETTES['warm'],np.random.default_rng(51)) for kind in kinds]
 board = {'meta':{'fps':30,'durationFrames':180},'audio':{'bpm':120,'beatFrames':list(range(0,180,15)),'downbeatFrames':[],'dropFrames':[]},'shots':[{**shot,'soundCues':[{'asset':'planned','eventFrame':f,'peakOffsetFrames':0} for f in (60,90,120)]}]}
@@ -183,11 +185,12 @@ dark_args = SimpleNamespace(palette='dark',density='normal',reveal_frame=120,log
 _, dark_plan = arrange({'meta':{'fps':30,'durationFrames':300}},dark_args,15,list(range(0,300,15)),np.random.default_rng(51))
 expected_chime = np.concatenate([synth.pluck(note,.03,bell=True)*.2 for note in (74,77,81)])
 chime_matches = np.allclose(hit('type',62,PALETTES['dark'],np.random.default_rng(51)),expected_chime)
-print(json.dumps({'darkChords':[c['notes'] for c in dark_plan['chords']], 'darkChimeMatches':bool(chime_matches), 'uiKinds':ui_kinds,'kinds':kinds,'lengths':[v.shape[-1] for v in voices],'hashes':[hashlib.sha256(v.tobytes()).hexdigest() for v in voices], 'measurements':measurements}))
+print(json.dumps({'darkChords':[c['notes'] for c in dark_plan['chords']], 'darkChimeMatches':bool(chime_matches), 'specificKinds':specific_kinds,'uiKinds':ui_kinds,'kinds':kinds,'lengths':[v.shape[-1] for v in voices],'hashes':[hashlib.sha256(v.tobytes()).hexdigest() for v in voices], 'measurements':measurements}))
 `,root]);
   const result = JSON.parse(output);
   assert.deepEqual(result.darkChords,[[50,53,57,64],[55,58,62,69],[58,62,65,72],[57,61,64,70]]);
   assert.equal(result.darkChimeMatches,true);
+  assert.deepEqual(result.specificKinds,['arrival','motion','motion','arrival','arrival','arrival','arrival']);
   assert.deepEqual(result.uiKinds,['motion','motion','arrival','click','type']);
   assert.deepEqual(result.kinds,['motion','arrival','click','type','reveal','logo']);
   assert.equal(new Set(result.hashes).size,6);

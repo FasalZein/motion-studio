@@ -31,17 +31,17 @@ def cue_kind(shot, cue, reveal, logo):
     context = set(re.findall(r'[a-z]+', shot.get('description', '').lower()))
     if words & {'ui', 'click', 'type', 'typing', 'key', 'cursor'}:
         return 'type' if words & {'type', 'typing', 'key'} else 'click'
-    if words & {'arrival', 'arrive', 'lock', 'land'}:
+    if words & {'arrival', 'arrive', 'lock', 'land', 'impact', 'bass', 'hit', 'boom', 'pop'}:
         return 'arrival'
     if words & {'motion', 'whip', 'whoosh', 'camera', 'zoom', 'orbit', 'sweep'}:
         return 'motion'
-    if context & {'ui', 'interface', 'typing', 'cursor'}:
-        return 'type' if context & {'typing'} else 'click'
     seam = cue['eventFrame'] == shot['startFrame']
     terms = [move['term'] for move in shot.get('moves', []) if move['start'] <= cue['eventFrame'] - shot['startFrame'] < move['start'] + move['frames']]
     movement = set(re.findall(r'[a-z]+', (' '.join(terms) + ' ' + shot.get('transition', '') + ' ' + shot.get('camera', '')).lower()))
     if (seam or terms) and movement & {'whip', 'swipe', 'push', 'pull', 'zoom', 'orbit'}:
         return 'motion'
+    if context & {'ui', 'interface', 'typing', 'cursor'}:
+        return 'type' if context & {'typing'} else 'click'
     return 'arrival'
 
 
