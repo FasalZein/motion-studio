@@ -29,8 +29,8 @@ def cue_kind(shot, cue, reveal, logo):
     # Existing asset ids, description and seam/camera vocabulary carry semantics; no second cue format.
     words = set(re.findall(r'[a-z]+', cue['asset'].lower()))
     context = set(re.findall(r'[a-z]+', shot.get('description', '').lower()))
-    if words & {'ui', 'click', 'type', 'typing', 'key', 'cursor'} or context & {'interface', 'typing', 'cursor'}:
-        return 'type' if (words | context) & {'type', 'typing', 'key'} else 'click'
+    if words & {'ui', 'click', 'type', 'typing', 'key', 'cursor'} or context & {'ui', 'interface', 'typing', 'cursor'}:
+        return 'type' if words & {'type', 'typing', 'key'} or context & {'typing'} else 'click'
     if words & {'arrival', 'arrive', 'lock', 'land'}:
         return 'arrival'
     seam = cue['eventFrame'] == shot['startFrame']

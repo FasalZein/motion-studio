@@ -140,6 +140,7 @@ import numpy as np
 sys.path.insert(0, ${JSON.stringify(resolve('../skills/motion-score/scripts'))})
 from arranger import cue_kind, arrange, hit, PALETTES
 shot = {'id':'a', 'startFrame':0, 'endFrame':180, 'description':'', 'entry':'handoff', 'transition':'whip-pan', 'camera':'push'}
+assert cue_kind({**shot, 'description':'key UI events'}, {'asset':'ui-click','eventFrame':45},60,120) == 'click'
 kinds = [cue_kind(shot, {'asset':asset, 'eventFrame':frame},60,120) for asset,frame in [('planned-camera',0),('planned-arrival',30),('ui-click',45),('ui-type',75),('reveal',60),('logo',120)]]
 voices = [hit(kind,62,PALETTES['warm'],np.random.default_rng(51)) for kind in kinds]
 board = {'meta':{'fps':30,'durationFrames':180}}
